@@ -44,7 +44,7 @@ cargo test 2>&1 | tail -20
 ## Current Phase Status
 
 ```
-Phase 0: Foundation          → [ ] NOT STARTED
+Phase 0: Foundation          → [x] COMPLETE
 Phase 1: Core Proxy          → [ ] NOT STARTED
 Phase 2: Streaming           → [ ] NOT STARTED
 Phase 3: Rate Limiting       → [ ] NOT STARTED
@@ -56,7 +56,7 @@ Phase 8: Open Source Launch  → [ ] NOT STARTED
 Phase 9: Mobile App          → [ ] NOT STARTED
 ```
 
-**CURRENT ACTIVE PHASE: 0 — Foundation**
+**CURRENT ACTIVE PHASE: 1 — Core Proxy**
 
 ---
 
@@ -69,7 +69,7 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 - [x] `users` — admin user accounts (email, password_hash, name)
 
 ### API Endpoints (existing from before Velox)
-- [x] `GET  /health` — returns `{"status":"ok","version":"0.1.0"}`
+- [x] `GET  /health` — returns status, version, database ping, providers list, cache config
 - [x] `POST /api/v1/auth/register` — create user
 - [x] `POST /api/v1/auth/login` — login, get JWT
 - [x] `GET  /api/v1/auth/me` — get current user (JWT protected)
@@ -78,11 +78,25 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 - [x] `PUT  /api/v1/users/:id` — update user (JWT protected)
 - [x] `DELETE /api/v1/users/:id` — delete user (JWT protected)
 
-### Velox-Specific Tables
-- [ ] None yet
+### Velox-Specific Tables (Phase 0 — all created via migrations)
+- [x] `workspaces` — multi-tenancy (migration 0002)
+- [x] `api_keys` — gateway API keys with budget/rate limits (migration 0003)
+- [x] `providers` — OpenAI/Anthropic/Bedrock configs + health status (migration 0004, seeded)
+- [x] `model_pricing` — per-token costs, updatable without redeployment (migration 0005, seeded)
+- [x] `requests` — full audit log for every proxied call (migration 0006)
+- [x] `cache_entries` — exact + semantic cache storage (migration 0007)
+- [x] `daily_costs` — pre-aggregated daily cost rollups (migration 0008)
+- [x] `alerts` — threshold-based spend/error/latency alerts (migration 0009)
+
+### Velox-Specific Rust Modules (Phase 0)
+- [x] `src/config.rs` — Config struct via `config` crate (TOML + ENV, with defaults)
+- [x] `src/models/api_key.rs` — ApiKey, CreateApiKeyRequest/Response, ApiKeyView
+- [x] `src/models/provider.rs` — Provider, ProviderView, HealthStatus, UpdateProviderRequest
+- [x] `src/models/request.rs` — Request, RequestStatus, CacheType, RequestSummary, RequestFilter
+- [x] `src/models/cache_entry.rs` — CacheEntry, CacheStats, FlushCacheRequest
 
 ### Velox-Specific Endpoints
-- [ ] None yet
+- [ ] None yet (Phase 1)
 
 ---
 
@@ -455,7 +469,7 @@ git tag phase-X-complete
 
 | Phase | Status | Completed | Commit |
 |---|---|---|---|
-| 0 | Not started | — | — |
+| 0 | Complete | 2026-05-22 | (next commit) |
 | 1 | Not started | — | — |
 | 2 | Not started | — | — |
 | 3 | Not started | — | — |
@@ -479,5 +493,5 @@ Used for: AWS Bedrock provider adapter in Phase 1.
 
 ---
 
-*Last updated: Phase 0 setup*
+*Last updated: 2026-05-22 — Phase 0 complete*
 *Update this file at the end of every session.*

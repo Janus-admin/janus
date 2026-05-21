@@ -24,8 +24,8 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let config = Config::from_env()?;
-    let addr = format!("0.0.0.0:{}", config.port);
+    let config = Config::load()?;
+    let addr = format!("{}:{}", config.host, config.port);
 
     let pool = PgPoolOptions::new()
         .max_connections(config.db_pool_max_connections)
