@@ -1,0 +1,42 @@
+#!/bin/sh
+# Velox pre-commit hook
+# Prevents committing broken code.
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# 1. Check code compiles
+echo "→ cargo check"
+cargo check --quiet 2>&1
+if [ $? -ne 0 ]; then
+    echo "❌ cargo check failed. Fix compilation errors before committing."
+    exit 1
+fi
+
+# 2. Check formatting
+echo "→ cargo fmt"
+cargo fmt -- --check 2>&1
+if [ $? -ne 0 ]; then
+    echo "❌ Code is not formatted. Run: cargo fmt"
+    exit 1
+fi
+
+# 3. Clippy — zero warnings
+echo "→ cargo clippy"
+cargo clippy --quiet -- -D warnings 2>&1
+if [ $? -ne 0 ]; then
+    echo "❌ Clippy found warnings. Fix them before committing."
+    exit 1
+fi
+
+# 4. Run tests (skip ignored tests — those require server/db)
+echo "→ cargo test"
+cargo test --quiet 2>&1
+if [ $? -ne 0 ]; then
+    echo "❌ Tests failed. Fix failing tests before committing."
+    exit 1
+fi
+
+echo "✓ All pre-commit checks passed."

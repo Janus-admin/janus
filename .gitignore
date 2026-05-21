@@ -1,0 +1,42 @@
+# ─── Secrets (NEVER commit these) ────────────────────────────────────────────
+.env
+.env.local
+.env.production
+velox.toml
+*.key
+*.pem
+*.cert
+
+# ─── Rust ─────────────────────────────────────────────────────────────────────
+/target/
+sqlx-data.json
+
+# ─── Velox Runtime Files ──────────────────────────────────────────────────────
+velox.db
+velox_cache.idx
+*.idx
+
+# ─── Node.js (dashboard) ──────────────────────────────────────────────────────
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+dashboard/.env.local
+
+# ─── Mobile ───────────────────────────────────────────────────────────────────
+mobile/node_modules/
+mobile/.expo/
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+._*
+Thumbs.db
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
