@@ -1,0 +1,5 @@
+[toolchain]
+channel = "stable"
+# Pin to minimum required version.
+# Bump this intentionally — never let it drift upward by accident.
+# Current minimum: 1.88 (required by time + icu_collections dependencies)
