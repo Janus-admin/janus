@@ -1,6 +1,7 @@
 // tests/common/mod.rs
 // Shared test helpers used across all phase test files.
 // Add helpers here when two or more test files need the same setup code.
+#![allow(dead_code)] // helpers used in future phase tests
 
 use std::net::TcpListener;
 
