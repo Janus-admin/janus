@@ -57,6 +57,7 @@ include_dir = "0.7"
 # ─── Phase 7: Production Hardening ─────────────────────────────────────────────
 metrics = "0.22"
 metrics-exporter-prometheus = "0.14"
+regex = "1"
 
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]
@@ -66,3 +67,8 @@ tempfile = "3"
 serial_test = "3"
 # reqwest is needed in test files even before Phase 1 (test code imports it)
 reqwest = { version = "0.12", features = ["json"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "cache_bench"
+harness = false

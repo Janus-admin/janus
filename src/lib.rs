@@ -9,6 +9,7 @@ pub mod handlers;
 pub mod metrics;
 pub mod middleware;
 pub mod models;
+pub mod pii;
 pub mod pricing;
 pub mod providers;
 pub mod routes;

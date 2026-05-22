@@ -161,7 +161,10 @@ pub async fn run(
                     if !bypass_cache {
                         cache.insert(hash.clone(), Arc::new(resp.clone()));
 
-                        let req_body = serde_json::to_string(request).unwrap_or_default();
+                        // Scrub PII from the request body before persisting to the database.
+                        let req_body =
+                            crate::pii::scrub(&serde_json::to_string(request).unwrap_or_default())
+                                .into_owned();
                         let resp_body = serde_json::to_string(&resp).unwrap_or_default();
                         let (pt, ct) = (usage.prompt_tokens as i32, usage.completion_tokens as i32);
                         let _ = db::cache::upsert_entry(

@@ -41,10 +41,8 @@ pub struct Config {
     #[allow(dead_code)] // used in Phase 7 logging middleware
     pub log_level: String,
     #[serde(default)]
-    #[allow(dead_code)] // used in Phase 7 request body logging
     pub log_request_bodies: bool,
     #[serde(default)]
-    #[allow(dead_code)] // used in Phase 7 response body logging
     pub log_response_bodies: bool,
 
     // ── Cache ─────────────────────────────────────────────────────────────────

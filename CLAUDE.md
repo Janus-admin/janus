@@ -52,11 +52,13 @@ Phase 4: Exact Cache         → [x] COMPLETE
 Phase 5: Semantic Cache      → [x] COMPLETE
 Phase 6: Web Dashboard       → [x] COMPLETE
 Phase 7: Production Hardening → [x] COMPLETE
-Phase 8: Open Source Launch  → [ ] NOT STARTED
-Phase 9: Mobile App          → [ ] NOT STARTED
+Phase 8: Open Source Launch  → [SKIPPED] — marketing/launch work, not technical
+Phase 9: Mobile App          → [SKIPPED] — out of scope for v1
 ```
 
-**CURRENT ACTIVE PHASE: 8 — Open Source Launch**
+**VELOX v0.1.0 IS FEATURE-COMPLETE.**
+
+Next work is V2 features. See VELOX_ROADMAP.md §15 for the backlog.
 
 ---
 
@@ -158,6 +160,18 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 - [x] `src/gateway/pipeline.rs` — `run()` and `run_streaming()` return `CacheHit` instead of `bool`; semantic lookup before provider call; semantic insert + DB persist after provider success
 - [x] `src/handlers/gateway.rs` — `attach_cache_headers()` sets `X-Velox-Cache-Hit: semantic` + `X-Velox-Cache-Similarity: {score:.4}` on semantic hits
 - [x] `src/main.rs` — Tries to load `EmbeddingModel` at startup; graceful degradation if model missing; `warm_from_db()` called after pool init
+
+### Velox-Specific Rust Modules (Phase 7 — finalized)
+- [x] `src/pii.rs` — PII scrubber: redacts credit cards, SSNs, emails, bearer tokens, API keys using compiled regex patterns; applied to request bodies before `cache_entries` DB storage and before `tracing::debug!` body logs
+- [x] `src/handlers/gateway.rs` — Extended: config-gated `tracing::debug!` for request bodies (`log_request_bodies`) and response bodies (`log_response_bodies`); PII-scrubbed before emission
+- [x] `src/metrics.rs` — Prometheus endpoint with native atomic gauges (exact cache size, semantic cache size, hit ratio); bypasses `metrics::gauge!()` naming conflict
+- [x] `src/handlers/metrics.rs` — `GET /metrics` refreshes gauges from live AppState on every scrape
+- [x] `benches/cache_bench.rs` — Criterion benchmarks: SHA-256 hashing, cosine similarity (single + 1 000-entry scan), PII scrubber overhead
+- [x] `docs/quickstart.md` — 5-minute getting-started guide
+- [x] `docs/configuration.md` — full configuration reference
+- [x] `docs/deployment/docker.md` — Docker Compose production setup
+- [x] `docs/deployment/systemd.md` — Linux system service (hardened unit file + nginx proxy)
+- [x] `docs/deployment/kubernetes.md` — Kubernetes manifests, ServiceMonitor, persistent volume for models
 
 ---
 
@@ -537,9 +551,9 @@ git tag phase-X-complete
 | 4 | Complete | 2026-05-22 | 4d15374 |
 | 5 | Complete | 2026-05-22 | e0e2d9c |
 | 6 | Complete | 2026-05-22 | 395c7b4 |
-| 7 | Complete | 2026-05-22 | 22dcec1 |
-| 8 | Not started | — | — |
-| 9 | Not started | — | — |
+| 7 | Complete (finalized) | 2026-05-22 | TBD |
+| 8 | Skipped | — | — |
+| 9 | Skipped | — | — |
 
 ---
 
@@ -554,5 +568,5 @@ Used for: AWS Bedrock provider adapter in Phase 1.
 
 ---
 
-*Last updated: 2026-05-22 — Phase 7 complete*
+*Last updated: 2026-05-22 — v0.1.0 feature-complete (Phases 8 and 9 skipped)*
 *Update this file at the end of every session.*

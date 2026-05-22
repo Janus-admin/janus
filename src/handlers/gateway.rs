@@ -1,6 +1,6 @@
 use crate::{
     cache::CacheHit, errors::AppError, gateway::pipeline, middleware::api_key_auth::GatewayAuth,
-    middleware::budget::check_budget, providers::ChatCompletionRequest, state::AppState,
+    middleware::budget::check_budget, pii, providers::ChatCompletionRequest, state::AppState,
 };
 use axum::{
     extract::{rejection::JsonRejection, FromRequest, State},
@@ -89,6 +89,12 @@ pub async fn chat_completions(
 
     let max_retries = state.config.max_retries;
 
+    if state.config.log_request_bodies {
+        if let Ok(raw) = serde_json::to_string(&request) {
+            tracing::debug!(body = %pii::scrub(&raw), "gateway request body");
+        }
+    }
+
     if request.stream == Some(true) {
         let start = Instant::now();
         match pipeline::run_streaming(
@@ -158,6 +164,11 @@ pub async fn chat_completions(
                     &cache_hit,
                     false,
                 );
+                if state.config.log_response_bodies {
+                    if let Ok(raw) = serde_json::to_string(&resp) {
+                        tracing::debug!(body = %raw, "gateway response body");
+                    }
+                }
                 match serde_json::to_value(resp) {
                     Ok(v) => {
                         let mut response = Json::<Value>(v).into_response();
