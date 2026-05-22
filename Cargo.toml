@@ -47,9 +47,9 @@ rand = "0.8"
 eventsource-stream = "0.2"
 tokio-stream = { version = "0.1", features = ["sync"] }
 
-# ─── Phase 5: Semantic Cache (uncomment when starting Phase 5) ────────────────
-# ort = { version = "2", features = ["download-binaries"] }
-# instant-distance = "0.6"
+# ─── Phase 5: Semantic Cache ──────────────────────────────────────────────────
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+tokenizers = "0.19"
 
 # ─── Phase 6: Dashboard (uncomment when starting Phase 6) ─────────────────────
 # include_dir = "0.7"

@@ -1,5 +1,5 @@
 use crate::{
-    errors::AppError, gateway::pipeline, middleware::api_key_auth::GatewayAuth,
+    cache::CacheHit, errors::AppError, gateway::pipeline, middleware::api_key_auth::GatewayAuth,
     middleware::budget::check_budget, providers::ChatCompletionRequest, state::AppState,
 };
 use axum::{
@@ -46,6 +46,8 @@ where
 ///
 /// Request header `X-Velox-Cache: false` bypasses the cache for that request.
 /// Response header `X-Velox-Cache-Hit: exact` is present on exact cache hits.
+/// Response header `X-Velox-Cache-Hit: semantic` + `X-Velox-Cache-Similarity: 0.97`
+/// are present on semantic cache hits.
 pub async fn chat_completions(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
@@ -98,11 +100,7 @@ pub async fn chat_completions(
         .await
         {
             Ok((mut response, cache_hit)) => {
-                if cache_hit {
-                    response
-                        .headers_mut()
-                        .insert("x-velox-cache-hit", HeaderValue::from_static("exact"));
-                }
+                attach_cache_headers(response.headers_mut(), &cache_hit);
                 response
             }
             Err(e) => e.into_response(),
@@ -122,17 +120,30 @@ pub async fn chat_completions(
             Ok((resp, cache_hit)) => match serde_json::to_value(resp) {
                 Ok(v) => {
                     let mut response = Json::<Value>(v).into_response();
-                    if cache_hit {
-                        response
-                            .headers_mut()
-                            .insert("x-velox-cache-hit", HeaderValue::from_static("exact"));
-                    }
+                    attach_cache_headers(response.headers_mut(), &cache_hit);
                     response
                 }
                 Err(e) => AppError::Anyhow(anyhow::anyhow!("Failed to serialize response: {e}"))
                     .into_response(),
             },
             Err(e) => e.into_response(),
+        }
+    }
+}
+
+// ── Header helpers ────────────────────────────────────────────────────────────
+
+fn attach_cache_headers(headers: &mut axum::http::HeaderMap, hit: &CacheHit) {
+    match hit {
+        CacheHit::None => {}
+        CacheHit::Exact => {
+            headers.insert("x-velox-cache-hit", HeaderValue::from_static("exact"));
+        }
+        CacheHit::Semantic(score) => {
+            headers.insert("x-velox-cache-hit", HeaderValue::from_static("semantic"));
+            if let Ok(v) = HeaderValue::from_str(&format!("{score:.4}")) {
+                headers.insert("x-velox-cache-similarity", v);
+            }
         }
     }
 }

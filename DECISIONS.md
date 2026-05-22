@@ -408,8 +408,12 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 
 ### Phase 5
 ```toml
-ort = { version = "2", features = ["download-binaries"] }
-instant-distance = "0.6"
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+tokenizers = "0.19"   # HuggingFace tokenizers for BPE/WordPiece via tokenizer.json
+# Note: ndarray not added as a direct dep — we use the (shape, Vec) tuple form
+# for Tensor::from_array() to avoid a version conflict with ort's internal ndarray 0.17.
+# Note: instant-distance dropped — it only supports batch-build, not online insertion.
+# Linear scan (Vec + dot product on unit vectors) is used instead.
 ```
 
 ### Phase 6

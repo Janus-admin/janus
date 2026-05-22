@@ -60,6 +60,12 @@ pub struct Config {
     #[allow(dead_code)] // used in Phase 5 semantic cache similarity gate
     pub semantic_cache_threshold: f64,
 
+    // ── Semantic cache (Phase 5) ──────────────────────────────────────────────
+    #[serde(default = "default_embedding_model_path")]
+    pub embedding_model_path: String,
+    #[serde(default = "default_embedding_tokenizer_path")]
+    pub embedding_tokenizer_path: String,
+
     // ── Provider API keys (Phase 1) ───────────────────────────────────────────
     #[serde(default)]
     pub openai_api_key: String,
@@ -108,7 +114,13 @@ fn default_cache_max_entries() -> u64 {
     100_000
 }
 fn default_semantic_threshold() -> f64 {
-    0.95
+    0.90
+}
+fn default_embedding_model_path() -> String {
+    "models/all-MiniLM-L6-v2.onnx".to_string()
+}
+fn default_embedding_tokenizer_path() -> String {
+    "models/tokenizer.json".to_string()
 }
 fn default_rate_limit_window_secs() -> u64 {
     60

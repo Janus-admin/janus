@@ -89,6 +89,9 @@ struct TestAppOpts {
     /// Override the rate-limit sliding window (seconds). Default: 60.
     /// Use 1 in rate-limit tests to avoid sleeping 60 s.
     rate_limit_window_secs: u64,
+    /// Load the embedding model from config paths.
+    /// Must be true for Phase 5 semantic cache tests. Panics if model files missing.
+    load_embedding_model: bool,
 }
 
 impl Default for TestAppOpts {
@@ -98,6 +101,7 @@ impl Default for TestAppOpts {
             secondary_openai_base_url: None,
             rate_limit_rpm: None,
             rate_limit_window_secs: 60,
+            load_embedding_model: false,
         }
     }
 }
@@ -157,6 +161,31 @@ pub async fn spawn_app_with_two_providers(primary_url: String, secondary_url: St
     spawn_app_from_opts(TestAppOpts {
         openai_base_url: Some(primary_url),
         secondary_openai_base_url: Some(secondary_url),
+        ..Default::default()
+    })
+    .await
+}
+
+/// Start app with embedding model loaded + wiremock provider.
+///
+/// Returns `(base_url, mock_server)`. The embedding model is loaded from the default
+/// path (`models/all-MiniLM-L6-v2.onnx` + `models/tokenizer.json`).
+///
+/// **Panics** if the model files are missing — this is intentional so Phase 5 tests
+/// fail loudly rather than silently skip.
+pub async fn spawn_app_with_embedding_and_wiremock() -> (String, wiremock::MockServer) {
+    let mock_server = wiremock::MockServer::start().await;
+    let base_url = spawn_app_with_embedding_base(mock_server.uri()).await;
+    (base_url, mock_server)
+}
+
+/// Start app with embedding model loaded, pointing the provider at `openai_base_url`.
+///
+/// **Panics** if the model files are missing.
+pub async fn spawn_app_with_embedding_base(openai_base_url: String) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(openai_base_url),
+        load_embedding_model: true,
         ..Default::default()
     })
     .await
@@ -269,6 +298,27 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     .await
     .expect("Failed to insert test API key into DB");
 
+    // ── Build cache engine ────────────────────────────────────────────────────
+    let cache = if opts.load_embedding_model {
+        let model = velox::cache::embedding::EmbeddingModel::load(
+            &config.embedding_model_path,
+            &config.embedding_tokenizer_path,
+        )
+        .expect(
+            "Embedding model must be loadable for Phase 5 tests — \
+             ensure models/all-MiniLM-L6-v2.onnx and models/tokenizer.json exist",
+        );
+        let engine = std::sync::Arc::new(velox::cache::CacheEngine::new_with_semantic(
+            std::sync::Arc::new(model),
+            config.semantic_cache_threshold as f32,
+        ));
+        // Warm from DB so restart-survival test picks up embeddings from the first instance.
+        engine.warm_from_db(&pool).await;
+        engine
+    } else {
+        std::sync::Arc::new(velox::cache::CacheEngine::new())
+    };
+
     let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
@@ -276,8 +326,6 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     let rate_limiter =
         velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
-
-    let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
 
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,

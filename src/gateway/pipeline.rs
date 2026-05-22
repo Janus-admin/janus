@@ -1,6 +1,6 @@
 use super::{router, ProviderRegistry};
 use crate::{
-    cache::{self, CacheEngine},
+    cache::{self, CacheEngine, CacheHit},
     db,
     errors::{AppError, AppResult},
     models::api_key::ApiKey,
@@ -21,12 +21,42 @@ use std::{convert::Infallible, sync::Arc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
+// ── Prompt text extraction ────────────────────────────────────────────────────
+
+/// Concatenate all message content strings for embedding.
+fn prompt_text(request: &ChatCompletionRequest) -> String {
+    request
+        .messages
+        .iter()
+        .map(|m| {
+            if let Some(s) = m.content.as_str() {
+                s.to_string()
+            } else if let Some(arr) = m.content.as_array() {
+                arr.iter()
+                    .filter_map(|item| {
+                        if item["type"].as_str() == Some("text") {
+                            item["text"].as_str().map(str::to_string)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            } else {
+                String::new()
+            }
+        })
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 // ── Non-streaming pipeline ────────────────────────────────────────────────────
 
 /// Run the full non-streaming proxy pipeline.
 ///
-/// Returns `(response, cache_hit)` where `cache_hit` is `true` when the response
-/// was served from the exact cache without touching a provider.
+/// Returns `(response, CacheHit)` where `CacheHit` describes how the response
+/// was sourced (live provider, exact cache, or semantic cache).
 pub async fn run(
     pool: &PgPool,
     registry: &ProviderRegistry,
@@ -35,15 +65,37 @@ pub async fn run(
     max_retries: u32,
     cache: &CacheEngine,
     bypass_cache: bool,
-) -> AppResult<(ChatCompletionResponse, bool)> {
-    // ── Cache lookup ──────────────────────────────────────────────────────────
+) -> AppResult<(ChatCompletionResponse, CacheHit)> {
+    // ── Exact cache lookup ────────────────────────────────────────────────────
     let hash = cache::exact::compute_hash(request);
 
     if !bypass_cache {
         if let Some(cached) = cache.lookup(&hash) {
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
             let _ = db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
-            return Ok(((*cached).clone(), true));
+            return Ok(((*cached).clone(), CacheHit::Exact));
+        }
+    }
+
+    // ── Semantic cache lookup ─────────────────────────────────────────────────
+    // Compute embedding once; reuse it after provider call to populate the index.
+    let embedding: Option<Vec<f32>> = if !bypass_cache && cache.model.is_some() {
+        let text = prompt_text(request);
+        cache.model.as_ref().and_then(|m| m.embed(&text).ok())
+    } else {
+        None
+    };
+
+    if !bypass_cache {
+        if let Some(ref emb) = embedding {
+            if let Some((hit_hash, score)) = cache.semantic_lookup(emb) {
+                if let Some(cached) = cache.lookup(&hit_hash) {
+                    let tokens =
+                        cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+                    let _ = db::cache::record_hit(pool, &hit_hash, tokens, Decimal::ZERO).await;
+                    return Ok(((*cached).clone(), CacheHit::Semantic(score)));
+                }
+            }
         }
     }
 
@@ -82,8 +134,6 @@ pub async fn run(
                         });
 
                     // Store in hot cache + persist to DB synchronously.
-                    // Awaited (not fire-and-forget) so that stats queries after
-                    // this response see the entry immediately.
                     if !bypass_cache {
                         cache.insert(hash.clone(), Arc::new(resp.clone()));
 
@@ -102,6 +152,13 @@ pub async fn run(
                             cost,
                         )
                         .await;
+
+                        // Persist embedding and populate semantic index.
+                        if let Some(emb) = embedding {
+                            cache.semantic_insert(emb.clone(), hash.clone());
+                            let emb_bytes = crate::cache::semantic::f32_vec_to_bytes(&emb);
+                            let _ = db::cache::save_embedding(pool, &hash, &emb_bytes).await;
+                        }
                     }
 
                     // Fire-and-forget: log request + update budget + last_used.
@@ -145,7 +202,7 @@ pub async fn run(
                         });
                     }
 
-                    return Ok((resp, false));
+                    return Ok((resp, CacheHit::None));
                 }
 
                 Err(e) => {
@@ -224,10 +281,8 @@ pub async fn run(
 
 /// Run the streaming proxy pipeline.
 ///
-/// Returns `(response, cache_hit)`. On an exact cache hit the cached response is
-/// synthesized as a valid SSE stream so the client receives the correct wire format.
-/// Cache population from streaming is not done in Phase 4 (only non-streaming
-/// responses populate the cache).
+/// Returns `(response, CacheHit)`. On an exact or semantic cache hit the cached
+/// response is synthesized as a valid SSE stream.
 pub async fn run_streaming(
     pool: PgPool,
     registry: Arc<ProviderRegistry>,
@@ -236,8 +291,8 @@ pub async fn run_streaming(
     max_retries: u32,
     cache: Arc<CacheEngine>,
     bypass_cache: bool,
-) -> AppResult<(Response, bool)> {
-    // ── Cache lookup ──────────────────────────────────────────────────────────
+) -> AppResult<(Response, CacheHit)> {
+    // ── Exact cache lookup ────────────────────────────────────────────────────
     let hash = cache::exact::compute_hash(&request);
 
     if !bypass_cache {
@@ -246,7 +301,29 @@ pub async fn run_streaming(
             let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
 
             let sse = synthesize_sse_from_cached(&cached);
-            return Ok((sse, true));
+            return Ok((sse, CacheHit::Exact));
+        }
+    }
+
+    // ── Semantic cache lookup ─────────────────────────────────────────────────
+    let embedding: Option<Vec<f32>> = if !bypass_cache && cache.model.is_some() {
+        let text = prompt_text(&request);
+        cache.model.as_ref().and_then(|m| m.embed(&text).ok())
+    } else {
+        None
+    };
+
+    if !bypass_cache {
+        if let Some(ref emb) = embedding {
+            if let Some((hit_hash, score)) = cache.semantic_lookup(emb) {
+                if let Some(cached) = cache.lookup(&hit_hash) {
+                    let tokens =
+                        cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+                    let _ = db::cache::record_hit(&pool, &hit_hash, tokens, Decimal::ZERO).await;
+                    let sse = synthesize_sse_from_cached(&cached);
+                    return Ok((sse, CacheHit::Semantic(score)));
+                }
+            }
         }
     }
 
@@ -400,7 +477,7 @@ pub async fn run_streaming(
                     });
 
                     let sse = Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default());
-                    return Ok((sse.into_response(), false));
+                    return Ok((sse.into_response(), CacheHit::None));
                 }
             }
         }
@@ -422,7 +499,7 @@ pub async fn run_with_workspace(
     max_retries: u32,
     cache: &CacheEngine,
     bypass_cache: bool,
-) -> AppResult<(ChatCompletionResponse, bool)> {
+) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     let key_with_workspace = ApiKey {
         workspace_id,
         ..api_key.clone()
@@ -442,7 +519,6 @@ pub async fn run_with_workspace(
 // ── SSE synthesis for cache hits ──────────────────────────────────────────────
 
 /// Build a valid SSE response from a cached non-streaming response.
-/// Emits a single content chunk followed by a usage chunk and [DONE].
 fn synthesize_sse_from_cached(resp: &ChatCompletionResponse) -> Response {
     let content = resp
         .choices

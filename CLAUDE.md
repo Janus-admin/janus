@@ -49,14 +49,14 @@ Phase 1: Core Proxy          → [x] COMPLETE
 Phase 2: Streaming           → [x] COMPLETE
 Phase 3: Rate Limiting       → [x] COMPLETE
 Phase 4: Exact Cache         → [x] COMPLETE
-Phase 5: Semantic Cache      → [ ] NOT STARTED
+Phase 5: Semantic Cache      → [x] COMPLETE
 Phase 6: Web Dashboard       → [ ] NOT STARTED
 Phase 7: Production Hardening → [ ] NOT STARTED
 Phase 8: Open Source Launch  → [ ] NOT STARTED
 Phase 9: Mobile App          → [ ] NOT STARTED
 ```
 
-**CURRENT ACTIVE PHASE: 5 — Semantic Cache**
+**CURRENT ACTIVE PHASE: 6 — Web Dashboard**
 
 ---
 
@@ -148,6 +148,16 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 ### Velox-Specific Endpoints (Phase 4)
 - [x] `GET  /admin/cache/stats` — Aggregate cache stats (entries, hits, tokens saved, cost saved)
 - [x] `DELETE /admin/cache` — Flush all cache entries (DashMap + DB)
+
+### Velox-Specific Rust Modules (Phase 5)
+- [x] `src/cache/embedding.rs` — `EmbeddingModel`: ONNX Runtime session (Mutex) + HuggingFace tokenizer; `embed()` → mean-pool + L2-normalize → 384-dim unit vector
+- [x] `src/cache/semantic.rs` — `SemanticCache`: `RwLock<Vec<SemanticEntry>>` with linear cosine scan; `f32_vec_to_bytes` / `bytes_to_f32_vec` for PostgreSQL BYTEA storage
+- [x] `src/cache/mod.rs` — Extended: `CacheHit` enum (`None`, `Exact`, `Semantic(f32)`); `CacheEngine::new_with_semantic(model, threshold)`; `warm_from_db()` loads hot layer + semantic index from DB
+- [x] `src/config.rs` — Added `embedding_model_path` (default `models/all-MiniLM-L6-v2.onnx`), `embedding_tokenizer_path` (default `models/tokenizer.json`), `semantic_cache_threshold` (default 0.90)
+- [x] `src/db/cache.rs` — Added `save_embedding(pool, hash, bytes)`, `load_all_entries(pool) -> Vec<CacheEntryRow>` for startup warm-up
+- [x] `src/gateway/pipeline.rs` — `run()` and `run_streaming()` return `CacheHit` instead of `bool`; semantic lookup before provider call; semantic insert + DB persist after provider success
+- [x] `src/handlers/gateway.rs` — `attach_cache_headers()` sets `X-Velox-Cache-Hit: semantic` + `X-Velox-Cache-Similarity: {score:.4}` on semantic hits
+- [x] `src/main.rs` — Tries to load `EmbeddingModel` at startup; graceful degradation if model missing; `warm_from_db()` called after pool init
 
 ---
 
@@ -525,7 +535,7 @@ git tag phase-X-complete
 | 2 | Complete | 2026-05-22 | 6a2abbe |
 | 3 | Complete | 2026-05-22 | 0e538ef |
 | 4 | Complete | 2026-05-22 | 4d15374 |
-| 5 | Not started | — | — |
+| 5 | Complete | 2026-05-22 | TBD |
 | 6 | Not started | — | — |
 | 7 | Not started | — | — |
 | 8 | Not started | — | — |
@@ -544,5 +554,5 @@ Used for: AWS Bedrock provider adapter in Phase 1.
 
 ---
 
-*Last updated: 2026-05-22 — Phase 4 complete*
+*Last updated: 2026-05-22 — Phase 5 complete*
 *Update this file at the end of every session.*

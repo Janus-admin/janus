@@ -3,7 +3,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use velox::{
-    cache::CacheEngine,
+    cache::{embedding::EmbeddingModel, CacheEngine},
     config::Config,
     db::api_keys as db_api_keys,
     gateway::ProviderRegistry,
@@ -74,9 +74,43 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // ── Build embedding model + cache engine ──────────────────────────────────
+    let cache = if std::path::Path::new(&config.embedding_model_path).exists() {
+        match EmbeddingModel::load(
+            &config.embedding_model_path,
+            &config.embedding_tokenizer_path,
+        ) {
+            Ok(model) => {
+                tracing::info!(
+                    path = %config.embedding_model_path,
+                    "Embedding model loaded; semantic cache enabled"
+                );
+                Arc::new(CacheEngine::new_with_semantic(
+                    Arc::new(model),
+                    config.semantic_cache_threshold as f32,
+                ))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load embedding model: {e}; semantic cache disabled");
+                Arc::new(CacheEngine::new())
+            }
+        }
+    } else {
+        tracing::info!(
+            "Embedding model not found at {}; semantic cache disabled",
+            config.embedding_model_path
+        );
+        Arc::new(CacheEngine::new())
+    };
+
+    // Warm hot cache + semantic index from DB (enables restart survival).
+    let warmed = cache.warm_from_db(&pool).await;
+    if warmed > 0 {
+        tracing::info!("Warmed cache with {} entries from database", warmed);
+    }
+
     let registry = Arc::new(ProviderRegistry::new(providers, key_cache.clone()));
     let rate_limiter = RateLimiter::new(config.rate_limit_window_secs);
-    let cache = Arc::new(CacheEngine::new());
 
     let state = Arc::new(AppState {
         pool,

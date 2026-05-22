@@ -4,6 +4,16 @@ use rust_decimal::Decimal;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+// ── Row type for warm-up load ─────────────────────────────────────────────────
+
+/// Minimal DB row fetched during cache warm-up on startup.
+#[derive(sqlx::FromRow)]
+pub struct CacheEntryRow {
+    pub prompt_hash: String,
+    pub response_body: String,
+    pub embedding: Option<Vec<u8>>,
+}
+
 // ── Row types ─────────────────────────────────────────────────────────────────
 
 #[derive(sqlx::FromRow)]
@@ -109,6 +119,31 @@ pub async fn get_stats(pool: &PgPool) -> AppResult<CacheStats> {
         exact_entries: row.exact_entries,
         semantic_entries: row.semantic_entries,
     })
+}
+
+// ── Semantic embedding operations ─────────────────────────────────────────────
+
+/// Persist a computed embedding for an existing cache entry (raw f32 little-endian bytes).
+pub async fn save_embedding(pool: &PgPool, prompt_hash: &str, embedding: &[u8]) -> AppResult<()> {
+    sqlx::query("UPDATE cache_entries SET embedding = $1 WHERE prompt_hash = $2")
+        .bind(embedding)
+        .bind(prompt_hash)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Load all cache entries for startup warm-up.
+/// Returns prompt_hash, response_body, and optional embedding bytes.
+pub async fn load_all_entries(pool: &PgPool) -> AppResult<Vec<CacheEntryRow>> {
+    let rows = sqlx::query_as::<_, CacheEntryRow>(
+        "SELECT prompt_hash, response_body, embedding FROM cache_entries",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
 }
 
 // ── Flush ─────────────────────────────────────────────────────────────────────
