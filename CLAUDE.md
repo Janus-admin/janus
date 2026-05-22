@@ -535,7 +535,7 @@ git tag phase-X-complete
 | 2 | Complete | 2026-05-22 | 6a2abbe |
 | 3 | Complete | 2026-05-22 | 0e538ef |
 | 4 | Complete | 2026-05-22 | 4d15374 |
-| 5 | Complete | 2026-05-22 | TBD |
+| 5 | Complete | 2026-05-22 | e0e2d9c |
 | 6 | Not started | — | — |
 | 7 | Not started | — | — |
 | 8 | Not started | — | — |
