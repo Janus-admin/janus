@@ -4,7 +4,6 @@
 mod common;
 
 use serial_test::serial;
-use sqlx::postgres::PgPoolOptions;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -160,9 +159,7 @@ async fn phase4_cache_stats_show_correct_savings() {
     {
         common::load_env();
         let config = velox::config::Config::load().expect("config must load");
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&config.database_url)
+        let pool = sqlx::PgPool::connect(&config.database_url)
             .await
             .expect("must connect");
         sqlx::query("DELETE FROM cache_entries")
