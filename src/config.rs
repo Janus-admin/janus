@@ -66,6 +66,14 @@ pub struct Config {
     #[serde(default)]
     pub anthropic_api_key: String,
 
+    // ── Rate limiting & reliability (Phase 3) ────────────────────────────────
+    /// Sliding window size in seconds for per-key rate limiting.
+    #[serde(default = "default_rate_limit_window_secs")]
+    pub rate_limit_window_secs: u64,
+    /// Max retry attempts per provider before failing over to the next.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+
     // ── Metrics ───────────────────────────────────────────────────────────────
     #[serde(default = "default_true")]
     #[allow(dead_code)] // used in Phase 7 Prometheus endpoint
@@ -101,6 +109,12 @@ fn default_cache_max_entries() -> u64 {
 }
 fn default_semantic_threshold() -> f64 {
     0.95
+}
+fn default_rate_limit_window_secs() -> u64 {
+    60
+}
+fn default_max_retries() -> u32 {
+    1
 }
 
 impl Config {

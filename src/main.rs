@@ -6,6 +6,7 @@ use velox::{
     config::Config,
     db::api_keys as db_api_keys,
     gateway::ProviderRegistry,
+    middleware::rate_limit::RateLimiter,
     providers::{anthropic::AnthropicProvider, bedrock::BedrockProvider, openai::OpenAIProvider},
     routes::create_router,
     state::AppState,
@@ -73,12 +74,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let registry = Arc::new(ProviderRegistry::new(providers, key_cache.clone()));
+    let rate_limiter = RateLimiter::new(config.rate_limit_window_secs);
 
     let state = Arc::new(AppState {
         pool,
         config,
         providers: registry,
         key_cache,
+        rate_limiter,
     });
 
     let app = create_router(state);

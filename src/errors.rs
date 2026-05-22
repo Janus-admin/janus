@@ -31,9 +31,10 @@ pub enum AppError {
     InternalServerError,
 
     // ── Gateway errors (Phase 1+) ─────────────────────────────────────────────
+    /// Gateway-level rate limit. Payload is the `Retry-After` value in seconds
+    /// (Some = gateway key limit with a calculable wait; None = provider 429).
     #[error("Rate limit exceeded")]
-    #[allow(dead_code)]
-    RateLimitExceeded,
+    RateLimitExceeded(Option<u64>),
 
     #[error("Budget exceeded")]
     #[allow(dead_code)]
@@ -69,7 +70,7 @@ impl AppError {
             AppError::BadRequest(_) => "BAD_REQUEST",
             AppError::Conflict(_) => "CONFLICT",
             AppError::InternalServerError => "INTERNAL_SERVER_ERROR",
-            AppError::RateLimitExceeded => "RATE_LIMIT_EXCEEDED",
+            AppError::RateLimitExceeded(_) => "RATE_LIMIT_EXCEEDED",
             AppError::BudgetExceeded => "BUDGET_EXCEEDED",
             AppError::ProviderUnavailable(_) => "PROVIDER_UNAVAILABLE",
             AppError::Database(_) => "INTERNAL_SERVER_ERROR",
@@ -87,7 +88,7 @@ impl AppError {
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Conflict(_) => StatusCode::CONFLICT,
-            AppError::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
+            AppError::RateLimitExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::BudgetExceeded => StatusCode::PAYMENT_REQUIRED,
             AppError::ProviderUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             AppError::InternalServerError
@@ -128,13 +129,27 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status_code();
+        // Capture Retry-After before self is consumed by error_code/message.
+        let retry_after = if let AppError::RateLimitExceeded(Some(secs)) = &self {
+            Some(*secs)
+        } else {
+            None
+        };
         let body = json!({
             "error": {
                 "code": self.error_code(),
                 "message": self.message()
             }
         });
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+        if let Some(secs) = retry_after {
+            if let Ok(v) = axum::http::HeaderValue::from_str(&secs.to_string()) {
+                response
+                    .headers_mut()
+                    .insert(axum::http::header::RETRY_AFTER, v);
+            }
+        }
+        response
     }
 }
 

@@ -1,4 +1,7 @@
-use crate::{config::Config, gateway::ProviderRegistry, models::api_key::ApiKey};
+use crate::{
+    config::Config, gateway::ProviderRegistry, middleware::rate_limit::RateLimiter,
+    models::api_key::ApiKey,
+};
 use dashmap::DashMap;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -12,4 +15,5 @@ pub struct AppState {
     pub config: Config,
     pub providers: Arc<ProviderRegistry>,
     pub key_cache: Arc<DashMap<[u8; 32], ApiKey>>,
+    pub rate_limiter: Arc<RateLimiter>,
 }

@@ -7,6 +7,8 @@ use rust_decimal::Decimal;
 use std::net::TcpListener;
 use uuid::Uuid;
 
+// ── Basic helpers ─────────────────────────────────────────────────────────────
+
 /// Load .env file for tests. Call at the top of any test that needs env vars.
 pub fn load_env() {
     dotenvy::dotenv().ok();
@@ -52,24 +54,113 @@ pub fn minimal_streaming_request() -> serde_json::Value {
     })
 }
 
+/// A minimal but valid OpenAI-format non-streaming JSON response body.
+/// Used by wiremock stubs in provider retry / failover tests.
+pub fn fake_openai_response_json() -> serde_json::Value {
+    serde_json::json!({
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 1_716_000_000_u64,
+        "model": "gpt-4o-mini",
+        "choices": [{
+            "index": 0,
+            "message": { "role": "assistant", "content": "Hello!" },
+            "finish_reason": "stop"
+        }],
+        "usage": {
+            "prompt_tokens": 5,
+            "completion_tokens": 2,
+            "total_tokens": 7
+        }
+    })
+}
+
+// ── App spawn options ─────────────────────────────────────────────────────────
+
+/// Options for `spawn_app_from_opts`.
+/// All fields have sensible defaults via `Default`.
+struct TestAppOpts {
+    /// If set, point the primary OpenAI-compatible provider at this URL.
+    openai_base_url: Option<String>,
+    /// If set, add a second OpenAI-compatible provider at this URL (priority 2).
+    secondary_openai_base_url: Option<String>,
+    /// If set, the test API key will have this `rate_limit_rpm` value.
+    rate_limit_rpm: Option<i32>,
+    /// Override the rate-limit sliding window (seconds). Default: 60.
+    /// Use 1 in rate-limit tests to avoid sleeping 60 s.
+    rate_limit_window_secs: u64,
+}
+
+impl Default for TestAppOpts {
+    fn default() -> Self {
+        Self {
+            openai_base_url: None,
+            secondary_openai_base_url: None,
+            rate_limit_rpm: None,
+            rate_limit_window_secs: 60,
+        }
+    }
+}
+
+// ── Public spawn helpers ──────────────────────────────────────────────────────
+
 /// Start the full Velox application on a random port and return the base URL.
 ///
 /// The test API key (`test_api_key()`) is pre-seeded into the in-memory key cache
 /// so gateway auth tests work without inserting DB rows.
 pub async fn spawn_app() -> String {
-    spawn_app_inner(None).await
+    spawn_app_from_opts(TestAppOpts::default()).await
 }
 
 /// Like `spawn_app()` but wires the OpenAI provider to use `openai_base_url` instead of
 /// the real OpenAI API. Use this with a wiremock `MockServer` to test the full proxy path.
 pub async fn spawn_app_with_openai_base(openai_base_url: String) -> String {
-    spawn_app_inner(Some(openai_base_url)).await
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(openai_base_url),
+        ..Default::default()
+    })
+    .await
 }
 
-async fn spawn_app_inner(openai_base_url: Option<String>) -> String {
+/// Start app with a rate-limited test key.
+///
+/// - The test API key has `rate_limit_rpm = rpm`.
+/// - The rate-limit window is set to **1 second** so tests don't need to sleep 60 s.
+/// - The OpenAI provider is pointed at `openai_base_url` (typically a wiremock server).
+pub async fn spawn_app_with_rate_limit(openai_base_url: String, rpm: i32) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(openai_base_url),
+        rate_limit_rpm: Some(rpm),
+        rate_limit_window_secs: 1,
+        ..Default::default()
+    })
+    .await
+}
+
+/// Start app with two OpenAI-compatible providers at different priorities.
+///
+/// - Primary provider: `primary_url` at priority 1.
+/// - Secondary provider: `secondary_url` at priority 2.
+///
+/// The pipeline tries the primary first; on exhausted retries it fails over to secondary.
+pub async fn spawn_app_with_two_providers(primary_url: String, secondary_url: String) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(primary_url),
+        secondary_openai_base_url: Some(secondary_url),
+        ..Default::default()
+    })
+    .await
+}
+
+// ── Internal implementation ───────────────────────────────────────────────────
+
+async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     load_env();
 
-    let config = velox::config::Config::load().expect("Failed to load config");
+    let mut config = velox::config::Config::load().expect("Failed to load config");
+
+    // Override the rate-limit window if requested (e.g. 1 s for fast tests).
+    config.rate_limit_window_secs = opts.rate_limit_window_secs;
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
@@ -88,17 +179,18 @@ async fn spawn_app_inner(openai_base_url: Option<String>) -> String {
 
     let mut providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = Vec::new();
 
-    // If an override URL was provided, always add an OpenAI provider pointed at it.
-    if let Some(ref base_url) = openai_base_url {
+    if let Some(ref base_url) = opts.openai_base_url {
+        // Explicit URL override (wiremock): always add, ignore env key emptiness.
         let api_key = if config.openai_api_key.is_empty() {
             "test-key".to_string()
         } else {
             config.openai_api_key.clone()
         };
         providers.push(std::sync::Arc::new(
-            velox::providers::openai::OpenAIProvider::with_base_url(api_key, base_url.clone(), 10),
+            velox::providers::openai::OpenAIProvider::with_base_url(api_key, base_url.clone(), 1),
         ));
     } else {
+        // No override: use real API keys from env if present.
         if !config.openai_api_key.is_empty() {
             providers.push(std::sync::Arc::new(
                 velox::providers::openai::OpenAIProvider::new(config.openai_api_key.clone(), 10),
@@ -114,8 +206,23 @@ async fn spawn_app_inner(openai_base_url: Option<String>) -> String {
         }
     }
 
+    // Optional second provider for failover tests (priority 2, tried after primary).
+    if let Some(ref secondary_url) = opts.secondary_openai_base_url {
+        let api_key = if config.openai_api_key.is_empty() {
+            "test-key".to_string()
+        } else {
+            config.openai_api_key.clone()
+        };
+        providers.push(std::sync::Arc::new(
+            velox::providers::openai::OpenAIProvider::with_base_url(
+                api_key,
+                secondary_url.clone(),
+                2,
+            ),
+        ));
+    }
+
     // ── Seed the test API key into the in-memory cache ────────────────────────
-    // This avoids bcrypt hashing and DB inserts in every test that needs auth.
     let test_key_str = test_api_key();
     let test_key_bytes = velox::db::api_keys::sha256_bytes(test_key_str);
     let test_key_entry = velox::models::api_key::ApiKey {
@@ -127,7 +234,7 @@ async fn spawn_app_inner(openai_base_url: Option<String>) -> String {
         workspace_id: None,
         budget_limit: None,
         budget_used: Decimal::ZERO,
-        rate_limit_rpm: None,
+        rate_limit_rpm: opts.rate_limit_rpm,
         rate_limit_tpm: None,
         allowed_models: None,
         is_active: true,
@@ -157,11 +264,15 @@ async fn spawn_app_inner(openai_base_url: Option<String>) -> String {
         key_cache.clone(),
     ));
 
+    let rate_limiter =
+        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
         config,
         providers: registry,
         key_cache,
+        rate_limiter,
     });
 
     let app = velox::routes::create_router(state);

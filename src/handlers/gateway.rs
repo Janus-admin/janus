@@ -49,12 +49,19 @@ pub async fn chat_completions(
     GatewayAuth(api_key): GatewayAuth,
     ValidatedJson(request): ValidatedJson<ChatCompletionRequest>,
 ) -> impl IntoResponse {
-    // Budget gate — check before touching any provider
+    // Budget gate — check before touching any provider.
     if let Err(e) = check_budget(&api_key) {
         return e.into_response();
     }
 
-    // Check allowed models if the key has model restrictions
+    // Rate limit gate (Phase 3) — per-key sliding window check.
+    if let Some(rpm) = api_key.rate_limit_rpm {
+        if let Err(retry_after) = state.rate_limiter.check_and_record(api_key.id, rpm) {
+            return AppError::RateLimitExceeded(Some(retry_after)).into_response();
+        }
+    }
+
+    // Model restriction check.
     if let Some(ref allowed) = api_key.allowed_models {
         if !allowed.is_empty() && !allowed.contains(&request.model) {
             return AppError::Forbidden(format!(
@@ -65,20 +72,31 @@ pub async fn chat_completions(
         }
     }
 
+    let max_retries = state.config.max_retries;
+
     if request.stream == Some(true) {
         match pipeline::run_streaming(
             state.pool.clone(),
             state.providers.clone(),
             request,
             api_key,
+            max_retries,
         )
         .await
         {
-            Ok(sse) => sse.into_response(),
+            Ok(response) => response,
             Err(e) => e.into_response(),
         }
     } else {
-        match pipeline::run(&state.pool, &state.providers, &request, &api_key).await {
+        match pipeline::run(
+            &state.pool,
+            &state.providers,
+            &request,
+            &api_key,
+            max_retries,
+        )
+        .await
+        {
             Ok(resp) => match serde_json::to_value(resp) {
                 Ok(v) => Json::<Value>(v).into_response(),
                 Err(e) => AppError::Anyhow(anyhow::anyhow!("Failed to serialize response: {e}"))

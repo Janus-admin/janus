@@ -13,3 +13,15 @@ pub fn select_provider(registry: &ProviderRegistry, _model: &str) -> Option<Arc<
         .find(|p| p.is_enabled())
         .cloned()
 }
+
+/// Return all enabled providers sorted by ascending priority.
+/// Used by the retry/failover loop in the pipeline — the caller iterates in order
+/// and moves to the next entry when a provider exhausts its retry budget.
+pub fn select_all_providers(registry: &ProviderRegistry) -> Vec<Arc<dyn Provider>> {
+    registry
+        .providers()
+        .iter()
+        .filter(|p| p.is_enabled())
+        .cloned()
+        .collect()
+}

@@ -47,7 +47,7 @@ cargo test 2>&1 | tail -20
 Phase 0: Foundation          → [x] COMPLETE
 Phase 1: Core Proxy          → [x] COMPLETE
 Phase 2: Streaming           → [x] COMPLETE
-Phase 3: Rate Limiting       → [ ] NOT STARTED
+Phase 3: Rate Limiting       → [x] COMPLETE
 Phase 4: Exact Cache         → [ ] NOT STARTED
 Phase 5: Semantic Cache      → [ ] NOT STARTED
 Phase 6: Web Dashboard       → [ ] NOT STARTED
@@ -56,7 +56,7 @@ Phase 8: Open Source Launch  → [ ] NOT STARTED
 Phase 9: Mobile App          → [ ] NOT STARTED
 ```
 
-**CURRENT ACTIVE PHASE: 3 — Rate Limiting**
+**CURRENT ACTIVE PHASE: 4 — Exact Cache**
 
 ---
 
@@ -111,6 +111,15 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 - [x] `src/handlers/admin/keys.rs` — `POST /admin/keys`, `GET /admin/keys` (admin API key management)
 - [x] `src/state.rs` — Extended with `providers: Arc<ProviderRegistry>`, `key_cache: Arc<DashMap<...>>`
 - [x] `migrations/0010_add_api_key_sha256.sql` — Added `key_sha256` column for fast dashmap lookup
+
+### Velox-Specific Rust Modules (Phase 3)
+- [x] `src/config.rs` — Added `rate_limit_window_secs: u64` (default 60) and `max_retries: u32` (default 1)
+- [x] `src/middleware/rate_limit.rs` — `RateLimiter` struct: sliding window per API key (`DashMap<Uuid, VecDeque<i64>>`); `check_and_record()` returns `Err(retry_after_secs)` when limit exceeded
+- [x] `src/gateway/router.rs` — Added `select_all_providers()` returning all enabled providers sorted by priority (used by failover loop)
+- [x] `src/gateway/pipeline.rs` — `run()` and `run_streaming()` iterate all providers; per-provider retry loop on `Unavailable`/`Timeout` up to `max_retries`; exhausted retries → next provider; all fail → 503
+- [x] `src/handlers/gateway.rs` — Rate limit check (gate 2, after budget) via `state.rate_limiter.check_and_record()`; passes `max_retries` to pipeline
+- [x] `src/errors.rs` — `RateLimitExceeded(Option<u64>)` with `Retry-After` header injected in `into_response()` when payload is `Some`
+- [x] `src/state.rs` — Added `rate_limiter: Arc<RateLimiter>` field
 
 ### Velox-Specific Rust Modules (Phase 2)
 - [x] `src/providers/mod.rs` — Extended with `ChunkDelta`, `ChunkChoice`, `ChatCompletionChunk`, `ProviderStream` type alias; `Provider` trait now has `chat_completion_stream`
@@ -500,7 +509,7 @@ git tag phase-X-complete
 | 0 | Complete | 2026-05-22 | d5545ab |
 | 1 | Complete | 2026-05-22 | 251fbe8 |
 | 2 | Complete | 2026-05-22 | 6a2abbe |
-| 3 | Not started | — | — |
+| 3 | Complete | 2026-05-22 | TBD |
 | 4 | Not started | — | — |
 | 5 | Not started | — | — |
 | 6 | Not started | — | — |
@@ -521,5 +530,5 @@ Used for: AWS Bedrock provider adapter in Phase 1.
 
 ---
 
-*Last updated: 2026-05-22 — Phase 2 complete*
+*Last updated: 2026-05-22 — Phase 3 complete*
 *Update this file at the end of every session.*
