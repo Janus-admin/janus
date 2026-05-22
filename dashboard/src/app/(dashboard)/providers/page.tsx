@@ -74,6 +74,7 @@ function providerLabel(name: string): string {
     bedrock: "AWS Bedrock",
     gemini: "Google Gemini",
     groq: "Groq",
+    deepseek: "DeepSeek",
   };
   return labels[name.toLowerCase()] ?? name;
 }
@@ -142,7 +143,8 @@ export default function ProvidersPage() {
       <div>
         <h1 className="text-2xl font-semibold mb-1">Providers</h1>
         <p className="text-muted-foreground text-sm">
-          Configure OpenAI, Anthropic, Google Gemini, Groq, and AWS Bedrock provider settings.
+          Configure OpenAI, Anthropic, Google Gemini, Groq, DeepSeek, and AWS Bedrock provider
+          settings.
         </p>
       </div>
 

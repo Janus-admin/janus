@@ -1,14 +1,20 @@
-use crate::metrics;
-use axum::http::header;
-use axum::response::IntoResponse;
+use crate::{metrics, state::AppState};
+use axum::{extract::State, http::header, response::IntoResponse};
+use std::sync::Arc;
 
-/// Handler to serve Prometheus metrics.
-/// Returns metrics in Prometheus text format (0.0.4).
-pub async fn prometheus_handler() -> impl IntoResponse {
-    let metrics_output = metrics::render_metrics();
+/// GET /metrics — Prometheus text format (0.0.4).
+///
+/// Cache size and hit-ratio gauges are refreshed from live in-memory state on every
+/// scrape so they reflect the current snapshot rather than lagging counters.
+pub async fn prometheus_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    metrics::set_exact_cache_size(state.cache.len());
 
+    let semantic_len = state.cache.semantic.as_ref().map(|s| s.len()).unwrap_or(0);
+    metrics::set_semantic_cache_size(semantic_len);
+
+    let output = metrics::render_metrics();
     (
         [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
-        metrics_output,
+        output,
     )
 }

@@ -116,6 +116,7 @@ export default function RequestsPage() {
             <SelectItem value="bedrock">Bedrock</SelectItem>
             <SelectItem value="gemini">Gemini</SelectItem>
             <SelectItem value="groq">Groq</SelectItem>
+            <SelectItem value="deepseek">DeepSeek</SelectItem>
           </SelectContent>
         </Select>
 

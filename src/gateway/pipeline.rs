@@ -77,6 +77,7 @@ pub async fn run(
             counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
             let _ = db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
+            crate::metrics::record_request(true);
             return Ok(((*cached).clone(), CacheHit::Exact));
         }
     }
@@ -98,6 +99,7 @@ pub async fn run(
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
                     counter!("velox_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
                     let _ = db::cache::record_hit(pool, &hit_hash, tokens, Decimal::ZERO).await;
+                    crate::metrics::record_request(true);
                     return Ok(((*cached).clone(), CacheHit::Semantic(score)));
                 }
             }
@@ -224,6 +226,7 @@ pub async fn run(
                         });
                     }
 
+                    crate::metrics::record_request(false);
                     return Ok((resp, CacheHit::None));
                 }
 
@@ -328,7 +331,7 @@ pub async fn run_streaming(
             counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
             let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
-
+            crate::metrics::record_request(true);
             let sse = synthesize_sse_from_cached(&cached);
             return Ok((sse, CacheHit::Exact));
         }
@@ -350,6 +353,7 @@ pub async fn run_streaming(
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
                     counter!("velox_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
                     let _ = db::cache::record_hit(&pool, &hit_hash, tokens, Decimal::ZERO).await;
+                    crate::metrics::record_request(true);
                     let sse = synthesize_sse_from_cached(&cached);
                     return Ok((sse, CacheHit::Semantic(score)));
                 }
@@ -524,6 +528,7 @@ pub async fn run_streaming(
                         });
                     });
 
+                    crate::metrics::record_request(false);
                     let sse = Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default());
                     return Ok((sse.into_response(), CacheHit::None));
                 }
