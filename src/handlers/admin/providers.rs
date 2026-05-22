@@ -78,16 +78,9 @@ pub async fn test_provider(
         .await?
         .ok_or_else(|| crate::errors::AppError::NotFound(format!("Provider {id}")))?;
 
-    // Build a minimal check URL per provider.
-    // OpenAI + Anthropic both expose GET /v1/models; Bedrock uses a different endpoint.
-    let check_url = match id.as_str() {
-        "openai" => format!("{}/models", provider.base_url),
-        "anthropic" => format!("{}/v1/models", provider.base_url),
-        _ => provider.base_url.clone(), // for Bedrock and future providers use base URL
-    };
-
-    // Decrypt the API key for the test request.
-    let api_key_header: Option<String> = if let Some(encrypted) = &provider.api_key_encrypted {
+    // Decrypt the API key for the test request, falling back to config-level
+    // env vars when the DB row has no encrypted key stored.
+    let api_key: Option<String> = if let Some(encrypted) = &provider.api_key_encrypted {
         if state.config.encryption_key.is_empty() {
             None
         } else {
@@ -96,7 +89,6 @@ pub async fn test_provider(
                 .and_then(|k| crate::crypto::decrypt(encrypted, &k).ok())
         }
     } else {
-        // Fall back to config-level keys for openai / anthropic.
         match id.as_str() {
             "openai" if !state.config.openai_api_key.is_empty() => {
                 Some(state.config.openai_api_key.clone())
@@ -104,8 +96,30 @@ pub async fn test_provider(
             "anthropic" if !state.config.anthropic_api_key.is_empty() => {
                 Some(state.config.anthropic_api_key.clone())
             }
+            "gemini" if !state.config.gemini_api_key.is_empty() => {
+                Some(state.config.gemini_api_key.clone())
+            }
+            "groq" if !state.config.groq_api_key.is_empty() => {
+                Some(state.config.groq_api_key.clone())
+            }
+            "deepseek" if !state.config.deepseek_api_key.is_empty() => {
+                Some(state.config.deepseek_api_key.clone())
+            }
             _ => None,
         }
+    };
+
+    // Build the per-provider check URL. Gemini takes its key as a query param;
+    // all others authenticate via header and hit a `/models` listing endpoint.
+    let check_url = match id.as_str() {
+        "openai" => format!("{}/models", provider.base_url),
+        "anthropic" => format!("{}/v1/models", provider.base_url),
+        "gemini" => {
+            let key = api_key.as_deref().unwrap_or("");
+            format!("{}/v1beta/models?key={}", provider.base_url, key)
+        }
+        "groq" | "deepseek" => format!("{}/models", provider.base_url),
+        _ => provider.base_url.clone(),
     };
 
     let client = reqwest::Client::builder()
@@ -114,12 +128,13 @@ pub async fn test_provider(
         .map_err(|e| crate::errors::AppError::Anyhow(anyhow::anyhow!(e)))?;
 
     let mut req = client.get(&check_url);
-    if let Some(key) = api_key_header {
+    if let Some(ref key) = api_key {
         req = match id.as_str() {
             "anthropic" => req
-                .header("x-api-key", &key)
+                .header("x-api-key", key.as_str())
                 .header("anthropic-version", "2023-06-01"),
-            _ => req.bearer_auth(&key),
+            "gemini" => req, // key already in query string
+            _ => req.bearer_auth(key),
         };
     }
 
