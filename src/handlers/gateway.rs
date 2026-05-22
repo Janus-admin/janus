@@ -1,14 +1,11 @@
 use crate::{
-    errors::{AppError, AppResult},
-    gateway::pipeline,
-    middleware::api_key_auth::GatewayAuth,
-    middleware::budget::check_budget,
-    providers::ChatCompletionRequest,
-    state::AppState,
+    errors::AppError, gateway::pipeline, middleware::api_key_auth::GatewayAuth,
+    middleware::budget::check_budget, providers::ChatCompletionRequest, state::AppState,
 };
 use axum::{
     extract::{rejection::JsonRejection, FromRequest, State},
     http::Request,
+    response::IntoResponse,
     Json,
 };
 use serde_json::Value;
@@ -46,27 +43,48 @@ where
 ///
 /// Drop-in replacement for the OpenAI Chat Completions endpoint. Clients set
 /// `base_url = "http://your-velox-host/v1"` and change nothing else.
+/// Supports both non-streaming (default) and SSE streaming (`"stream": true`).
 pub async fn chat_completions(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
     ValidatedJson(request): ValidatedJson<ChatCompletionRequest>,
-) -> AppResult<Json<Value>> {
+) -> impl IntoResponse {
     // Budget gate — check before touching any provider
-    check_budget(&api_key)?;
+    if let Err(e) = check_budget(&api_key) {
+        return e.into_response();
+    }
 
     // Check allowed models if the key has model restrictions
     if let Some(ref allowed) = api_key.allowed_models {
         if !allowed.is_empty() && !allowed.contains(&request.model) {
-            return Err(AppError::Forbidden(format!(
+            return AppError::Forbidden(format!(
                 "Model '{}' is not permitted for this API key",
                 request.model
-            )));
+            ))
+            .into_response();
         }
     }
 
-    let response = pipeline::run(&state.pool, &state.providers, &request, &api_key).await?;
-
-    Ok(Json(serde_json::to_value(response).map_err(|e| {
-        AppError::Anyhow(anyhow::anyhow!("Failed to serialize response: {e}"))
-    })?))
+    if request.stream == Some(true) {
+        match pipeline::run_streaming(
+            state.pool.clone(),
+            state.providers.clone(),
+            request,
+            api_key,
+        )
+        .await
+        {
+            Ok(sse) => sse.into_response(),
+            Err(e) => e.into_response(),
+        }
+    } else {
+        match pipeline::run(&state.pool, &state.providers, &request, &api_key).await {
+            Ok(resp) => match serde_json::to_value(resp) {
+                Ok(v) => Json::<Value>(v).into_response(),
+                Err(e) => AppError::Anyhow(anyhow::anyhow!("Failed to serialize response: {e}"))
+                    .into_response(),
+            },
+            Err(e) => e.into_response(),
+        }
+    }
 }

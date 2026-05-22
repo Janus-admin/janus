@@ -1,9 +1,11 @@
 use super::{
-    ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Provider,
-    ProviderError, UsageData,
+    ChatChoice, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
+    ChunkChoice, ChunkDelta, Provider, ProviderError, ProviderStream, UsageData,
 };
 use crate::models::provider::HealthStatus;
 use async_trait::async_trait;
+use eventsource_stream::Eventsource;
+use futures_util::StreamExt;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,6 +26,8 @@ struct AnthropicRequest<'a> {
     top_p: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop_sequences: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,6 +70,62 @@ struct AnthropicErrorBody {
     message: String,
 }
 
+// ── Anthropic SSE event types (used during streaming) ────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum AnthropicStreamEvent {
+    MessageStart {
+        message: AnthropicStreamMessage,
+    },
+    // index and content_block fields exist in JSON but are not needed
+    ContentBlockStart {},
+    ContentBlockDelta {
+        delta: AnthropicDelta,
+    },
+    ContentBlockStop {},
+    MessageDelta {
+        delta: AnthropicMessageDelta,
+        usage: AnthropicStreamUsage,
+    },
+    MessageStop,
+    Ping,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicStreamMessage {
+    id: String,
+    model: String,
+    usage: AnthropicStreamInputUsage,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicStreamInputUsage {
+    input_tokens: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum AnthropicDelta {
+    TextDelta {
+        text: String,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicMessageDelta {
+    stop_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicStreamUsage {
+    output_tokens: u32,
+}
+
 // ── Provider implementation ───────────────────────────────────────────────────
 
 pub struct AnthropicProvider {
@@ -104,7 +164,6 @@ impl AnthropicProvider {
 
         for msg in messages {
             if msg.role == "system" {
-                // Anthropic takes system as a top-level field
                 let text = extract_text_content(&msg.content);
                 system_prompt = Some(text);
             } else {
@@ -139,7 +198,6 @@ fn extract_text_content(content: &Value) -> String {
 }
 
 /// Convert OpenAI content value to Anthropic content format.
-/// Anthropic accepts a plain string or an array of content blocks.
 fn convert_content(content: &Value) -> Value {
     match content {
         Value::String(s) => Value::String(s.clone()),
@@ -154,7 +212,6 @@ fn convert_content(content: &Value) -> Value {
                             Some(serde_json::json!({"type": "text", "text": text}))
                         }
                         "image_url" => {
-                            // OpenAI: { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,..." } }
                             let url = p.get("image_url")?.get("url")?.as_str()?;
                             if let Some(rest) = url.strip_prefix("data:") {
                                 let mut parts = rest.splitn(2, ',');
@@ -169,7 +226,6 @@ fn convert_content(content: &Value) -> Value {
                                     }
                                 }))
                             } else {
-                                // URL-based images not supported by Anthropic natively
                                 None
                             }
                         }
@@ -229,6 +285,7 @@ impl Provider for AnthropicProvider {
                 ),
                 _ => None,
             }),
+            stream: None,
         };
 
         let url = format!("{}/messages", self.base_url);
@@ -253,7 +310,6 @@ impl Provider for AnthropicProvider {
             return Ok(to_openai_response(anthropic_resp));
         }
 
-        // Try to parse error body
         let error_text = resp
             .json::<AnthropicError>()
             .await
@@ -271,12 +327,191 @@ impl Provider for AnthropicProvider {
         }
     }
 
+    async fn chat_completion_stream(
+        &self,
+        request: &ChatCompletionRequest,
+    ) -> Result<ProviderStream, ProviderError> {
+        let (system_prompt, anthropic_messages) = Self::convert_messages(&request.messages);
+
+        let anthropic_req = AnthropicRequest {
+            model: &request.model,
+            messages: anthropic_messages,
+            system: system_prompt,
+            max_tokens: request.max_tokens.unwrap_or(4096),
+            temperature: request.temperature,
+            top_p: request.top_p,
+            stop_sequences: request.stop.as_ref().and_then(|s| match s {
+                Value::String(v) => Some(vec![v.clone()]),
+                Value::Array(arr) => Some(
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect(),
+                ),
+                _ => None,
+            }),
+            stream: Some(true),
+        };
+
+        let url = format!("{}/messages", self.base_url);
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .json(&anthropic_req)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let error_text = resp.text().await.unwrap_or_default();
+            return Err(match status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
+                StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,
+                StatusCode::BAD_REQUEST => ProviderError::BadRequest(error_text),
+                _ => ProviderError::Unavailable(format!(
+                    "Anthropic returned HTTP {}: {}",
+                    status, error_text
+                )),
+            });
+        }
+
+        // Use a channel + spawned task because the Anthropic SSE format is stateful:
+        // message_start carries the ID and prompt token count, content_block_delta
+        // carries the text, and message_delta carries the output token count.
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<ChatCompletionChunk, ProviderError>>(32);
+
+        tokio::spawn(async move {
+            let event_stream = resp.bytes_stream().eventsource();
+            tokio::pin!(event_stream);
+
+            // State accumulated across events for a single Anthropic message
+            let mut msg_id = String::new();
+            let mut model = String::new();
+            let mut prompt_tokens: u32 = 0;
+            let created = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            while let Some(event_result) = event_stream.next().await {
+                match event_result {
+                    Err(e) => {
+                        let _ = tx.send(Err(ProviderError::ParseError(e.to_string()))).await;
+                        return;
+                    }
+                    Ok(event) => {
+                        let parsed: AnthropicStreamEvent = match serde_json::from_str(&event.data) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Anthropic stream parse error: {}. Data: {}",
+                                    e,
+                                    event.data
+                                );
+                                continue;
+                            }
+                        };
+
+                        match parsed {
+                            AnthropicStreamEvent::MessageStart { message } => {
+                                msg_id = message.id;
+                                model = message.model;
+                                prompt_tokens = message.usage.input_tokens;
+
+                                // Emit the role chunk (OpenAI convention)
+                                let chunk = ChatCompletionChunk {
+                                    id: msg_id.clone(),
+                                    object: "chat.completion.chunk".to_string(),
+                                    created,
+                                    model: model.clone(),
+                                    choices: vec![ChunkChoice {
+                                        index: 0,
+                                        delta: ChunkDelta {
+                                            role: Some("assistant".to_string()),
+                                            content: None,
+                                        },
+                                        finish_reason: None,
+                                    }],
+                                    usage: None,
+                                };
+                                if tx.send(Ok(chunk)).await.is_err() {
+                                    return;
+                                }
+                            }
+
+                            AnthropicStreamEvent::ContentBlockDelta {
+                                delta: AnthropicDelta::TextDelta { text },
+                            } => {
+                                let chunk = ChatCompletionChunk {
+                                    id: msg_id.clone(),
+                                    object: "chat.completion.chunk".to_string(),
+                                    created,
+                                    model: model.clone(),
+                                    choices: vec![ChunkChoice {
+                                        index: 0,
+                                        delta: ChunkDelta {
+                                            role: None,
+                                            content: Some(text),
+                                        },
+                                        finish_reason: None,
+                                    }],
+                                    usage: None,
+                                };
+                                if tx.send(Ok(chunk)).await.is_err() {
+                                    return;
+                                }
+                            }
+
+                            AnthropicStreamEvent::MessageDelta { delta, usage } => {
+                                let finish_reason =
+                                    stop_reason_to_finish_reason(delta.stop_reason.as_deref());
+                                let output_tokens = usage.output_tokens;
+                                let total = prompt_tokens + output_tokens;
+
+                                let chunk = ChatCompletionChunk {
+                                    id: msg_id.clone(),
+                                    object: "chat.completion.chunk".to_string(),
+                                    created,
+                                    model: model.clone(),
+                                    choices: vec![ChunkChoice {
+                                        index: 0,
+                                        delta: ChunkDelta {
+                                            role: None,
+                                            content: None,
+                                        },
+                                        finish_reason,
+                                    }],
+                                    usage: Some(UsageData {
+                                        prompt_tokens,
+                                        completion_tokens: output_tokens,
+                                        total_tokens: total,
+                                    }),
+                                };
+                                if tx.send(Ok(chunk)).await.is_err() {
+                                    return;
+                                }
+                            }
+
+                            // Ignored: Ping, ContentBlockStart, ContentBlockStop,
+                            // MessageStop, Unknown
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        });
+
+        let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        Ok(Box::pin(stream))
+    }
+
     async fn health_check(&self) -> HealthStatus {
         if !self.is_enabled() {
             return HealthStatus::Down;
         }
 
-        // Anthropic has no free "ping" endpoint, so we send a minimal request
         let req = serde_json::json!({
             "model": "claude-3-haiku-20240307",
             "max_tokens": 1,

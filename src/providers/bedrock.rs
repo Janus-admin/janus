@@ -1,6 +1,6 @@
 use super::{
-    ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Provider,
-    ProviderError, UsageData,
+    ChatChoice, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
+    ChunkChoice, ChunkDelta, Provider, ProviderError, ProviderStream, UsageData,
 };
 use crate::models::provider::HealthStatus;
 use async_trait::async_trait;
@@ -31,9 +31,6 @@ impl BedrockProvider {
         }
     }
 
-    /// Resolve the Bedrock model ID. If the requested model already uses a Bedrock
-    /// prefix (e.g. "anthropic.claude-3-..."), use it directly; otherwise fall back
-    /// to the configured default.
     fn resolve_model_id<'a>(&'a self, requested: &'a str) -> &'a str {
         const PREFIXES: &[&str] = &["anthropic.", "amazon.", "meta.", "mistral.", "cohere."];
         if PREFIXES.iter().any(|p| requested.starts_with(p)) {
@@ -205,6 +202,158 @@ impl Provider for BedrockProvider {
                 total_tokens: prompt_tokens + completion_tokens,
             },
         })
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        request: &ChatCompletionRequest,
+    ) -> Result<ProviderStream, ProviderError> {
+        let model_id = self.resolve_model_id(&request.model).to_string();
+        let (system_text, sdk_messages) = Self::build_sdk_messages(&request.messages);
+
+        let inference = {
+            let mut b = InferenceConfiguration::builder()
+                .max_tokens(request.max_tokens.unwrap_or(4096) as i32);
+            if let Some(temp) = request.temperature {
+                b = b.temperature(temp as f32);
+            }
+            if let Some(tp) = request.top_p {
+                b = b.top_p(tp as f32);
+            }
+            b.build()
+        };
+
+        let mut builder = self
+            .client
+            .converse_stream()
+            .model_id(&model_id)
+            .set_messages(Some(sdk_messages))
+            .inference_config(inference);
+
+        if let Some(sys) = system_text {
+            builder = builder.system(SystemContentBlock::Text(sys));
+        }
+
+        let output = builder.send().await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("throttl") || msg.contains("TooManyRequests") {
+                ProviderError::RateLimit
+            } else if msg.contains("AccessDenied") || msg.contains("UnauthorizedClient") {
+                ProviderError::Unauthorized
+            } else {
+                ProviderError::Unavailable(msg)
+            }
+        })?;
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<ChatCompletionChunk, ProviderError>>(32);
+        let stream_id = format!("bedrock-{}", uuid::Uuid::new_v4());
+        let created = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        tokio::spawn(async move {
+            let mut event_stream = output.stream;
+            let mut prompt_tokens: u32 = 0;
+            let mut completion_tokens: u32 = 0;
+
+            // Emit the role chunk first
+            let role_chunk = ChatCompletionChunk {
+                id: stream_id.clone(),
+                object: "chat.completion.chunk".to_string(),
+                created,
+                model: model_id.clone(),
+                choices: vec![ChunkChoice {
+                    index: 0,
+                    delta: ChunkDelta {
+                        role: Some("assistant".to_string()),
+                        content: None,
+                    },
+                    finish_reason: None,
+                }],
+                usage: None,
+            };
+            if tx.send(Ok(role_chunk)).await.is_err() {
+                return;
+            }
+
+            loop {
+                match event_stream.recv().await {
+                    Err(e) => {
+                        let msg = e.to_string();
+                        let _ = tx.send(Err(ProviderError::Unavailable(msg))).await;
+                        return;
+                    }
+                    Ok(None) => break, // stream complete
+                    Ok(Some(event)) => {
+                        use aws_sdk_bedrockruntime::types::ConverseStreamOutput;
+                        match event {
+                            ConverseStreamOutput::ContentBlockDelta(delta_event) => {
+                                if let Some(delta) = delta_event.delta() {
+                                    if let Ok(text) = delta.as_text() {
+                                        let chunk = ChatCompletionChunk {
+                                            id: stream_id.clone(),
+                                            object: "chat.completion.chunk".to_string(),
+                                            created,
+                                            model: model_id.clone(),
+                                            choices: vec![ChunkChoice {
+                                                index: 0,
+                                                delta: ChunkDelta {
+                                                    role: None,
+                                                    content: Some(text.to_string()),
+                                                },
+                                                finish_reason: None,
+                                            }],
+                                            usage: None,
+                                        };
+                                        if tx.send(Ok(chunk)).await.is_err() {
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            ConverseStreamOutput::MessageStop(stop_event) => {
+                                let finish = stop_reason_to_finish_reason(stop_event.stop_reason());
+
+                                let total = prompt_tokens + completion_tokens;
+                                let chunk = ChatCompletionChunk {
+                                    id: stream_id.clone(),
+                                    object: "chat.completion.chunk".to_string(),
+                                    created,
+                                    model: model_id.clone(),
+                                    choices: vec![ChunkChoice {
+                                        index: 0,
+                                        delta: ChunkDelta {
+                                            role: None,
+                                            content: None,
+                                        },
+                                        finish_reason: Some(finish),
+                                    }],
+                                    usage: Some(UsageData {
+                                        prompt_tokens,
+                                        completion_tokens,
+                                        total_tokens: total,
+                                    }),
+                                };
+                                if tx.send(Ok(chunk)).await.is_err() {
+                                    return;
+                                }
+                            }
+                            ConverseStreamOutput::Metadata(meta) => {
+                                if let Some(usage) = meta.usage() {
+                                    prompt_tokens = usage.input_tokens() as u32;
+                                    completion_tokens = usage.output_tokens() as u32;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        });
+
+        let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        Ok(Box::pin(stream))
     }
 
     async fn health_check(&self) -> HealthStatus {

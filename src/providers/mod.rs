@@ -1,6 +1,8 @@
 use crate::models::provider::HealthStatus;
 use async_trait::async_trait;
+use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 use thiserror::Error;
 
 pub mod anthropic;
@@ -74,6 +76,40 @@ pub struct ChatCompletionResponse {
     pub usage: UsageData,
 }
 
+// ── Streaming types (Phase 2) ─────────────────────────────────────────────────
+// Normalized OpenAI SSE chunk format. All provider adapters produce this.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkDelta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkChoice {
+    pub index: u32,
+    pub delta: ChunkDelta,
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionChunk {
+    pub id: String,
+    pub object: String,
+    pub created: u64,
+    pub model: String,
+    pub choices: Vec<ChunkChoice>,
+    /// Only present on the final chunk when the provider sends usage data.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageData>,
+}
+
+/// Type alias for the boxed stream returned by `chat_completion_stream`.
+pub type ProviderStream =
+    Pin<Box<dyn Stream<Item = Result<ChatCompletionChunk, ProviderError>> + Send>>;
+
 // ── Provider error type ───────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -106,6 +142,13 @@ pub trait Provider: Send + Sync {
         &self,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse, ProviderError>;
+
+    /// Stream chat completion tokens as they arrive from the provider.
+    /// Returns a stream of normalized OpenAI-format chunks.
+    async fn chat_completion_stream(
+        &self,
+        request: &ChatCompletionRequest,
+    ) -> Result<ProviderStream, ProviderError>;
 
     async fn health_check(&self) -> HealthStatus;
 }

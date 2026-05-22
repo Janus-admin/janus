@@ -1,6 +1,11 @@
-use super::{ChatCompletionRequest, ChatCompletionResponse, Provider, ProviderError};
+use super::{
+    ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Provider, ProviderError,
+    ProviderStream,
+};
 use crate::models::provider::HealthStatus;
 use async_trait::async_trait;
+use eventsource_stream::Eventsource;
+use futures_util::StreamExt;
 use reqwest::{Client, StatusCode};
 use std::time::Duration;
 
@@ -68,7 +73,6 @@ impl Provider for OpenAIProvider {
             return Ok(body);
         }
 
-        // Extract error message from OpenAI error body if possible
         let error_text = resp.text().await.unwrap_or_default();
 
         match status {
@@ -80,6 +84,64 @@ impl Provider for OpenAIProvider {
                 status, error_text
             ))),
         }
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        request: &ChatCompletionRequest,
+    ) -> Result<ProviderStream, ProviderError> {
+        let url = format!("{}/chat/completions", self.base_url);
+
+        // Build body with stream:true and stream_options to get usage in the final chunk.
+        let mut body =
+            serde_json::to_value(request).map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        body["stream"] = serde_json::Value::Bool(true);
+        body["stream_options"] = serde_json::json!({ "include_usage": true });
+
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let error_text = resp.text().await.unwrap_or_default();
+            return Err(match status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
+                StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,
+                StatusCode::BAD_REQUEST => ProviderError::BadRequest(error_text),
+                _ => ProviderError::Unavailable(format!(
+                    "OpenAI returned HTTP {}: {}",
+                    status, error_text
+                )),
+            });
+        }
+
+        // Parse the SSE byte stream into ChatCompletionChunk items.
+        let event_stream = resp.bytes_stream().eventsource();
+
+        let stream = event_stream.filter_map(|event_result| async move {
+            match event_result {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return None;
+                    }
+                    match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
+                        Ok(chunk) => Some(Ok(chunk)),
+                        Err(e) => {
+                            tracing::warn!("OpenAI chunk parse error: {}. Data: {}", e, event.data);
+                            None
+                        }
+                    }
+                }
+                Err(e) => Some(Err(ProviderError::ParseError(e.to_string()))),
+            }
+        });
+
+        Ok(Box::pin(stream))
     }
 
     async fn health_check(&self) -> HealthStatus {

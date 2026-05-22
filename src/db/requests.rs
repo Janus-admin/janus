@@ -29,13 +29,15 @@ pub async fn insert_request(
     cost_usd: Option<Decimal>,
     latency_ms: i32,
     status: &str,
+    is_stream: bool,
+    ttfb_ms: Option<i32>,
 ) -> AppResult<()> {
     sqlx::query(
         "INSERT INTO requests (
              id, api_key_id, workspace_id, provider, model,
              prompt_tokens, completion_tokens, total_tokens, cost_usd,
-             latency_ms, status, stream, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,FALSE,$12)",
+             latency_ms, status, stream, ttfb_ms, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
     )
     .bind(Uuid::new_v4())
     .bind(api_key_id)
@@ -48,6 +50,8 @@ pub async fn insert_request(
     .bind(cost_usd)
     .bind(latency_ms)
     .bind(status)
+    .bind(is_stream)
+    .bind(ttfb_ms)
     .bind(Utc::now())
     .execute(pool)
     .await?;

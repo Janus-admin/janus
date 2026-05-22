@@ -43,9 +43,9 @@ futures-util = "0.3"
 bytes = "1"
 rand = "0.8"
 
-# ─── Phase 2: Streaming (uncomment when starting Phase 2) ─────────────────────
-# eventsource-stream = "0.2"
-# tokio-stream = { version = "0.1", features = ["sync"] }
+# ─── Phase 2: Streaming ────────────────────────────────────────────────────────
+eventsource-stream = "0.2"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # ─── Phase 5: Semantic Cache (uncomment when starting Phase 5) ────────────────
 # ort = { version = "2", features = ["download-binaries"] }

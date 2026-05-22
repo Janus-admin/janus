@@ -46,7 +46,7 @@ cargo test 2>&1 | tail -20
 ```
 Phase 0: Foundation          → [x] COMPLETE
 Phase 1: Core Proxy          → [x] COMPLETE
-Phase 2: Streaming           → [ ] NOT STARTED
+Phase 2: Streaming           → [x] COMPLETE
 Phase 3: Rate Limiting       → [ ] NOT STARTED
 Phase 4: Exact Cache         → [ ] NOT STARTED
 Phase 5: Semantic Cache      → [ ] NOT STARTED
@@ -56,7 +56,7 @@ Phase 8: Open Source Launch  → [ ] NOT STARTED
 Phase 9: Mobile App          → [ ] NOT STARTED
 ```
 
-**CURRENT ACTIVE PHASE: 2 — Streaming**
+**CURRENT ACTIVE PHASE: 3 — Rate Limiting**
 
 ---
 
@@ -112,8 +112,17 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 - [x] `src/state.rs` — Extended with `providers: Arc<ProviderRegistry>`, `key_cache: Arc<DashMap<...>>`
 - [x] `migrations/0010_add_api_key_sha256.sql` — Added `key_sha256` column for fast dashmap lookup
 
+### Velox-Specific Rust Modules (Phase 2)
+- [x] `src/providers/mod.rs` — Extended with `ChunkDelta`, `ChunkChoice`, `ChatCompletionChunk`, `ProviderStream` type alias; `Provider` trait now has `chat_completion_stream`
+- [x] `src/providers/openai.rs` — `chat_completion_stream` via `eventsource-stream` passthrough; adds `stream_options: {include_usage: true}` to get usage in final chunk
+- [x] `src/providers/anthropic.rs` — `chat_completion_stream` via channel+task; stateful SSE parsing (`message_start`→id/prompt tokens, `content_block_delta`→text, `message_delta`→output tokens)
+- [x] `src/providers/bedrock.rs` — `chat_completion_stream` via channel+task using `converse_stream` SDK; normalises `ContentBlockDelta` events
+- [x] `src/gateway/pipeline.rs` — Extended with `run_streaming()`: selects provider, drives stream, records TTFB on first chunk, accumulates tokens, logs to DB after stream closes
+- [x] `src/handlers/gateway.rs` — `chat_completions` now branches on `request.stream == Some(true)` → SSE response vs JSON response
+- [x] `src/db/requests.rs` — `insert_request` extended with `is_stream: bool` and `ttfb_ms: Option<i32>` parameters; uses existing `ttfb_ms` column in `requests` table
+
 ### Velox-Specific Endpoints (Phase 1)
-- [x] `POST /v1/chat/completions` — OpenAI-compatible gateway proxy (no streaming yet)
+- [x] `POST /v1/chat/completions` — OpenAI-compatible gateway proxy (streaming + non-streaming)
 - [x] `POST /admin/keys` — Create API key (returns full key once, never again)
 - [x] `GET  /admin/keys` — List API keys (safe view: prefixes only, no hashes)
 
@@ -489,8 +498,8 @@ git tag phase-X-complete
 | Phase | Status | Completed | Commit |
 |---|---|---|---|
 | 0 | Complete | 2026-05-22 | d5545ab |
-| 1 | Complete | 2026-05-22 | (next commit) |
-| 2 | Not started | — | — |
+| 1 | Complete | 2026-05-22 | 251fbe8 |
+| 2 | Complete | 2026-05-22 | (next commit) |
 | 3 | Not started | — | — |
 | 4 | Not started | — | — |
 | 5 | Not started | — | — |
@@ -512,5 +521,5 @@ Used for: AWS Bedrock provider adapter in Phase 1.
 
 ---
 
-*Last updated: 2026-05-22 — Phase 1 complete*
+*Last updated: 2026-05-22 — Phase 2 complete*
 *Update this file at the end of every session.*
