@@ -8,8 +8,10 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde_json::Value;
+use chrono::Utc;
+use serde_json::{json, Value};
 use std::sync::Arc;
+use std::time::Instant;
 
 // ── ValidatedJson extractor ───────────────────────────────────────────────────
 
@@ -88,11 +90,12 @@ pub async fn chat_completions(
     let max_retries = state.config.max_retries;
 
     if request.stream == Some(true) {
+        let start = Instant::now();
         match pipeline::run_streaming(
             state.pool.clone(),
             state.providers.clone(),
-            request,
-            api_key,
+            request.clone(),
+            api_key.clone(),
             max_retries,
             state.cache.clone(),
             bypass_cache,
@@ -101,11 +104,36 @@ pub async fn chat_completions(
         {
             Ok((mut response, cache_hit)) => {
                 attach_cache_headers(response.headers_mut(), &cache_hit);
+                broadcast_event(
+                    &state,
+                    &request.model,
+                    api_key.id,
+                    None,
+                    None,
+                    start.elapsed().as_millis() as i64,
+                    "success",
+                    &cache_hit,
+                    true,
+                );
                 response
             }
-            Err(e) => e.into_response(),
+            Err(e) => {
+                broadcast_event(
+                    &state,
+                    &request.model,
+                    api_key.id,
+                    None,
+                    None,
+                    start.elapsed().as_millis() as i64,
+                    "error",
+                    &CacheHit::None,
+                    true,
+                );
+                e.into_response()
+            }
         }
     } else {
+        let start = Instant::now();
         match pipeline::run(
             &state.pool,
             &state.providers,
@@ -117,18 +145,86 @@ pub async fn chat_completions(
         )
         .await
         {
-            Ok((resp, cache_hit)) => match serde_json::to_value(resp) {
-                Ok(v) => {
-                    let mut response = Json::<Value>(v).into_response();
-                    attach_cache_headers(response.headers_mut(), &cache_hit);
-                    response
+            Ok((resp, cache_hit)) => {
+                let latency_ms = start.elapsed().as_millis() as i64;
+                broadcast_event(
+                    &state,
+                    &resp.model,
+                    api_key.id,
+                    Some(resp.usage.prompt_tokens),
+                    Some(resp.usage.total_tokens),
+                    latency_ms,
+                    "success",
+                    &cache_hit,
+                    false,
+                );
+                match serde_json::to_value(resp) {
+                    Ok(v) => {
+                        let mut response = Json::<Value>(v).into_response();
+                        attach_cache_headers(response.headers_mut(), &cache_hit);
+                        response
+                    }
+                    Err(e) => {
+                        AppError::Anyhow(anyhow::anyhow!("Failed to serialize response: {e}"))
+                            .into_response()
+                    }
                 }
-                Err(e) => AppError::Anyhow(anyhow::anyhow!("Failed to serialize response: {e}"))
-                    .into_response(),
-            },
-            Err(e) => e.into_response(),
+            }
+            Err(e) => {
+                broadcast_event(
+                    &state,
+                    &request.model,
+                    api_key.id,
+                    None,
+                    None,
+                    start.elapsed().as_millis() as i64,
+                    "error",
+                    &CacheHit::None,
+                    false,
+                );
+                e.into_response()
+            }
         }
     }
+}
+
+// ── Broadcast helper ──────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn broadcast_event(
+    state: &AppState,
+    model: &str,
+    api_key_id: uuid::Uuid,
+    prompt_tokens: Option<u32>,
+    total_tokens: Option<u32>,
+    latency_ms: i64,
+    status: &str,
+    cache_hit: &CacheHit,
+    stream: bool,
+) {
+    let cache_type = match cache_hit {
+        CacheHit::None => serde_json::Value::Null,
+        CacheHit::Exact => json!("exact"),
+        CacheHit::Semantic(_) => json!("semantic"),
+    };
+    let similarity = match cache_hit {
+        CacheHit::Semantic(s) => json!(s),
+        _ => serde_json::Value::Null,
+    };
+    let event = json!({
+        "model":        model,
+        "api_key_id":   api_key_id,
+        "prompt_tokens": prompt_tokens,
+        "total_tokens": total_tokens,
+        "latency_ms":   latency_ms,
+        "status":       status,
+        "cache_type":   cache_type,
+        "similarity":   similarity,
+        "stream":       stream,
+        "ts":           Utc::now().to_rfc3339(),
+    });
+    // send() only fails when there are zero active receivers — safe to ignore.
+    let _ = state.event_tx.send(event);
 }
 
 // ── Header helpers ────────────────────────────────────────────────────────────

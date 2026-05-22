@@ -112,6 +112,10 @@ async fn main() -> anyhow::Result<()> {
     let registry = Arc::new(ProviderRegistry::new(providers, key_cache.clone()));
     let rate_limiter = RateLimiter::new(config.rate_limit_window_secs);
 
+    // Broadcast channel for the live WebSocket feed. Buffer 1 000 events.
+    // Receivers are created per WebSocket connection in the stream handler.
+    let (event_tx, _) = tokio::sync::broadcast::channel(1_000);
+
     let state = Arc::new(AppState {
         pool,
         config,
@@ -119,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
         key_cache,
         rate_limiter,
         cache,
+        event_tx,
     });
 
     let app = create_router(state);

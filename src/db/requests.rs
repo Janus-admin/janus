@@ -59,6 +59,66 @@ pub async fn insert_request(
     Ok(())
 }
 
+/// List requests with optional filters. Returns (rows, total_count).
+pub async fn list_requests(
+    pool: &PgPool,
+    page: i64,
+    per_page: i64,
+    provider: Option<&str>,
+    model: Option<&str>,
+    status: Option<&str>,
+    api_key_id: Option<Uuid>,
+) -> AppResult<(Vec<crate::models::request::Request>, i64)> {
+    // Build dynamic WHERE clauses via CASE-style binding trick compatible with sqlx.
+    // We use a fixed query with nullable parameters instead of dynamic SQL.
+    let total: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM requests
+         WHERE ($1::text IS NULL OR provider = $1)
+           AND ($2::text IS NULL OR model = $2)
+           AND ($3::text IS NULL OR status = $3)
+           AND ($4::uuid IS NULL OR api_key_id = $4)",
+    )
+    .bind(provider)
+    .bind(model)
+    .bind(status)
+    .bind(api_key_id)
+    .fetch_one(pool)
+    .await?;
+
+    let rows = sqlx::query_as::<_, crate::models::request::Request>(
+        "SELECT * FROM requests
+         WHERE ($1::text IS NULL OR provider = $1)
+           AND ($2::text IS NULL OR model = $2)
+           AND ($3::text IS NULL OR status = $3)
+           AND ($4::uuid IS NULL OR api_key_id = $4)
+         ORDER BY created_at DESC
+         LIMIT $5 OFFSET $6",
+    )
+    .bind(provider)
+    .bind(model)
+    .bind(status)
+    .bind(api_key_id)
+    .bind(per_page)
+    .bind((page - 1) * per_page)
+    .fetch_all(pool)
+    .await?;
+
+    Ok((rows, total.0))
+}
+
+pub async fn get_by_id(
+    pool: &PgPool,
+    id: Uuid,
+) -> AppResult<Option<crate::models::request::Request>> {
+    let row = sqlx::query_as::<_, crate::models::request::Request>(
+        "SELECT * FROM requests WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
 /// Look up per-token prices for a provider+model pair.
 /// Returns `(input_per_1m, output_per_1m)` or `None` if not found.
 pub async fn find_pricing(

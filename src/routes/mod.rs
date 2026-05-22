@@ -1,6 +1,6 @@
 use crate::{handlers, state::AppState};
 use axum::{
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use std::sync::Arc;
@@ -21,11 +21,64 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/v1/chat/completions",
             post(handlers::gateway::chat_completions),
         )
-        // ── Admin API ────────────────────────────────────────────────────────
+        // ── Admin — Keys ─────────────────────────────────────────────────────
         .route("/admin/keys", post(handlers::admin::keys::create_key))
         .route("/admin/keys", get(handlers::admin::keys::list_keys))
+        .route("/admin/keys/:id", get(handlers::admin::keys::get_key))
+        .route("/admin/keys/:id", patch(handlers::admin::keys::update_key))
+        .route("/admin/keys/:id", delete(handlers::admin::keys::revoke_key))
+        // ── Admin — Requests ─────────────────────────────────────────────────
+        .route(
+            "/admin/requests",
+            get(handlers::admin::requests::list_requests),
+        )
+        .route(
+            "/admin/requests/:id",
+            get(handlers::admin::requests::get_request),
+        )
+        // ── Admin — Analytics ────────────────────────────────────────────────
+        .route(
+            "/admin/analytics/overview",
+            get(handlers::admin::analytics::overview),
+        )
+        .route(
+            "/admin/analytics/costs",
+            get(handlers::admin::analytics::costs),
+        )
+        .route(
+            "/admin/analytics/latency",
+            get(handlers::admin::analytics::latency),
+        )
+        .route(
+            "/admin/analytics/cache",
+            get(handlers::admin::analytics::cache),
+        )
+        // ── Admin — Providers ────────────────────────────────────────────────
+        .route(
+            "/admin/providers",
+            get(handlers::admin::providers::list_providers),
+        )
+        .route(
+            "/admin/providers/:id",
+            patch(handlers::admin::providers::update_provider),
+        )
+        .route(
+            "/admin/providers/:id/test",
+            post(handlers::admin::providers::test_provider),
+        )
+        // ── Admin — Cache ────────────────────────────────────────────────────
         .route("/admin/cache/stats", get(handlers::admin::cache::get_stats))
         .route("/admin/cache", delete(handlers::admin::cache::flush_cache))
+        // ── Admin — Config ───────────────────────────────────────────────────
+        .route(
+            "/admin/config",
+            get(handlers::admin::velox_config::get_config),
+        )
+        // ── Admin — Live Stream (WebSocket) ──────────────────────────────────
+        .route(
+            "/admin/stream",
+            get(handlers::admin::stream::stream_handler),
+        )
         // ── Existing routes ──────────────────────────────────────────────────
         .route("/health", get(handlers::health::health_check))
         .route("/api/v1/auth/register", post(handlers::auth::register))
@@ -35,6 +88,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/users/:id", get(handlers::users::get_user))
         .route("/api/v1/users/:id", put(handlers::users::update_user))
         .route("/api/v1/users/:id", delete(handlers::users::delete_user))
+        .fallback(crate::dashboard::serve)
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

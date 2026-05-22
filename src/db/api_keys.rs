@@ -142,3 +142,65 @@ pub async fn add_budget_used(pool: &PgPool, id: Uuid, amount: Decimal) -> AppRes
         .await?;
     Ok(())
 }
+
+pub async fn get_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<ApiKey>> {
+    let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(key)
+}
+
+#[derive(Debug)]
+pub struct UpdateKeyParams {
+    pub name: Option<String>,
+    pub budget_limit: Option<Option<Decimal>>,
+    pub rate_limit_rpm: Option<Option<i32>>,
+    pub rate_limit_tpm: Option<Option<i32>>,
+    pub allowed_models: Option<Option<Vec<String>>>,
+    pub expires_at: Option<Option<DateTime<Utc>>>,
+    pub is_active: Option<bool>,
+}
+
+pub async fn update_key(pool: &PgPool, id: Uuid, p: UpdateKeyParams) -> AppResult<Option<ApiKey>> {
+    let existing = match get_by_id(pool, id).await? {
+        Some(k) => k,
+        None => return Ok(None),
+    };
+
+    let name = p.name.unwrap_or(existing.name);
+    let budget_limit = p.budget_limit.unwrap_or(existing.budget_limit);
+    let rate_limit_rpm = p.rate_limit_rpm.unwrap_or(existing.rate_limit_rpm);
+    let rate_limit_tpm = p.rate_limit_tpm.unwrap_or(existing.rate_limit_tpm);
+    let allowed_models = p.allowed_models.unwrap_or(existing.allowed_models);
+    let expires_at = p.expires_at.unwrap_or(existing.expires_at);
+    let is_active = p.is_active.unwrap_or(existing.is_active);
+
+    let key = sqlx::query_as::<_, ApiKey>(
+        "UPDATE api_keys SET
+             name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
+             allowed_models = $5, expires_at = $6, is_active = $7
+         WHERE id = $8
+         RETURNING *",
+    )
+    .bind(name)
+    .bind(budget_limit)
+    .bind(rate_limit_rpm)
+    .bind(rate_limit_tpm)
+    .bind(allowed_models)
+    .bind(expires_at)
+    .bind(is_active)
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(key)
+}
+
+pub async fn revoke_key(pool: &PgPool, id: Uuid) -> AppResult<bool> {
+    let result = sqlx::query("UPDATE api_keys SET is_active = FALSE WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}

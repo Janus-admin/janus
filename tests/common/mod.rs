@@ -327,6 +327,8 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     let rate_limiter =
         velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
 
+    let (event_tx, _) = tokio::sync::broadcast::channel(64);
+
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
         config,
@@ -334,6 +336,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         key_cache,
         rate_limiter,
         cache,
+        event_tx,
     });
 
     let app = velox::routes::create_router(state);
