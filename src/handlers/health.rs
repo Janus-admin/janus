@@ -10,16 +10,17 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<Value> {
     };
 
     let providers =
-        sqlx::query!("SELECT id, is_enabled, health_status FROM providers ORDER BY priority")
+        sqlx::query("SELECT id, is_enabled, health_status FROM providers ORDER BY priority")
             .fetch_all(&state.pool)
             .await
             .unwrap_or_default()
             .into_iter()
             .map(|r| {
+                use sqlx::Row;
                 json!({
-                    "id": r.id,
-                    "is_enabled": r.is_enabled,
-                    "health_status": r.health_status
+                    "id": r.get::<String, _>("id"),
+                    "is_enabled": r.get::<bool, _>("is_enabled"),
+                    "health_status": r.get::<String, _>("health_status")
                 })
             })
             .collect::<Vec<_>>();

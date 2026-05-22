@@ -4,7 +4,7 @@ use crate::{
 };
 use axum::{
     extract::{rejection::JsonRejection, FromRequest, State},
-    http::Request,
+    http::{HeaderMap, HeaderValue, Request},
     response::IntoResponse,
     Json,
 };
@@ -41,20 +41,23 @@ where
 
 /// POST /v1/chat/completions
 ///
-/// Drop-in replacement for the OpenAI Chat Completions endpoint. Clients set
-/// `base_url = "http://your-velox-host/v1"` and change nothing else.
+/// Drop-in replacement for the OpenAI Chat Completions endpoint.
 /// Supports both non-streaming (default) and SSE streaming (`"stream": true`).
+///
+/// Request header `X-Velox-Cache: false` bypasses the cache for that request.
+/// Response header `X-Velox-Cache-Hit: exact` is present on exact cache hits.
 pub async fn chat_completions(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
+    headers: HeaderMap,
     ValidatedJson(request): ValidatedJson<ChatCompletionRequest>,
 ) -> impl IntoResponse {
-    // Budget gate — check before touching any provider.
+    // Budget gate.
     if let Err(e) = check_budget(&api_key) {
         return e.into_response();
     }
 
-    // Rate limit gate (Phase 3) — per-key sliding window check.
+    // Rate limit gate.
     if let Some(rpm) = api_key.rate_limit_rpm {
         if let Err(retry_after) = state.rate_limiter.check_and_record(api_key.id, rpm) {
             return AppError::RateLimitExceeded(Some(retry_after)).into_response();
@@ -72,6 +75,14 @@ pub async fn chat_completions(
         }
     }
 
+    // Bypass cache when disabled globally or when the client sends X-Velox-Cache: false.
+    let bypass_cache = !state.config.cache_enabled
+        || headers
+            .get("x-velox-cache")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("false"))
+            .unwrap_or(false);
+
     let max_retries = state.config.max_retries;
 
     if request.stream == Some(true) {
@@ -81,10 +92,19 @@ pub async fn chat_completions(
             request,
             api_key,
             max_retries,
+            state.cache.clone(),
+            bypass_cache,
         )
         .await
         {
-            Ok(response) => response,
+            Ok((mut response, cache_hit)) => {
+                if cache_hit {
+                    response
+                        .headers_mut()
+                        .insert("x-velox-cache-hit", HeaderValue::from_static("exact"));
+                }
+                response
+            }
             Err(e) => e.into_response(),
         }
     } else {
@@ -94,11 +114,21 @@ pub async fn chat_completions(
             &request,
             &api_key,
             max_retries,
+            &state.cache,
+            bypass_cache,
         )
         .await
         {
-            Ok(resp) => match serde_json::to_value(resp) {
-                Ok(v) => Json::<Value>(v).into_response(),
+            Ok((resp, cache_hit)) => match serde_json::to_value(resp) {
+                Ok(v) => {
+                    let mut response = Json::<Value>(v).into_response();
+                    if cache_hit {
+                        response
+                            .headers_mut()
+                            .insert("x-velox-cache-hit", HeaderValue::from_static("exact"));
+                    }
+                    response
+                }
                 Err(e) => AppError::Anyhow(anyhow::anyhow!("Failed to serialize response: {e}"))
                     .into_response(),
             },

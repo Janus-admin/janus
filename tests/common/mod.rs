@@ -137,6 +137,16 @@ pub async fn spawn_app_with_rate_limit(openai_base_url: String, rpm: i32) -> Str
     .await
 }
 
+/// Start the app with a fresh wiremock `MockServer` as the sole OpenAI provider.
+///
+/// Returns `(base_url, mock_server)`. The caller **must** keep `mock_server` alive
+/// for the duration of the test or the provider endpoint disappears.
+pub async fn spawn_app_with_wiremock() -> (String, wiremock::MockServer) {
+    let mock_server = wiremock::MockServer::start().await;
+    let base_url = spawn_app_with_openai_base(mock_server.uri()).await;
+    (base_url, mock_server)
+}
+
 /// Start app with two OpenAI-compatible providers at different priorities.
 ///
 /// - Primary provider: `primary_url` at priority 1.
@@ -267,12 +277,15 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     let rate_limiter =
         velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
 
+    let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
+
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
         config,
         providers: registry,
         key_cache,
         rate_limiter,
+        cache,
     });
 
     let app = velox::routes::create_router(state);

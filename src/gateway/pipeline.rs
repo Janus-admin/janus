@@ -1,16 +1,21 @@
 use super::{router, ProviderRegistry};
 use crate::{
+    cache::{self, CacheEngine},
     db,
     errors::{AppError, AppResult},
     models::api_key::ApiKey,
     pricing,
-    providers::{ChatCompletionRequest, ChatCompletionResponse, ProviderError},
+    providers::{
+        ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice,
+        ChunkDelta, ProviderError,
+    },
 };
 use axum::response::{
     sse::{Event, KeepAlive, Sse},
     IntoResponse, Response,
 };
 use futures_util::StreamExt;
+use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::{convert::Infallible, sync::Arc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
@@ -18,19 +23,31 @@ use uuid::Uuid;
 
 // ── Non-streaming pipeline ────────────────────────────────────────────────────
 
-/// Run the full non-streaming proxy pipeline with retry and provider failover:
-///   for each provider (ascending priority):
-///     retry up to `max_retries` times on retriable errors
-///     → on success: calculate cost, log to DB, return response
-///     → on non-retriable error: abort immediately
-///   if all providers fail → 503
+/// Run the full non-streaming proxy pipeline.
+///
+/// Returns `(response, cache_hit)` where `cache_hit` is `true` when the response
+/// was served from the exact cache without touching a provider.
 pub async fn run(
     pool: &PgPool,
     registry: &ProviderRegistry,
     request: &ChatCompletionRequest,
     api_key: &ApiKey,
     max_retries: u32,
-) -> AppResult<ChatCompletionResponse> {
+    cache: &CacheEngine,
+    bypass_cache: bool,
+) -> AppResult<(ChatCompletionResponse, bool)> {
+    // ── Cache lookup ──────────────────────────────────────────────────────────
+    let hash = cache::exact::compute_hash(request);
+
+    if !bypass_cache {
+        if let Some(cached) = cache.lookup(&hash) {
+            let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+            let _ = db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
+            return Ok(((*cached).clone(), true));
+        }
+    }
+
+    // ── Provider loop ─────────────────────────────────────────────────────────
     let providers = router::select_all_providers(registry);
     if providers.is_empty() {
         return Err(AppError::ProviderUnavailable(
@@ -50,7 +67,6 @@ pub async fn run(
 
             match result {
                 Ok(resp) => {
-                    // Calculate cost before spawning the log task.
                     let usage = &resp.usage;
                     let cost = db::requests::find_pricing(pool, provider.name(), &resp.model)
                         .await
@@ -65,7 +81,30 @@ pub async fn run(
                             )
                         });
 
-                    // Fire-and-forget: log + budget + last_used without blocking.
+                    // Store in hot cache + persist to DB synchronously.
+                    // Awaited (not fire-and-forget) so that stats queries after
+                    // this response see the entry immediately.
+                    if !bypass_cache {
+                        cache.insert(hash.clone(), Arc::new(resp.clone()));
+
+                        let req_body = serde_json::to_string(request).unwrap_or_default();
+                        let resp_body = serde_json::to_string(&resp).unwrap_or_default();
+                        let (pt, ct) = (usage.prompt_tokens as i32, usage.completion_tokens as i32);
+                        let _ = db::cache::upsert_entry(
+                            pool,
+                            &hash,
+                            provider.name(),
+                            &resp.model,
+                            &req_body,
+                            &resp_body,
+                            Some(pt),
+                            Some(ct),
+                            cost,
+                        )
+                        .await;
+                    }
+
+                    // Fire-and-forget: log request + update budget + last_used.
                     {
                         let pool = pool.clone();
                         let api_key_id = api_key.id;
@@ -95,7 +134,7 @@ pub async fn run(
                             )
                             .await;
                             if let Some(cost_value) = cost {
-                                if cost_value > rust_decimal::Decimal::ZERO {
+                                if cost_value > Decimal::ZERO {
                                     let _ = db::api_keys::add_budget_used(
                                         &pool, api_key_id, cost_value,
                                     )
@@ -106,7 +145,7 @@ pub async fn run(
                         });
                     }
 
-                    return Ok(resp);
+                    return Ok((resp, false));
                 }
 
                 Err(e) => {
@@ -118,7 +157,6 @@ pub async fn run(
                         _ => "error",
                     };
 
-                    // Fire-and-forget: log the failed attempt.
                     {
                         let pool = pool.clone();
                         let api_key_id = api_key.id;
@@ -145,7 +183,6 @@ pub async fn run(
                         });
                     }
 
-                    // Auth and bad-request errors are not recoverable on any provider.
                     if matches!(
                         &e,
                         ProviderError::Unauthorized | ProviderError::BadRequest(_)
@@ -154,7 +191,6 @@ pub async fn run(
                         break 'provider;
                     }
 
-                    // Retriable errors: retry the same provider.
                     if matches!(&e, ProviderError::Unavailable(_) | ProviderError::Timeout)
                         && attempts < max_retries
                     {
@@ -165,10 +201,9 @@ pub async fn run(
                             "Retrying after provider error: {e}"
                         );
                         attempts += 1;
-                        continue; // retry
+                        continue;
                     }
 
-                    // Exhausted retries (or non-retriable like RateLimit/Http) — try next provider.
                     tracing::warn!(
                         provider = provider.name(),
                         "Failing over after {} attempt(s): {e}",
@@ -187,17 +222,35 @@ pub async fn run(
 
 // ── Streaming pipeline ────────────────────────────────────────────────────────
 
-/// Run the streaming proxy pipeline with provider failover.
-/// Tries each enabled provider in priority order; on initial connection failure
-/// moves to the next. No per-provider retry for streams (can't rewind SSE).
-/// All providers fail → 503.
+/// Run the streaming proxy pipeline.
+///
+/// Returns `(response, cache_hit)`. On an exact cache hit the cached response is
+/// synthesized as a valid SSE stream so the client receives the correct wire format.
+/// Cache population from streaming is not done in Phase 4 (only non-streaming
+/// responses populate the cache).
 pub async fn run_streaming(
     pool: PgPool,
     registry: Arc<ProviderRegistry>,
     request: ChatCompletionRequest,
     api_key: ApiKey,
     max_retries: u32,
-) -> AppResult<Response> {
+    cache: Arc<CacheEngine>,
+    bypass_cache: bool,
+) -> AppResult<(Response, bool)> {
+    // ── Cache lookup ──────────────────────────────────────────────────────────
+    let hash = cache::exact::compute_hash(&request);
+
+    if !bypass_cache {
+        if let Some(cached) = cache.lookup(&hash) {
+            let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+            let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
+
+            let sse = synthesize_sse_from_cached(&cached);
+            return Ok((sse, true));
+        }
+    }
+
+    // ── Provider loop ─────────────────────────────────────────────────────────
     let providers = router::select_all_providers(&registry);
     if providers.is_empty() {
         return Err(AppError::ProviderUnavailable(
@@ -231,7 +284,7 @@ pub async fn run_streaming(
                 Err(e) => {
                     tracing::warn!(provider = provider.name(), "Stream open failed: {e}");
                     last_error = Some(map_provider_error(e));
-                    break; // try next provider
+                    break;
                 }
                 Ok(provider_stream) => {
                     let provider_name = provider.name();
@@ -335,7 +388,7 @@ pub async fn run_streaming(
                             .await;
 
                             if let Some(cost_value) = cost {
-                                if cost_value > rust_decimal::Decimal::ZERO {
+                                if cost_value > Decimal::ZERO {
                                     let _ = db::api_keys::add_budget_used(
                                         &pool, api_key_id, cost_value,
                                     )
@@ -347,7 +400,7 @@ pub async fn run_streaming(
                     });
 
                     let sse = Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default());
-                    return Ok(sse.into_response());
+                    return Ok((sse.into_response(), false));
                 }
             }
         }
@@ -359,6 +412,7 @@ pub async fn run_streaming(
 
 // ── Convenience wrapper ───────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_with_workspace(
     pool: &PgPool,
     registry: &ProviderRegistry,
@@ -366,12 +420,82 @@ pub async fn run_with_workspace(
     api_key: &ApiKey,
     workspace_id: Option<Uuid>,
     max_retries: u32,
-) -> AppResult<ChatCompletionResponse> {
+    cache: &CacheEngine,
+    bypass_cache: bool,
+) -> AppResult<(ChatCompletionResponse, bool)> {
     let key_with_workspace = ApiKey {
         workspace_id,
         ..api_key.clone()
     };
-    run(pool, registry, request, &key_with_workspace, max_retries).await
+    run(
+        pool,
+        registry,
+        request,
+        &key_with_workspace,
+        max_retries,
+        cache,
+        bypass_cache,
+    )
+    .await
+}
+
+// ── SSE synthesis for cache hits ──────────────────────────────────────────────
+
+/// Build a valid SSE response from a cached non-streaming response.
+/// Emits a single content chunk followed by a usage chunk and [DONE].
+fn synthesize_sse_from_cached(resp: &ChatCompletionResponse) -> Response {
+    let content = resp
+        .choices
+        .first()
+        .map(|c| c.message.content.as_str().unwrap_or("").to_string())
+        .unwrap_or_default();
+
+    let chunk_content = ChatCompletionChunk {
+        id: resp.id.clone(),
+        object: "chat.completion.chunk".to_string(),
+        created: resp.created,
+        model: resp.model.clone(),
+        choices: vec![ChunkChoice {
+            index: 0,
+            delta: ChunkDelta {
+                role: Some("assistant".to_string()),
+                content: Some(content),
+            },
+            finish_reason: None,
+        }],
+        usage: None,
+    };
+
+    let chunk_done = ChatCompletionChunk {
+        id: resp.id.clone(),
+        object: "chat.completion.chunk".to_string(),
+        created: resp.created,
+        model: resp.model.clone(),
+        choices: vec![ChunkChoice {
+            index: 0,
+            delta: ChunkDelta {
+                role: None,
+                content: None,
+            },
+            finish_reason: Some("stop".to_string()),
+        }],
+        usage: Some(resp.usage.clone()),
+    };
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(4);
+    tokio::spawn(async move {
+        if let Ok(data) = serde_json::to_string(&chunk_content) {
+            let _ = tx.send(Ok(Event::default().data(data))).await;
+        }
+        if let Ok(data) = serde_json::to_string(&chunk_done) {
+            let _ = tx.send(Ok(Event::default().data(data))).await;
+        }
+        let _ = tx.send(Ok(Event::default().data("[DONE]"))).await;
+    });
+
+    Sse::new(ReceiverStream::new(rx))
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 // ── Error mapping ─────────────────────────────────────────────────────────────

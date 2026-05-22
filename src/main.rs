@@ -3,6 +3,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use velox::{
+    cache::CacheEngine,
     config::Config,
     db::api_keys as db_api_keys,
     gateway::ProviderRegistry,
@@ -75,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
 
     let registry = Arc::new(ProviderRegistry::new(providers, key_cache.clone()));
     let rate_limiter = RateLimiter::new(config.rate_limit_window_secs);
+    let cache = Arc::new(CacheEngine::new());
 
     let state = Arc::new(AppState {
         pool,
@@ -82,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
         providers: registry,
         key_cache,
         rate_limiter,
+        cache,
     });
 
     let app = create_router(state);

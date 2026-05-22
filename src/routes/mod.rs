@@ -24,6 +24,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // ── Admin API ────────────────────────────────────────────────────────
         .route("/admin/keys", post(handlers::admin::keys::create_key))
         .route("/admin/keys", get(handlers::admin::keys::list_keys))
+        .route("/admin/cache/stats", get(handlers::admin::cache::get_stats))
+        .route("/admin/cache", delete(handlers::admin::cache::flush_cache))
         // ── Existing routes ──────────────────────────────────────────────────
         .route("/health", get(handlers::health::health_check))
         .route("/api/v1/auth/register", post(handlers::auth::register))

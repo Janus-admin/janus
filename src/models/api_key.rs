@@ -64,7 +64,9 @@ pub struct ApiKeyView {
     pub name: String,
     pub key_prefix: String,
     pub workspace_id: Option<Uuid>,
+    #[serde(with = "rust_decimal::serde::float_option")]
     pub budget_limit: Option<Decimal>,
+    #[serde(with = "rust_decimal::serde::float")]
     pub budget_used: Decimal,
     pub rate_limit_rpm: Option<i32>,
     pub rate_limit_tpm: Option<i32>,

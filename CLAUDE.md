@@ -48,7 +48,7 @@ Phase 0: Foundation          → [x] COMPLETE
 Phase 1: Core Proxy          → [x] COMPLETE
 Phase 2: Streaming           → [x] COMPLETE
 Phase 3: Rate Limiting       → [x] COMPLETE
-Phase 4: Exact Cache         → [ ] NOT STARTED
+Phase 4: Exact Cache         → [x] COMPLETE
 Phase 5: Semantic Cache      → [ ] NOT STARTED
 Phase 6: Web Dashboard       → [ ] NOT STARTED
 Phase 7: Production Hardening → [ ] NOT STARTED
@@ -56,7 +56,7 @@ Phase 8: Open Source Launch  → [ ] NOT STARTED
 Phase 9: Mobile App          → [ ] NOT STARTED
 ```
 
-**CURRENT ACTIVE PHASE: 4 — Exact Cache**
+**CURRENT ACTIVE PHASE: 5 — Semantic Cache**
 
 ---
 
@@ -130,10 +130,24 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 - [x] `src/handlers/gateway.rs` — `chat_completions` now branches on `request.stream == Some(true)` → SSE response vs JSON response
 - [x] `src/db/requests.rs` — `insert_request` extended with `is_stream: bool` and `ttfb_ms: Option<i32>` parameters; uses existing `ttfb_ms` column in `requests` table
 
+### Velox-Specific Rust Modules (Phase 4)
+- [x] `src/cache/exact.rs` — `compute_hash()`: SHA-256 of normalized request (stream field excluded)
+- [x] `src/cache/mod.rs` — `CacheEngine`: DashMap hot layer; `lookup`, `insert`, `clear`, `check` helpers
+- [x] `src/db/cache.rs` — `upsert_entry`, `record_hit`, `get_stats`, `flush_all` DB queries
+- [x] `src/handlers/admin/cache.rs` — `GET /admin/cache/stats` + `DELETE /admin/cache` handlers
+- [x] `src/gateway/pipeline.rs` — `run()` and `run_streaming()` extended: cache lookup before provider, cache write after success, SSE synthesis for streaming cache hits; return `(response, cache_hit: bool)`
+- [x] `src/handlers/gateway.rs` — `X-Velox-Cache: false` bypass header; `X-Velox-Cache-Hit: exact` response header on hits
+- [x] `src/state.rs` — Added `cache: Arc<CacheEngine>` field
+- [x] `src/models/api_key.rs` — Fixed `ApiKeyView` Decimal serialization (`serde-float` feature)
+
 ### Velox-Specific Endpoints (Phase 1)
 - [x] `POST /v1/chat/completions` — OpenAI-compatible gateway proxy (streaming + non-streaming)
 - [x] `POST /admin/keys` — Create API key (returns full key once, never again)
 - [x] `GET  /admin/keys` — List API keys (safe view: prefixes only, no hashes)
+
+### Velox-Specific Endpoints (Phase 4)
+- [x] `GET  /admin/cache/stats` — Aggregate cache stats (entries, hits, tokens saved, cost saved)
+- [x] `DELETE /admin/cache` — Flush all cache entries (DashMap + DB)
 
 ---
 
@@ -510,7 +524,7 @@ git tag phase-X-complete
 | 1 | Complete | 2026-05-22 | 251fbe8 |
 | 2 | Complete | 2026-05-22 | 6a2abbe |
 | 3 | Complete | 2026-05-22 | 0e538ef |
-| 4 | Not started | — | — |
+| 4 | Complete | 2026-05-22 | — |
 | 5 | Not started | — | — |
 | 6 | Not started | — | — |
 | 7 | Not started | — | — |
@@ -530,5 +544,5 @@ Used for: AWS Bedrock provider adapter in Phase 1.
 
 ---
 
-*Last updated: 2026-05-22 — Phase 3 complete*
+*Last updated: 2026-05-22 — Phase 4 complete*
 *Update this file at the end of every session.*
