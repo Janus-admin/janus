@@ -1,0 +1,129 @@
+# Velox Configuration File
+# Copy this to velox.toml and customize for your environment.
+# All values here are optional — defaults will be used if not specified.
+# Environment variables always override file values.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SERVER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Host to bind to. Default: "0.0.0.0"
+host = "0.0.0.0"
+
+# Port to listen on. Default: 8080
+port = 8080
+
+# Request timeout in milliseconds. Default: 60000 (60 seconds)
+request_timeout_ms = 60000
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DATABASE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# PostgreSQL connection string. Required.
+# Format: postgres://user:password@host:port/database
+# Can also be set via DATABASE_URL environment variable.
+database_url = "postgres://velox:velox_dev_password@localhost:5432/velox"
+
+# Maximum database connection pool size. Default: 5
+db_pool_max_connections = 5
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION & SECURITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Secret key for JWT token signing (admin dashboard).
+# Required. Generate: openssl rand -base64 32
+jwt_secret = "your-secret-key-here"
+
+# JWT token expiration time in hours. Default: 24
+jwt_expiration_hours = 24
+
+# AES-256-GCM encryption key for encrypting provider API keys at rest.
+# Required. Generate: openssl rand -base64 32
+encryption_key = "your-encryption-key-here"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LOGGING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Log level: debug, info, warn, error. Default: "info"
+log_level = "info"
+
+# Whether to log full HTTP request bodies (may contain sensitive data).
+# Default: false
+log_request_bodies = false
+
+# Whether to log full HTTP response bodies.
+# Default: false
+log_response_bodies = false
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CACHING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Enable caching layer. Default: true
+cache_enabled = true
+
+# Exact cache entry TTL in seconds. Default: 3600 (1 hour)
+# Entries older than this will be considered stale.
+cache_ttl_seconds = 3600
+
+# Maximum number of cache entries before eviction. Default: 100000
+# When the hot layer reaches this limit, oldest entries are removed.
+cache_max_entries = 100000
+
+# Semantic similarity threshold (0.0 to 1.0). Default: 0.90
+# Only cache hits with similarity >= this value are returned.
+# Lower values = more cache hits but lower quality matches.
+semantic_cache_threshold = 0.90
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEMANTIC CACHE (Phase 5)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Path to ONNX embedding model file.
+# Download from HuggingFace: all-MiniLM-L6-v2
+# Default: "models/all-MiniLM-L6-v2.onnx"
+embedding_model_path = "models/all-MiniLM-L6-v2.onnx"
+
+# Path to tokenizer JSON file for the embedding model.
+# Download from HuggingFace: all-MiniLM-L6-v2
+# Default: "models/tokenizer.json"
+embedding_tokenizer_path = "models/tokenizer.json"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LLM PROVIDER API KEYS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# OpenAI API key. Leave empty to disable OpenAI provider.
+# Can also be set via OPENAI_API_KEY environment variable.
+openai_api_key = ""
+
+# Anthropic API key. Leave empty to disable Anthropic provider.
+# Can also be set via ANTHROPIC_API_KEY environment variable.
+anthropic_api_key = ""
+
+# AWS Bedrock credentials are read from the environment:
+# AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RATE LIMITING & RELIABILITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Sliding window size for per-API-key rate limiting in seconds.
+# Default: 60
+# Example: With rate_limit_window_secs=60, a key's limit resets every 60 seconds.
+rate_limit_window_secs = 60
+
+# Maximum number of retries per provider before failover.
+# Default: 1
+# Set to 0 to disable retries. Set higher for unreliable networks.
+max_retries = 1
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# METRICS & OBSERVABILITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Enable Prometheus metrics endpoint at /metrics. Default: true
+prometheus_enabled = true

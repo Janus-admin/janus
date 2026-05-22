@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Velox ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+  build:
+    name: Build ${{ matrix.os }}/${{ matrix.arch }}
+    needs: create_release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: velox
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            binary: velox
+          - os: darwin
+            arch: amd64
+            runner: macos-13
+            target: x86_64-apple-darwin
+            binary: velox
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      
+      - name: Create archive (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ${{ matrix.binary }}
+      
+      - name: Create archive (macOS)
+        if: matrix.os == 'darwin'
+        run: |
+          cd target/${{ matrix.target }}/release
+          zip -q ../../../velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip ${{ matrix.binary }}
+      
+      - name: Upload Linux Release Asset
+        if: matrix.os == 'linux'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          asset_name: velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          asset_content_type: application/gzip
+      
+      - name: Upload macOS Release Asset
+        if: matrix.os == 'darwin'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip
+          asset_name: velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip
+          asset_content_type: application/zip

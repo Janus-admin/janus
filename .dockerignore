@@ -1,0 +1,13 @@
+.git
+.gitignore
+.github
+target
+.env.local
+.env.*.local
+*.md
+!README.md
+.DS_Store
+.vscode
+.idea
+node_modules
+*.log
