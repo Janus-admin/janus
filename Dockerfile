@@ -36,7 +36,7 @@ FROM debian:bookworm-slim
 # Install minimal runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    postgresql-client \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -49,7 +49,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD pg_isready -h ${DATABASE_URL:-localhost} -U ${DB_USER:-postgres} || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the application
 CMD ["./velox"]

@@ -66,11 +66,15 @@ pub struct Config {
     #[serde(default = "default_embedding_tokenizer_path")]
     pub embedding_tokenizer_path: String,
 
-    // ── Provider API keys (Phase 1) ───────────────────────────────────────────
+    // ── Provider API keys (Phase 1+) ──────────────────────────────────────────
     #[serde(default)]
     pub openai_api_key: String,
     #[serde(default)]
     pub anthropic_api_key: String,
+    #[serde(default)]
+    pub gemini_api_key: String,
+    #[serde(default)]
+    pub groq_api_key: String,
 
     // ── Rate limiting & reliability (Phase 3) ────────────────────────────────
     /// Sliding window size in seconds for per-key rate limiting.

@@ -9,7 +9,10 @@ use velox::{
     gateway::ProviderRegistry,
     metrics,
     middleware::rate_limit::RateLimiter,
-    providers::{anthropic::AnthropicProvider, bedrock::BedrockProvider, openai::OpenAIProvider},
+    providers::{
+        anthropic::AnthropicProvider, bedrock::BedrockProvider, gemini::GeminiProvider,
+        groq::GroqProvider, openai::OpenAIProvider,
+    },
     routes::create_router,
     state::AppState,
 };
@@ -63,6 +66,19 @@ async fn main() -> anyhow::Result<()> {
     let bedrock = BedrockProvider::new(30).await;
     providers.push(Arc::new(bedrock));
     tracing::info!("Bedrock provider enabled");
+
+    if !config.gemini_api_key.is_empty() {
+        providers.push(Arc::new(GeminiProvider::new(
+            config.gemini_api_key.clone(),
+            40,
+        )));
+        tracing::info!("Gemini provider enabled");
+    }
+
+    if !config.groq_api_key.is_empty() {
+        providers.push(Arc::new(GroqProvider::new(config.groq_api_key.clone(), 50)));
+        tracing::info!("Groq provider enabled");
+    }
 
     // ── Build in-memory API key cache ─────────────────────────────────────────
     let key_cache: Arc<DashMap<[u8; 32], _>> = Arc::new(DashMap::new());

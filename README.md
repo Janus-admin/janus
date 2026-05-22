@@ -16,7 +16,7 @@ Or run locally: `cargo run` (requires Postgres and models/)
 
 ## What Is Velox?
 
-Velox is a **self-hosted proxy** that sits between your applications and LLM providers (OpenAI, Anthropic, AWS Bedrock). It:
+Velox is a **self-hosted proxy** that sits between your applications and LLM providers (OpenAI, Anthropic, Google Gemini, Groq, AWS Bedrock). It:
 
 - ✅ **Caches responses** — exact + semantic similarity (ONNX embeddings)
 - 💰 **Tracks costs** — per-token pricing, per-API-key budgets  
@@ -49,8 +49,13 @@ docker run -d \
 ```bash
 export DATABASE_URL=postgres://postgres:velox_dev@localhost:5432/velox
 export JWT_SECRET=$(openssl rand -base64 32)
-export OPENAI_API_KEY=sk-...  # your OpenAI key
 export ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+# Provider API keys (set at least one)
+export OPENAI_API_KEY=sk-...        # OpenAI
+export ANTHROPIC_API_KEY=sk-ant-... # Anthropic
+export GEMINI_API_KEY=...           # Google Gemini
+export GROQ_API_KEY=...             # Groq
 ```
 
 ### 3. Download embedding model (for semantic cache)
@@ -97,7 +102,7 @@ Velox is built in **9 phases** of increasing complexity:
 | Phase | What | Status |
 |-------|------|--------|
 | **0** | Core tables, config system, error handling | ✅ Done |
-| **1** | OpenAI/Anthropic/Bedrock adapters, gateway proxy | ✅ Done |
+| **1** | OpenAI/Anthropic/Gemini/Groq/Bedrock adapters, gateway proxy | ✅ Done |
 | **2** | Streaming (SSE) for all providers | ✅ Done |
 | **3** | Rate limiting, retry logic, provider failover | ✅ Done |
 | **4** | Exact cache (SHA-256 hot layer + DB persistence) | ✅ Done |
