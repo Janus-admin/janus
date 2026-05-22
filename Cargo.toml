@@ -17,7 +17,7 @@ bcrypt = "0.15"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
@@ -53,6 +53,10 @@ tokenizers = "0.19"
 
 # ─── Phase 6: Dashboard ───────────────────────────────────────────────────────
 include_dir = "0.7"
+
+# ─── Phase 7: Production Hardening ─────────────────────────────────────────────
+metrics = "0.22"
+metrics-exporter-prometheus = "0.14"
 
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]

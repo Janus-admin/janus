@@ -1,0 +1,2 @@
+[env]
+DATABASE_URL = "postgres://wallex@localhost:5432/rust_backend"

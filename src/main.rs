@@ -7,6 +7,7 @@ use velox::{
     config::Config,
     db::api_keys as db_api_keys,
     gateway::ProviderRegistry,
+    metrics,
     middleware::rate_limit::RateLimiter,
     providers::{anthropic::AnthropicProvider, bedrock::BedrockProvider, openai::OpenAIProvider},
     routes::create_router,
@@ -23,6 +24,10 @@ async fn main() -> anyhow::Result<()> {
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // Initialize Prometheus metrics exporter
+    metrics::init_prometheus()?;
+    tracing::info!("Prometheus metrics initialized");
 
     let config = Config::load()?;
     let addr = format!("{}:{}", config.host, config.port);
@@ -126,11 +131,32 @@ async fn main() -> anyhow::Result<()> {
         event_tx,
     });
 
-    let app = create_router(state);
+    let app = create_router(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Server listening on {}", addr);
 
-    axum::serve(listener, app).await?;
+    // Setup graceful shutdown on Ctrl-C
+    let shutdown_signal = async {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                tracing::info!("Received shutdown signal, initiating graceful shutdown");
+            }
+            Err(e) => {
+                tracing::error!("Failed to setup signal handler: {}", e);
+            }
+        }
+    };
+
+    // Run server with graceful shutdown
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
+        .await?;
+
+    // Cleanup on shutdown
+    tracing::info!("Server shutting down, flushing metrics and cache");
+    drop(state); // Ensure AppState (including cache and pool) is dropped gracefully
+
+    tracing::info!("Server shutdown complete");
     Ok(())
 }

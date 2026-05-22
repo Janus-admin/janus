@@ -6,6 +6,7 @@ use axum::{
 use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
+    limit::RequestBodyLimitLayer,
     trace::TraceLayer,
 };
 
@@ -15,12 +16,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    Router::new()
-        // ── Gateway API (OpenAI-compatible) ──────────────────────────────────
+    // Gateway routes with 1MB size limit
+    let gateway_routes = Router::new()
         .route(
             "/v1/chat/completions",
             post(handlers::gateway::chat_completions),
         )
+        .layer(RequestBodyLimitLayer::new(1024 * 1024)); // 1MB
+
+    Router::new()
+        .merge(gateway_routes)
         // ── Admin — Keys ─────────────────────────────────────────────────────
         .route("/admin/keys", post(handlers::admin::keys::create_key))
         .route("/admin/keys", get(handlers::admin::keys::list_keys))
@@ -81,6 +86,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // ── Existing routes ──────────────────────────────────────────────────
         .route("/health", get(handlers::health::health_check))
+        .route("/metrics", get(handlers::metrics::prometheus_handler))
         .route("/api/v1/auth/register", post(handlers::auth::register))
         .route("/api/v1/auth/login", post(handlers::auth::login))
         .route("/api/v1/auth/me", get(handlers::auth::me))

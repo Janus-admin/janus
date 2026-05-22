@@ -15,6 +15,8 @@ use axum::response::{
     IntoResponse, Response,
 };
 use futures_util::StreamExt;
+use metrics::{counter, histogram};
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::{convert::Infallible, sync::Arc, time::Instant};
@@ -72,6 +74,8 @@ pub async fn run(
     if !bypass_cache {
         if let Some(cached) = cache.lookup(&hash) {
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+            counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
+                .increment(1);
             let _ = db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
             return Ok(((*cached).clone(), CacheHit::Exact));
         }
@@ -92,6 +96,7 @@ pub async fn run(
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+                    counter!("velox_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
                     let _ = db::cache::record_hit(pool, &hit_hash, tokens, Decimal::ZERO).await;
                     return Ok(((*cached).clone(), CacheHit::Semantic(score)));
                 }
@@ -120,6 +125,8 @@ pub async fn run(
             match result {
                 Ok(resp) => {
                     let usage = &resp.usage;
+                    let elapsed_secs = start.elapsed().as_secs_f64();
+
                     let cost = db::requests::find_pricing(pool, provider.name(), &resp.model)
                         .await
                         .ok()
@@ -132,6 +139,21 @@ pub async fn run(
                                 output_price,
                             )
                         });
+
+                    // Record metrics (metrics macros require 'static strings, so use owned Strings)
+                    counter!("velox_requests_total", "provider" => provider.name(), "model" => resp.model.clone(), "status" => "success", "cache_type" => "none").increment(1);
+                    histogram!("velox_request_duration_seconds", "provider" => provider.name(), "model" => resp.model.clone()).record(elapsed_secs);
+                    counter!("velox_tokens_total", "provider" => provider.name(), "model" => resp.model.clone(), "direction" => "prompt").increment(usage.prompt_tokens as u64);
+                    counter!("velox_tokens_total", "provider" => provider.name(), "model" => resp.model.clone(), "direction" => "completion").increment(usage.completion_tokens as u64);
+
+                    if let Some(cost_value) = cost {
+                        if cost_value > Decimal::ZERO {
+                            // Record cost in microdollars to maintain integer counter
+                            let cost_microdollars =
+                                (cost_value.to_f64().unwrap_or(0.0) * 1_000_000.0) as u64;
+                            counter!("velox_cost_usd_total", "provider" => provider.name(), "model" => resp.model.clone()).increment(cost_microdollars);
+                        }
+                    }
 
                     // Store in hot cache + persist to DB synchronously.
                     if !bypass_cache {
@@ -213,6 +235,11 @@ pub async fn run(
                         ProviderError::BadRequest(_) => "bad_request",
                         _ => "error",
                     };
+
+                    // Record error metrics
+                    counter!("velox_requests_total", "provider" => provider.name(), "model" => request.model.clone(), "status" => status, "cache_type" => "none").increment(1);
+                    let elapsed_secs = start.elapsed().as_secs_f64();
+                    histogram!("velox_request_duration_seconds", "provider" => provider.name(), "model" => request.model.clone()).record(elapsed_secs);
 
                     {
                         let pool = pool.clone();
@@ -298,6 +325,8 @@ pub async fn run_streaming(
     if !bypass_cache {
         if let Some(cached) = cache.lookup(&hash) {
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+            counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
+                .increment(1);
             let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
 
             let sse = synthesize_sse_from_cached(&cached);
@@ -319,6 +348,7 @@ pub async fn run_streaming(
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
+                    counter!("velox_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
                     let _ = db::cache::record_hit(&pool, &hit_hash, tokens, Decimal::ZERO).await;
                     let sse = synthesize_sse_from_cached(&cached);
                     return Ok((sse, CacheHit::Semantic(score)));
@@ -430,8 +460,17 @@ pub async fn run_streaming(
                         drop(tx);
 
                         let latency_ms = wall_start.elapsed().as_millis() as i32;
+                        let elapsed_secs = wall_start.elapsed().as_secs_f64();
                         let total_tokens = prompt_tokens + completion_tokens;
 
+                        // Record streaming metrics
+                        counter!("velox_requests_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "status" => "success", "cache_type" => "none").increment(1);
+                        histogram!("velox_request_duration_seconds", "provider" => provider_name.to_string(), "model" => final_model.clone()).record(elapsed_secs);
+                        counter!("velox_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "prompt").increment(prompt_tokens as u64);
+                        counter!("velox_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "completion").increment(completion_tokens as u64);
+
+                        let provider_for_metrics = provider_name.to_string();
+                        let model_for_metrics = final_model.clone();
                         tokio::spawn(async move {
                             let cost =
                                 db::requests::find_pricing(&pool, provider_name, &final_model)
@@ -446,6 +485,15 @@ pub async fn run_streaming(
                                             output_price,
                                         )
                                     });
+
+                            // Record cost metrics in async block
+                            if let Some(cost_value) = cost {
+                                if cost_value > Decimal::ZERO {
+                                    let cost_microdollars =
+                                        (cost_value.to_f64().unwrap_or(0.0) * 1_000_000.0) as u64;
+                                    counter!("velox_cost_usd_total", "provider" => provider_for_metrics.clone(), "model" => model_for_metrics.clone()).increment(cost_microdollars);
+                                }
+                            }
 
                             let _ = db::requests::insert_request(
                                 &pool,
