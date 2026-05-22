@@ -75,6 +75,8 @@ pub struct Config {
     pub gemini_api_key: String,
     #[serde(default)]
     pub groq_api_key: String,
+    #[serde(default)]
+    pub deepseek_api_key: String,
 
     // ── Rate limiting & reliability (Phase 3) ────────────────────────────────
     /// Sliding window size in seconds for per-key rate limiting.

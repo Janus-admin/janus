@@ -7,6 +7,7 @@ use thiserror::Error;
 
 pub mod anthropic;
 pub mod bedrock;
+pub mod deepseek;
 pub mod gemini;
 pub mod groq;
 pub mod openai;

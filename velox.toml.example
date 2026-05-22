@@ -112,6 +112,10 @@ gemini_api_key = ""
 # Can also be set via GROQ_API_KEY environment variable.
 groq_api_key = ""
 
+# DeepSeek API key. Leave empty to disable DeepSeek provider.
+# Can also be set via DEEPSEEK_API_KEY environment variable.
+deepseek_api_key = ""
+
 # AWS Bedrock credentials are read from the environment:
 # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
 

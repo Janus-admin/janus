@@ -10,8 +10,8 @@ use velox::{
     metrics,
     middleware::rate_limit::RateLimiter,
     providers::{
-        anthropic::AnthropicProvider, bedrock::BedrockProvider, gemini::GeminiProvider,
-        groq::GroqProvider, openai::OpenAIProvider,
+        anthropic::AnthropicProvider, bedrock::BedrockProvider, deepseek::DeepSeekProvider,
+        gemini::GeminiProvider, groq::GroqProvider, openai::OpenAIProvider,
     },
     routes::create_router,
     state::AppState,
@@ -78,6 +78,14 @@ async fn main() -> anyhow::Result<()> {
     if !config.groq_api_key.is_empty() {
         providers.push(Arc::new(GroqProvider::new(config.groq_api_key.clone(), 50)));
         tracing::info!("Groq provider enabled");
+    }
+
+    if !config.deepseek_api_key.is_empty() {
+        providers.push(Arc::new(DeepSeekProvider::new(
+            config.deepseek_api_key.clone(),
+            60,
+        )));
+        tracing::info!("DeepSeek provider enabled");
     }
 
     // ── Build in-memory API key cache ─────────────────────────────────────────
