@@ -115,45 +115,7 @@ impl Provider for GeminiProvider {
             .await
             .map_err(|e| ProviderError::ParseError(format!("Invalid response: {}", e)))?;
 
-        // Parse Gemini response and convert to OpenAI format
-        let content = json["candidates"]
-            .get(0)
-            .and_then(|c| c["content"]["parts"].get(0))
-            .and_then(|p| p["text"].as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let completion_tokens = json["usageMetadata"]
-            .get("candidatesTokenCount")
-            .and_then(|t| t.as_u64())
-            .unwrap_or(0) as u32;
-
-        let prompt_tokens = json["usageMetadata"]
-            .get("promptTokenCount")
-            .and_then(|t| t.as_u64())
-            .unwrap_or(0) as u32;
-
-        Ok(ChatCompletionResponse {
-            id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
-            object: "chat.completion".to_string(),
-            created: chrono::Utc::now().timestamp() as u64,
-            model: request.model.clone(),
-            choices: vec![ChatChoice {
-                index: 0,
-                message: ChatMessage {
-                    role: "assistant".to_string(),
-                    content: serde_json::Value::String(content),
-                    name: None,
-                },
-                finish_reason: Some("stop".to_string()),
-                logprobs: None,
-            }],
-            usage: UsageData {
-                prompt_tokens,
-                completion_tokens,
-                total_tokens: prompt_tokens + completion_tokens,
-            },
-        })
+        Ok(parse_gemini_response(&json, &request.model))
     }
 
     async fn chat_completion_stream(
@@ -186,5 +148,183 @@ impl Provider for GeminiProvider {
             Ok(resp) if resp.status() == StatusCode::TOO_MANY_REQUESTS => HealthStatus::Degraded,
             _ => HealthStatus::Down,
         }
+    }
+}
+
+/// Translate a Gemini `generateContent` JSON response into our OpenAI-shaped
+/// `ChatCompletionResponse`. Missing fields fall back to empty/zero — Gemini
+/// occasionally omits `usageMetadata` for short replies, and content parts can
+/// be absent for safety-filtered responses.
+fn parse_gemini_response(json: &serde_json::Value, model: &str) -> ChatCompletionResponse {
+    let content = json["candidates"]
+        .get(0)
+        .and_then(|c| c["content"]["parts"].get(0))
+        .and_then(|p| p["text"].as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let completion_tokens = json["usageMetadata"]
+        .get("candidatesTokenCount")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0) as u32;
+
+    let prompt_tokens = json["usageMetadata"]
+        .get("promptTokenCount")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0) as u32;
+
+    ChatCompletionResponse {
+        id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+        object: "chat.completion".to_string(),
+        created: chrono::Utc::now().timestamp() as u64,
+        model: model.to_string(),
+        choices: vec![ChatChoice {
+            index: 0,
+            message: ChatMessage {
+                role: "assistant".to_string(),
+                content: serde_json::Value::String(content),
+                name: None,
+            },
+            finish_reason: Some("stop".to_string()),
+            logprobs: None,
+        }],
+        usage: UsageData {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens: prompt_tokens + completion_tokens,
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Golden response captured from a real Gemini `generateContent` call.
+    /// Validates the happy path: content extraction + token counts + role mapping.
+    #[test]
+    fn parses_typical_gemini_response() {
+        let body = json!({
+            "candidates": [{
+                "content": {
+                    "role": "model",
+                    "parts": [{ "text": "Hello! How can I help you today?" }]
+                },
+                "finishReason": "STOP",
+                "index": 0
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 8,
+                "candidatesTokenCount": 9,
+                "totalTokenCount": 17
+            }
+        });
+
+        let resp = parse_gemini_response(&body, "gemini-1.5-flash");
+
+        assert_eq!(resp.model, "gemini-1.5-flash");
+        assert_eq!(resp.choices.len(), 1);
+        assert_eq!(resp.choices[0].message.role, "assistant");
+        assert_eq!(
+            resp.choices[0].message.content.as_str().unwrap(),
+            "Hello! How can I help you today?"
+        );
+        assert_eq!(resp.choices[0].finish_reason.as_deref(), Some("stop"));
+        assert_eq!(resp.usage.prompt_tokens, 8);
+        assert_eq!(resp.usage.completion_tokens, 9);
+        assert_eq!(resp.usage.total_tokens, 17);
+    }
+
+    /// Safety-filtered responses arrive with no `parts`. We must not panic;
+    /// content becomes empty string, tokens still parse from usageMetadata.
+    #[test]
+    fn handles_response_with_no_content_parts() {
+        let body = json!({
+            "candidates": [{
+                "content": { "role": "model" },
+                "finishReason": "SAFETY"
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 5,
+                "candidatesTokenCount": 0,
+                "totalTokenCount": 5
+            }
+        });
+
+        let resp = parse_gemini_response(&body, "gemini-1.5-pro");
+        assert_eq!(resp.choices[0].message.content.as_str().unwrap(), "");
+        assert_eq!(resp.usage.prompt_tokens, 5);
+        assert_eq!(resp.usage.completion_tokens, 0);
+    }
+
+    /// Short replies sometimes omit `usageMetadata` entirely. Token counts
+    /// fall back to 0 — the gateway will still log the request, just without cost.
+    #[test]
+    fn handles_response_missing_usage_metadata() {
+        let body = json!({
+            "candidates": [{
+                "content": { "role": "model", "parts": [{ "text": "ok" }] },
+                "finishReason": "STOP"
+            }]
+        });
+
+        let resp = parse_gemini_response(&body, "gemini-1.5-flash");
+        assert_eq!(resp.choices[0].message.content.as_str().unwrap(), "ok");
+        assert_eq!(resp.usage.prompt_tokens, 0);
+        assert_eq!(resp.usage.completion_tokens, 0);
+        assert_eq!(resp.usage.total_tokens, 0);
+    }
+
+    /// Verifies the OpenAI → Gemini request translation: role rewrite
+    /// (`assistant` → `model`), content unwrapping, and generationConfig defaults.
+    #[test]
+    fn builds_gemini_request_with_role_translation() {
+        let provider = GeminiProvider::new("test-key".to_string(), 40);
+        let request = ChatCompletionRequest {
+            model: "gemini-1.5-flash".to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: json!("Hi"),
+                    name: None,
+                },
+                ChatMessage {
+                    role: "assistant".to_string(),
+                    content: json!("Hello!"),
+                    name: None,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: json!("How are you?"),
+                    name: None,
+                },
+            ],
+            max_tokens: Some(512),
+            temperature: Some(0.7),
+            top_p: None,
+            n: None,
+            stream: None,
+            stop: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            seed: None,
+            user: None,
+            logit_bias: None,
+        };
+
+        let payload = provider.build_gemini_request(&request);
+        let contents = payload["contents"].as_array().unwrap();
+
+        assert_eq!(contents.len(), 3);
+        assert_eq!(contents[0]["role"], "user");
+        assert_eq!(contents[0]["parts"][0]["text"], "Hi");
+        // assistant must be rewritten to "model" — Gemini rejects "assistant"
+        assert_eq!(contents[1]["role"], "model");
+        assert_eq!(contents[1]["parts"][0]["text"], "Hello!");
+        assert_eq!(contents[2]["role"], "user");
+
+        assert_eq!(payload["generationConfig"]["maxOutputTokens"], 512);
+        assert_eq!(payload["generationConfig"]["temperature"], 0.7);
     }
 }

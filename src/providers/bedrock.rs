@@ -32,12 +32,7 @@ impl BedrockProvider {
     }
 
     fn resolve_model_id<'a>(&'a self, requested: &'a str) -> &'a str {
-        const PREFIXES: &[&str] = &["anthropic.", "amazon.", "meta.", "mistral.", "cohere."];
-        if PREFIXES.iter().any(|p| requested.starts_with(p)) {
-            requested
-        } else {
-            &self.default_model
-        }
+        resolve_model_id(&self.default_model, requested)
     }
 
     fn build_sdk_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<Message>) {
@@ -72,6 +67,18 @@ impl BedrockProvider {
         }
 
         (system_text, sdk_messages)
+    }
+}
+
+/// Returns `requested` when it carries one of the recognized Bedrock
+/// inference-profile prefixes; otherwise falls back to `default` so callers
+/// passing OpenAI-style model names (e.g. `gpt-4`) still get a valid Bedrock model.
+fn resolve_model_id<'a>(default: &'a str, requested: &'a str) -> &'a str {
+    const PREFIXES: &[&str] = &["anthropic.", "amazon.", "meta.", "mistral.", "cohere."];
+    if PREFIXES.iter().any(|p| requested.starts_with(p)) {
+        requested
+    } else {
+        default
     }
 }
 
@@ -387,5 +394,135 @@ impl Provider for BedrockProvider {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const DEFAULT_MODEL: &str = "anthropic.claude-3-haiku-20240307-v1:0";
+
+    #[test]
+    fn extracts_plain_string_content() {
+        let s = extract_text(&json!("hello world"));
+        assert_eq!(s, "hello world");
+    }
+
+    /// Multi-modal payloads arrive as `[{type:"text", text:"..."}, {type:"image_url", ...}]`.
+    /// Only `text` parts contribute; non-text parts are silently dropped (Bedrock Converse
+    /// text-only path).
+    #[test]
+    fn extracts_text_parts_from_multimodal_array() {
+        let content = json!([
+            { "type": "text", "text": "part one " },
+            { "type": "image_url", "image_url": { "url": "https://..." } },
+            { "type": "text", "text": "part two" }
+        ]);
+        assert_eq!(extract_text(&content), "part one part two");
+    }
+
+    #[test]
+    fn returns_empty_for_empty_array() {
+        assert_eq!(extract_text(&json!([])), "");
+    }
+
+    /// OpenAI's `finish_reason` values are limited; verify our mapping covers
+    /// the ones clients actually branch on (`stop`, `length`, `tool_calls`).
+    #[test]
+    fn maps_stop_reasons_to_openai_finish_reasons() {
+        assert_eq!(stop_reason_to_finish_reason(&StopReason::EndTurn), "stop");
+        assert_eq!(
+            stop_reason_to_finish_reason(&StopReason::StopSequence),
+            "stop"
+        );
+        assert_eq!(
+            stop_reason_to_finish_reason(&StopReason::MaxTokens),
+            "length"
+        );
+        assert_eq!(
+            stop_reason_to_finish_reason(&StopReason::ToolUse),
+            "tool_calls"
+        );
+    }
+
+    #[test]
+    fn recognized_bedrock_prefix_passes_through() {
+        assert_eq!(
+            resolve_model_id(DEFAULT_MODEL, "anthropic.claude-3-sonnet-20240229-v1:0"),
+            "anthropic.claude-3-sonnet-20240229-v1:0"
+        );
+        assert_eq!(
+            resolve_model_id(DEFAULT_MODEL, "meta.llama3-70b-instruct-v1:0"),
+            "meta.llama3-70b-instruct-v1:0"
+        );
+        assert_eq!(
+            resolve_model_id(DEFAULT_MODEL, "amazon.titan-text-express-v1"),
+            "amazon.titan-text-express-v1"
+        );
+    }
+
+    /// OpenAI-style model names (`gpt-4`, `claude-3-opus`) get rewritten to
+    /// the configured default — letting clients call Bedrock without knowing
+    /// the full inference-profile ARN.
+    #[test]
+    fn unrecognized_model_falls_back_to_default() {
+        assert_eq!(resolve_model_id(DEFAULT_MODEL, "gpt-4"), DEFAULT_MODEL);
+        assert_eq!(
+            resolve_model_id(DEFAULT_MODEL, "claude-3-opus"),
+            DEFAULT_MODEL
+        );
+        assert_eq!(resolve_model_id(DEFAULT_MODEL, ""), DEFAULT_MODEL);
+    }
+
+    /// `system` messages must be hoisted out (Bedrock takes them in a separate
+    /// `system` slot, not in the `messages` array). Verify the split is correct.
+    #[test]
+    fn splits_system_message_from_conversation() {
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: json!("You are helpful."),
+                name: None,
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: json!("Hi"),
+                name: None,
+            },
+            ChatMessage {
+                role: "assistant".to_string(),
+                content: json!("Hello!"),
+                name: None,
+            },
+        ];
+
+        let (system, sdk_msgs) = BedrockProvider::build_sdk_messages(&messages);
+        assert_eq!(system.as_deref(), Some("You are helpful."));
+        assert_eq!(sdk_msgs.len(), 2);
+        assert_eq!(sdk_msgs[0].role(), &ConversationRole::User);
+        assert_eq!(sdk_msgs[1].role(), &ConversationRole::Assistant);
+    }
+
+    #[test]
+    fn drops_messages_with_unknown_role() {
+        let messages = vec![
+            ChatMessage {
+                role: "tool".to_string(),
+                content: json!("ignored"),
+                name: None,
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: json!("kept"),
+                name: None,
+            },
+        ];
+
+        let (system, sdk_msgs) = BedrockProvider::build_sdk_messages(&messages);
+        assert!(system.is_none());
+        assert_eq!(sdk_msgs.len(), 1);
+        assert_eq!(sdk_msgs[0].role(), &ConversationRole::User);
     }
 }
