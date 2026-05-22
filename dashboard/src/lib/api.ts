@@ -327,13 +327,12 @@ export const providers = {
 // ── Cache ─────────────────────────────────────────────────────────────────────
 
 export interface CacheStats {
+  total_entries: number;
   exact_entries: number;
   semantic_entries: number;
   total_hits: number;
-  exact_hits: number;
-  semantic_hits: number;
-  tokens_saved: number;
-  cost_saved_usd: number;
+  total_tokens_saved: number;
+  total_cost_saved: number;
 }
 
 export const cache = {

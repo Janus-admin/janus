@@ -24,7 +24,7 @@ pub async fn overview_stats(pool: &PgPool) -> AppResult<serde_json::Value> {
             SUM(total_tokens)::bigint                                          AS tokens,
             COUNT(*) FILTER (WHERE cache_type IS NOT NULL)                     AS cache_hits,
             COUNT(*) FILTER (WHERE status = 'error')                           AS errors,
-            AVG(latency_ms)                                                    AS avg_latency_ms
+            AVG(latency_ms)::float8                                            AS avg_latency_ms
         FROM requests
         WHERE created_at >= NOW() - $1::interval";
 

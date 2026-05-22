@@ -307,11 +307,11 @@ export default function OverviewPage() {
             },
             {
               label: "Tokens saved",
-              value: cacheQ.data.data.tokens_saved.toLocaleString(),
+              value: cacheQ.data.data.total_tokens_saved.toLocaleString(),
             },
             {
               label: "Cost saved",
-              value: fmtCost(cacheQ.data.data.cost_saved_usd),
+              value: fmtCost(cacheQ.data.data.total_cost_saved),
             },
           ].map(({ label, value }) => (
             <Card key={label}>

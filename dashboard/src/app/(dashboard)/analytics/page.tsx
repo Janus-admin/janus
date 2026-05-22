@@ -426,11 +426,11 @@ export default function AnalyticsPage() {
           {cacheStatQ.data && (
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>
-                {cacheStatQ.data.data.tokens_saved.toLocaleString()} tokens saved
+                {cacheStatQ.data.data.total_tokens_saved.toLocaleString()} tokens saved
               </span>
               <span>·</span>
               <span>
-                ${cacheStatQ.data.data.cost_saved_usd.toFixed(4)} cost saved
+                ${cacheStatQ.data.data.total_cost_saved.toFixed(4)} cost saved
               </span>
               <Button
                 variant="outline"
