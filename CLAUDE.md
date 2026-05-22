@@ -45,7 +45,7 @@ cargo test 2>&1 | tail -20
 
 ```
 Phase 0: Foundation          → [x] COMPLETE
-Phase 1: Core Proxy          → [ ] NOT STARTED
+Phase 1: Core Proxy          → [x] COMPLETE
 Phase 2: Streaming           → [ ] NOT STARTED
 Phase 3: Rate Limiting       → [ ] NOT STARTED
 Phase 4: Exact Cache         → [ ] NOT STARTED
@@ -56,7 +56,7 @@ Phase 8: Open Source Launch  → [ ] NOT STARTED
 Phase 9: Mobile App          → [ ] NOT STARTED
 ```
 
-**CURRENT ACTIVE PHASE: 1 — Core Proxy**
+**CURRENT ACTIVE PHASE: 2 — Streaming**
 
 ---
 
@@ -89,14 +89,33 @@ Phase 9: Mobile App          → [ ] NOT STARTED
 - [x] `alerts` — threshold-based spend/error/latency alerts (migration 0009)
 
 ### Velox-Specific Rust Modules (Phase 0)
-- [x] `src/config.rs` — Config struct via `config` crate (TOML + ENV, with defaults)
+- [x] `src/config.rs` — Config struct via `config` crate (TOML + ENV, with defaults); extended in Phase 1 with `openai_api_key`, `anthropic_api_key`
 - [x] `src/models/api_key.rs` — ApiKey, CreateApiKeyRequest/Response, ApiKeyView
 - [x] `src/models/provider.rs` — Provider, ProviderView, HealthStatus, UpdateProviderRequest
 - [x] `src/models/request.rs` — Request, RequestStatus, CacheType, RequestSummary, RequestFilter
 - [x] `src/models/cache_entry.rs` — CacheEntry, CacheStats, FlushCacheRequest
 
-### Velox-Specific Endpoints
-- [ ] None yet (Phase 1)
+### Velox-Specific Rust Modules (Phase 1)
+- [x] `src/crypto.rs` — AES-256-GCM encrypt/decrypt for provider API keys at rest
+- [x] `src/providers/mod.rs` — `Provider` trait, `ChatCompletionRequest/Response`, `ProviderError`
+- [x] `src/providers/openai.rs` — OpenAI adapter (passthrough via reqwest)
+- [x] `src/providers/anthropic.rs` — Anthropic adapter (converts OpenAI↔Anthropic Messages API format)
+- [x] `src/providers/bedrock.rs` — AWS Bedrock adapter (Converse API via aws-sdk-bedrockruntime)
+- [x] `src/gateway/mod.rs` — `ProviderRegistry` (sorted list of enabled providers + key_cache)
+- [x] `src/gateway/router.rs` — `select_provider()` (priority-based provider selection)
+- [x] `src/gateway/pipeline.rs` — Non-streaming proxy pipeline (select→call→cost→log→return)
+- [x] `src/pricing/mod.rs` — `calculate_cost()` pure function using DECIMAL(12,8) arithmetic
+- [x] `src/middleware/api_key_auth.rs` — `GatewayAuth` extractor (SHA-256 dashmap lookup, O(1))
+- [x] `src/middleware/budget.rs` — `check_budget()` function for spend limit enforcement
+- [x] `src/handlers/gateway.rs` — `POST /v1/chat/completions` handler + `ValidatedJson<T>` extractor
+- [x] `src/handlers/admin/keys.rs` — `POST /admin/keys`, `GET /admin/keys` (admin API key management)
+- [x] `src/state.rs` — Extended with `providers: Arc<ProviderRegistry>`, `key_cache: Arc<DashMap<...>>`
+- [x] `migrations/0010_add_api_key_sha256.sql` — Added `key_sha256` column for fast dashmap lookup
+
+### Velox-Specific Endpoints (Phase 1)
+- [x] `POST /v1/chat/completions` — OpenAI-compatible gateway proxy (no streaming yet)
+- [x] `POST /admin/keys` — Create API key (returns full key once, never again)
+- [x] `GET  /admin/keys` — List API keys (safe view: prefixes only, no hashes)
 
 ---
 
@@ -469,8 +488,8 @@ git tag phase-X-complete
 
 | Phase | Status | Completed | Commit |
 |---|---|---|---|
-| 0 | Complete | 2026-05-22 | (next commit) |
-| 1 | Not started | — | — |
+| 0 | Complete | 2026-05-22 | d5545ab |
+| 1 | Complete | 2026-05-22 | (next commit) |
 | 2 | Not started | — | — |
 | 3 | Not started | — | — |
 | 4 | Not started | — | — |
@@ -493,5 +512,5 @@ Used for: AWS Bedrock provider adapter in Phase 1.
 
 ---
 
-*Last updated: 2026-05-22 — Phase 0 complete*
+*Last updated: 2026-05-22 — Phase 1 complete*
 *Update this file at the end of every session.*

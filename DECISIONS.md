@@ -387,6 +387,7 @@ async-trait = "0.1"
 futures = "0.3"
 futures-util = "0.3"
 bytes = "1"
+rand = "0.8"      # secure random key generation (48-char vx-sk- suffix)
 ```
 
 ### Phase 2

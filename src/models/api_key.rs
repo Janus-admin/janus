@@ -15,6 +15,9 @@ pub struct ApiKey {
     pub id: Uuid,
     pub name: String,
     pub key_hash: String,
+    /// SHA-256 hex of the full key — used for dashmap lookup (never exposed via API).
+    #[serde(skip)]
+    pub key_sha256: Option<String>,
     pub key_prefix: String,
     pub workspace_id: Option<Uuid>,
 

@@ -29,18 +29,19 @@ config = "0.14"
 clap = { version = "4", features = ["derive"] }
 rust_decimal = { version = "1", features = ["db-postgres"] }
 
-# ─── Phase 1: Core Proxy (uncomment when starting Phase 1) ────────────────────
-# reqwest = { version = "0.12", features = ["json", "stream"] }
-# dashmap = "6"
-# sha2 = "0.10"
-# aes-gcm = "0.10"
-# tiktoken-rs = "0.6"
-# aws-config = { version = "1", features = ["behavior-version-latest"] }
-# aws-sdk-bedrockruntime = "1"
-# async-trait = "0.1"
-# futures = "0.3"
-# futures-util = "0.3"
-# bytes = "1"
+# ─── Phase 1: Core Proxy ──────────────────────────────────────────────────────
+reqwest = { version = "0.12", features = ["json", "stream"] }
+dashmap = "6"
+sha2 = "0.10"
+aes-gcm = "0.10"
+tiktoken-rs = "0.6"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-bedrockruntime = "1"
+async-trait = "0.1"
+futures = "0.3"
+futures-util = "0.3"
+bytes = "1"
+rand = "0.8"
 
 # ─── Phase 2: Streaming (uncomment when starting Phase 2) ─────────────────────
 # eventsource-stream = "0.2"

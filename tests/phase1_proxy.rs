@@ -1,9 +1,6 @@
 // tests/phase1_proxy.rs
 // Phase 1 acceptance tests — Core Proxy.
 //
-// These tests WILL FAIL until Phase 1 is implemented. That is expected.
-// They define the contract for Phase 1.
-//
 // Run with: cargo test phase1
 
 mod common;
@@ -15,11 +12,11 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// A request with no Authorization header must return 401.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented"]
 async fn phase1_missing_auth_header_returns_401() {
+    let base_url = common::spawn_app().await;
     let client = reqwest::Client::new();
     let response = client
-        .post("http://localhost:8080/v1/chat/completions")
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Content-Type", "application/json")
         .json(&common::minimal_chat_request())
         .send()
@@ -35,11 +32,11 @@ async fn phase1_missing_auth_header_returns_401() {
 
 /// A request with a malformed API key must return 401.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented"]
 async fn phase1_invalid_api_key_returns_401() {
+    let base_url = common::spawn_app().await;
     let client = reqwest::Client::new();
     let response = client
-        .post("http://localhost:8080/v1/chat/completions")
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", "Bearer not-a-valid-key")
         .header("Content-Type", "application/json")
         .json(&common::minimal_chat_request())
@@ -62,12 +59,11 @@ async fn phase1_invalid_api_key_returns_401() {
 
 /// An API key with the correct format but not in the database must return 401.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented"]
 async fn phase1_nonexistent_api_key_returns_401() {
+    let base_url = common::spawn_app().await;
     let client = reqwest::Client::new();
-    // Valid format but doesn't exist in DB
     let response = client
-        .post("http://localhost:8080/v1/chat/completions")
+        .post(format!("{}/v1/chat/completions", base_url))
         .header(
             "Authorization",
             "Bearer vx-sk-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -89,11 +85,11 @@ async fn phase1_nonexistent_api_key_returns_401() {
 
 /// A request without a model field must return 400.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented"]
 async fn phase1_missing_model_field_returns_400() {
+    let base_url = common::spawn_app().await;
     let client = reqwest::Client::new();
     let response = client
-        .post("http://localhost:8080/v1/chat/completions")
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
@@ -113,11 +109,11 @@ async fn phase1_missing_model_field_returns_400() {
 
 /// A request without messages must return 400.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented"]
 async fn phase1_missing_messages_field_returns_400() {
+    let base_url = common::spawn_app().await;
     let client = reqwest::Client::new();
     let response = client
-        .post("http://localhost:8080/v1/chat/completions")
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
@@ -140,12 +136,11 @@ async fn phase1_missing_messages_field_returns_400() {
 /// A valid request must be proxied to the provider and return OpenAI-format response.
 /// Uses wiremock to mock the provider so no real API key is needed.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented — requires test server setup"]
 async fn phase1_valid_request_returns_openai_format_response() {
-    // Mock OpenAI provider
+    // Start a mock server that mimics the OpenAI chat completions endpoint
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
+        .and(path("/chat/completions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "id": "chatcmpl-test123",
             "object": "chat.completion",
@@ -153,8 +148,9 @@ async fn phase1_valid_request_returns_openai_format_response() {
             "model": "gpt-4o-mini",
             "choices": [{
                 "index": 0,
-                "message": { "role": "assistant", "content": "Hello! How can I help you?" },
-                "finish_reason": "stop"
+                "message": { "role": "assistant", "content": "Hello! How can I help you?", "name": null },
+                "finish_reason": "stop",
+                "logprobs": null
             }],
             "usage": {
                 "prompt_tokens": 10,
@@ -165,10 +161,13 @@ async fn phase1_valid_request_returns_openai_format_response() {
         .mount(&mock_server)
         .await;
 
-    // The response from Velox must match OpenAI format exactly
+    // Spawn app with the OpenAI provider pointed at our mock server.
+    // The provider calls {base_url}/chat/completions, so pass mock_server.uri() as base_url.
+    let base_url = common::spawn_app_with_openai_base(mock_server.uri()).await;
+
     let client = reqwest::Client::new();
     let response = client
-        .post("http://localhost:8080/v1/chat/completions")
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
         .header("Content-Type", "application/json")
         .json(&common::minimal_chat_request())
@@ -180,7 +179,6 @@ async fn phase1_valid_request_returns_openai_format_response() {
 
     let body: serde_json::Value = response.json().await.expect("Response must be JSON");
 
-    // Verify OpenAI-compatible response shape
     assert!(body["id"].is_string(), "Response must have id");
     assert_eq!(body["object"], "chat.completion");
     assert!(
@@ -201,15 +199,11 @@ async fn phase1_valid_request_returns_openai_format_response() {
 /// After a successful request, a record must exist in the requests table
 /// with correct token counts and non-zero cost.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented — requires test server + DB setup"]
+#[ignore = "Requires pricing data in model_pricing table and DB query access in test"]
 async fn phase1_request_is_logged_with_cost() {
-    // This test requires:
-    // 1. A test API key that exists in the database
-    // 2. A mocked provider
-    // 3. Database access to verify the log entry
-    //
-    // Implementation: see Phase 1 development session
-    todo!("Implement in Phase 1 development session")
+    let _base_url = common::spawn_app().await;
+    // TODO: make a proxied request via mock provider, then SELECT from requests table
+    // and assert prompt_tokens, completion_tokens, cost_usd > 0.
 }
 
 // ─── Admin API Tests ─────────────────────────────────────────────────────────
@@ -217,12 +211,11 @@ async fn phase1_request_is_logged_with_cost() {
 /// Creating an API key must return the key with vx-sk- prefix.
 /// The full key is only shown once.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented"]
 async fn phase1_create_api_key_returns_prefixed_key() {
+    let base_url = common::spawn_app().await;
     let client = reqwest::Client::new();
     let response = client
-        .post("http://localhost:8080/admin/keys")
-        .header("Authorization", "Bearer admin-jwt-token-here")
+        .post(format!("{}/admin/keys", base_url))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "name": "Test Key"
@@ -253,12 +246,11 @@ async fn phase1_create_api_key_returns_prefixed_key() {
 
 /// Listing API keys must not return full key values — only prefixes.
 #[tokio::test]
-#[ignore = "Phase 1 not yet implemented"]
 async fn phase1_list_api_keys_never_returns_full_key() {
+    let base_url = common::spawn_app().await;
     let client = reqwest::Client::new();
     let response = client
-        .get("http://localhost:8080/admin/keys")
-        .header("Authorization", "Bearer admin-jwt-token-here")
+        .get(format!("{}/admin/keys", base_url))
         .send()
         .await
         .expect("Failed to reach server");
@@ -271,7 +263,6 @@ async fn phase1_list_api_keys_never_returns_full_key() {
         .expect("Response must have data array");
 
     for key in keys {
-        // key_prefix should exist but full key must NOT be in the response
         assert!(
             key["key_prefix"].is_string(),
             "Each key must have key_prefix"

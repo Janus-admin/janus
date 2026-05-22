@@ -60,6 +60,12 @@ pub struct Config {
     #[allow(dead_code)] // used in Phase 5 semantic cache similarity gate
     pub semantic_cache_threshold: f64,
 
+    // ── Provider API keys (Phase 1) ───────────────────────────────────────────
+    #[serde(default)]
+    pub openai_api_key: String,
+    #[serde(default)]
+    pub anthropic_api_key: String,
+
     // ── Metrics ───────────────────────────────────────────────────────────────
     #[serde(default = "default_true")]
     #[allow(dead_code)] // used in Phase 7 Prometheus endpoint

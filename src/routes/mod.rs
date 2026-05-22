@@ -16,6 +16,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        // ── Gateway API (OpenAI-compatible) ──────────────────────────────────
+        .route(
+            "/v1/chat/completions",
+            post(handlers::gateway::chat_completions),
+        )
+        // ── Admin API ────────────────────────────────────────────────────────
+        .route("/admin/keys", post(handlers::admin::keys::create_key))
+        .route("/admin/keys", get(handlers::admin::keys::list_keys))
+        // ── Existing routes ──────────────────────────────────────────────────
         .route("/health", get(handlers::health::health_check))
         .route("/api/v1/auth/register", post(handlers::auth::register))
         .route("/api/v1/auth/login", post(handlers::auth::login))

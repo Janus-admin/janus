@@ -1,16 +1,15 @@
-use crate::config::Config;
+use crate::{config::Config, gateway::ProviderRegistry, models::api_key::ApiKey};
+use dashmap::DashMap;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 /// Shared application state threaded through all axum handlers via `Arc<AppState>`.
 ///
-/// Phase 0: db pool + config only.
-/// Phase 1 adds: providers: Arc<ProviderRegistry>
-/// Phase 3 adds: metrics: Arc<MetricsStore>
-/// Phase 4 adds: cache: Arc<CacheEngine>
-///
-/// NOTE: The `pool` field will be renamed to `db` (per CLAUDE.md spec) once Phase 1
-/// allows touching the handler files that reference `state.pool`.
+/// NOTE: The `pool` field will be renamed to `db` once Phase 1 allows touching
+/// `src/handlers/auth.rs` which still references `state.pool`.
 pub struct AppState {
     pub pool: PgPool,
     pub config: Config,
+    pub providers: Arc<ProviderRegistry>,
+    pub key_cache: Arc<DashMap<[u8; 32], ApiKey>>,
 }
