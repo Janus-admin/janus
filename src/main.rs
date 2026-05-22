@@ -160,15 +160,29 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Server listening on {}", addr);
 
-    // Setup graceful shutdown on Ctrl-C
+    // Graceful shutdown on SIGINT (Ctrl-C) or SIGTERM (systemd / Kubernetes).
     let shutdown_signal = async {
-        match tokio::signal::ctrl_c().await {
-            Ok(()) => {
-                tracing::info!("Received shutdown signal, initiating graceful shutdown");
-            }
-            Err(e) => {
-                tracing::error!("Failed to setup signal handler: {}", e);
-            }
+        let ctrl_c = async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("Failed to install Ctrl-C handler");
+        };
+
+        #[cfg(unix)]
+        let sigterm = async {
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("Failed to install SIGTERM handler")
+                .recv()
+                .await;
+        };
+
+        // On non-Unix platforms SIGTERM does not exist; just wait on Ctrl-C.
+        #[cfg(not(unix))]
+        let sigterm = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c  => tracing::info!("Received SIGINT, initiating graceful shutdown"),
+            _ = sigterm => tracing::info!("Received SIGTERM, initiating graceful shutdown"),
         }
     };
 
