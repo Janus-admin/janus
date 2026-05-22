@@ -135,7 +135,22 @@ async fn spawn_app_inner(openai_base_url: Option<String>) -> String {
         expires_at: None,
         last_used_at: None,
     };
-    key_cache.insert(test_key_bytes, test_key_entry);
+    key_cache.insert(test_key_bytes, test_key_entry.clone());
+
+    // Persist the test key into the DB so the FK constraint on requests.api_key_id
+    // is satisfied when the pipeline logs streaming requests.
+    sqlx::query(
+        "INSERT INTO api_keys (id, name, key_hash, key_prefix, is_active, created_at)
+         VALUES ($1, $2, $3, $4, TRUE, NOW())
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(test_key_entry.id)
+    .bind(&test_key_entry.name)
+    .bind(format!("test-hash-{}", test_key_entry.id))
+    .bind(&test_key_entry.key_prefix)
+    .execute(&pool)
+    .await
+    .expect("Failed to insert test API key into DB");
 
     let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
         providers,
