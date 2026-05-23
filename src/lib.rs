@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod cache;
 pub mod config;
 pub mod crypto;

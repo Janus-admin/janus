@@ -1,7 +1,55 @@
 use crate::{errors::AppResult, state::AppState};
 use axum::{extract::State, Json};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
+
+/// Patch payload for PATCH /admin/config.
+/// All fields are optional; only provided fields are updated.
+#[derive(Debug, Deserialize)]
+pub struct PatchConfigRequest {
+    pub log_request_bodies: Option<bool>,
+    pub log_response_bodies: Option<bool>,
+    pub cache_enabled: Option<bool>,
+    pub max_retries: Option<u32>,
+    pub semantic_cache_threshold: Option<f64>,
+}
+
+/// PATCH /admin/config — update runtime-safe config fields.
+///
+/// Secrets and server/db parameters are not patchable; they require a restart.
+pub async fn patch_config(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<PatchConfigRequest>,
+) -> AppResult<Json<Value>> {
+    let mut rc = state.runtime_config.write().await;
+
+    if let Some(v) = body.log_request_bodies {
+        rc.log_request_bodies = v;
+    }
+    if let Some(v) = body.log_response_bodies {
+        rc.log_response_bodies = v;
+    }
+    if let Some(v) = body.cache_enabled {
+        rc.cache_enabled = v;
+    }
+    if let Some(v) = body.max_retries {
+        rc.max_retries = v;
+    }
+    if let Some(v) = body.semantic_cache_threshold {
+        rc.semantic_cache_threshold = v;
+    }
+
+    Ok(Json(json!({
+        "data": {
+            "log_request_bodies":      rc.log_request_bodies,
+            "log_response_bodies":     rc.log_response_bodies,
+            "cache_enabled":           rc.cache_enabled,
+            "max_retries":             rc.max_retries,
+            "semantic_cache_threshold": rc.semantic_cache_threshold,
+        }
+    })))
+}
 
 /// GET /admin/config — return the current runtime configuration (safe fields only).
 ///
@@ -9,6 +57,7 @@ use std::sync::Arc;
 /// This is read-only in Phase 6. Runtime mutation will be added in Phase 7.
 pub async fn get_config(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
     let c = &state.config;
+    let rc = state.runtime_config.read().await;
     Ok(Json(json!({
         "data": {
             // Server
@@ -22,22 +71,22 @@ pub async fn get_config(State(state): State<Arc<AppState>>) -> AppResult<Json<Va
             // Auth
             "jwt_expiration_hours":    c.jwt_expiration_hours,
 
-            // Logging
+            // Logging (live values from runtime_config)
             "log_level":               c.log_level,
-            "log_request_bodies":      c.log_request_bodies,
-            "log_response_bodies":     c.log_response_bodies,
+            "log_request_bodies":      rc.log_request_bodies,
+            "log_response_bodies":     rc.log_response_bodies,
 
-            // Cache
-            "cache_enabled":               c.cache_enabled,
+            // Cache (live values from runtime_config)
+            "cache_enabled":               rc.cache_enabled,
             "cache_ttl_seconds":           c.cache_ttl_seconds,
             "cache_max_entries":           c.cache_max_entries,
-            "semantic_cache_threshold":    c.semantic_cache_threshold,
+            "semantic_cache_threshold":    rc.semantic_cache_threshold,
             "embedding_model_path":        c.embedding_model_path,
             "embedding_tokenizer_path":    c.embedding_tokenizer_path,
 
-            // Rate limiting
+            // Rate limiting (live value from runtime_config)
             "rate_limit_window_secs": c.rate_limit_window_secs,
-            "max_retries":            c.max_retries,
+            "max_retries":            rc.max_retries,
 
             // Metrics
             "prometheus_enabled": c.prometheus_enabled,

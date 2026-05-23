@@ -133,6 +133,31 @@ fn default_max_retries() -> u32 {
     1
 }
 
+/// Runtime-mutable subset of Config.
+///
+/// These fields can be toggled via `PATCH /admin/config` without restart.
+/// Stored separately in `AppState` behind an `Arc<tokio::sync::RwLock<>>`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RuntimeConfig {
+    pub log_request_bodies: bool,
+    pub log_response_bodies: bool,
+    pub cache_enabled: bool,
+    pub max_retries: u32,
+    pub semantic_cache_threshold: f64,
+}
+
+impl From<&Config> for RuntimeConfig {
+    fn from(c: &Config) -> Self {
+        Self {
+            log_request_bodies: c.log_request_bodies,
+            log_response_bodies: c.log_response_bodies,
+            cache_enabled: c.cache_enabled,
+            max_retries: c.max_retries,
+            semantic_cache_threshold: c.semantic_cache_threshold,
+        }
+    }
+}
+
 impl Config {
     /// Load configuration from velox.toml (optional) then environment variables.
     ///

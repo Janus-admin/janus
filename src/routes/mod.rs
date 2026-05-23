@@ -22,6 +22,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/v1/chat/completions",
             post(handlers::gateway::chat_completions),
         )
+        .route("/v1/models", get(handlers::gateway::list_models))
         .layer(RequestBodyLimitLayer::new(1024 * 1024)); // 1MB
 
     Router::new()
@@ -36,6 +37,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/admin/requests",
             get(handlers::admin::requests::list_requests),
+        )
+        .route(
+            "/admin/requests/export",
+            get(handlers::admin::requests::export_requests),
         )
         .route(
             "/admin/requests/:id",
@@ -74,10 +79,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // ── Admin — Cache ────────────────────────────────────────────────────
         .route("/admin/cache/stats", get(handlers::admin::cache::get_stats))
         .route("/admin/cache", delete(handlers::admin::cache::flush_cache))
+        .route(
+            "/admin/cache/entries/:id",
+            delete(handlers::admin::cache::delete_entry),
+        )
         // ── Admin — Config ───────────────────────────────────────────────────
         .route(
             "/admin/config",
-            get(handlers::admin::velox_config::get_config),
+            get(handlers::admin::velox_config::get_config)
+                .patch(handlers::admin::velox_config::patch_config),
         )
         // ── Admin — Live Stream (WebSocket) ──────────────────────────────────
         .route(

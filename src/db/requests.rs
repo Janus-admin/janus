@@ -1,15 +1,82 @@
 use crate::errors::AppResult;
 use chrono::Utc;
 use rust_decimal::Decimal;
-use sqlx::PgPool;
+use crate::db::DbPool;
 use uuid::Uuid;
 
 // ── Internal row type for pricing lookup ─────────────────────────────────────
 
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[derive(sqlx::FromRow)]
 struct PricingRow {
     input_per_1m_tokens: Decimal,
     output_per_1m_tokens: Decimal,
+}
+
+#[cfg(feature = "sqlite")]
+#[derive(sqlx::FromRow)]
+struct PricingRow {
+    input_per_1m_tokens: String,
+    output_per_1m_tokens: String,
+}
+
+// ── SQLite-only row type for `requests` table ─────────────────────────────────
+
+#[cfg(feature = "sqlite")]
+#[derive(sqlx::FromRow)]
+struct RequestSqliteRow {
+    id: Uuid,
+    api_key_id: Option<Uuid>,
+    workspace_id: Option<Uuid>,
+    provider: String,
+    model: String,
+    base_url: Option<String>,
+    prompt_tokens: Option<i32>,
+    completion_tokens: Option<i32>,
+    total_tokens: Option<i32>,
+    cost_usd: Option<String>,
+    latency_ms: Option<i32>,
+    ttfb_ms: Option<i32>,
+    status: String,
+    cache_type: Option<String>,
+    cache_similarity: Option<String>,
+    http_status: Option<i32>,
+    error_code: Option<String>,
+    error_message: Option<String>,
+    request_body: Option<String>,
+    response_body: Option<String>,
+    stream: bool,
+    created_at: chrono::DateTime<Utc>,
+}
+
+#[cfg(feature = "sqlite")]
+impl From<RequestSqliteRow> for crate::models::request::Request {
+    fn from(r: RequestSqliteRow) -> Self {
+        Self {
+            id: r.id,
+            api_key_id: r.api_key_id,
+            workspace_id: r.workspace_id,
+            provider: r.provider,
+            model: r.model,
+            base_url: r.base_url,
+            prompt_tokens: r.prompt_tokens,
+            completion_tokens: r.completion_tokens,
+            total_tokens: r.total_tokens,
+            cost_usd: r.cost_usd.and_then(|s| s.parse().ok()),
+            latency_ms: r.latency_ms,
+            ttfb_ms: r.ttfb_ms,
+            status: r.status,
+            cache_type: r.cache_type,
+            cache_similarity: r.cache_similarity.and_then(|s| s.parse().ok()),
+            http_status: r.http_status,
+            error_code: r.error_code,
+            error_message: r.error_message,
+            request_body: r.request_body,
+            response_body: r.response_body,
+            stream: r.stream,
+            created_at: r.created_at,
+        }
+    }
 }
 
 // ── Database operations ───────────────────────────────────────────────────────
@@ -18,7 +85,7 @@ struct PricingRow {
 /// Intentionally takes flat params to keep callers readable.
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_request(
-    pool: &PgPool,
+    pool: &DbPool,
     api_key_id: Option<Uuid>,
     workspace_id: Option<Uuid>,
     provider: &str,
@@ -32,6 +99,10 @@ pub async fn insert_request(
     is_stream: bool,
     ttfb_ms: Option<i32>,
 ) -> AppResult<()> {
+    // SQLite stores cost_usd as TEXT; rebind as string in sqlite builds.
+    #[cfg(feature = "sqlite")]
+    let cost_usd = cost_usd.map(|d| d.to_string());
+
     sqlx::query(
         "INSERT INTO requests (
              id, api_key_id, workspace_id, provider, model,
@@ -61,7 +132,7 @@ pub async fn insert_request(
 
 /// List requests with optional filters. Returns (rows, total_count).
 pub async fn list_requests(
-    pool: &PgPool,
+    pool: &DbPool,
     page: i64,
     per_page: i64,
     provider: Option<&str>,
@@ -69,23 +140,16 @@ pub async fn list_requests(
     status: Option<&str>,
     api_key_id: Option<Uuid>,
 ) -> AppResult<(Vec<crate::models::request::Request>, i64)> {
-    // Build dynamic WHERE clauses via CASE-style binding trick compatible with sqlx.
-    // We use a fixed query with nullable parameters instead of dynamic SQL.
-    let total: (i64,) = sqlx::query_as(
+    // PostgreSQL: ::text / ::uuid casts are required so the planner knows the
+    // parameter type when the value is NULL.
+    // SQLite: no cast syntax; plain `$N IS NULL` works for both NULL and non-NULL.
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let (count_sql, list_sql) = (
         "SELECT COUNT(*) FROM requests
          WHERE ($1::text IS NULL OR provider = $1)
            AND ($2::text IS NULL OR model = $2)
            AND ($3::text IS NULL OR status = $3)
            AND ($4::uuid IS NULL OR api_key_id = $4)",
-    )
-    .bind(provider)
-    .bind(model)
-    .bind(status)
-    .bind(api_key_id)
-    .fetch_one(pool)
-    .await?;
-
-    let rows = sqlx::query_as::<_, crate::models::request::Request>(
         "SELECT * FROM requests
          WHERE ($1::text IS NULL OR provider = $1)
            AND ($2::text IS NULL OR model = $2)
@@ -93,36 +157,87 @@ pub async fn list_requests(
            AND ($4::uuid IS NULL OR api_key_id = $4)
          ORDER BY created_at DESC
          LIMIT $5 OFFSET $6",
-    )
-    .bind(provider)
-    .bind(model)
-    .bind(status)
-    .bind(api_key_id)
-    .bind(per_page)
-    .bind((page - 1) * per_page)
-    .fetch_all(pool)
-    .await?;
+    );
+
+    #[cfg(feature = "sqlite")]
+    let (count_sql, list_sql) = (
+        "SELECT COUNT(*) FROM requests
+         WHERE ($1 IS NULL OR provider = $1)
+           AND ($2 IS NULL OR model = $2)
+           AND ($3 IS NULL OR status = $3)
+           AND ($4 IS NULL OR api_key_id = $4)",
+        "SELECT * FROM requests
+         WHERE ($1 IS NULL OR provider = $1)
+           AND ($2 IS NULL OR model = $2)
+           AND ($3 IS NULL OR status = $3)
+           AND ($4 IS NULL OR api_key_id = $4)
+         ORDER BY created_at DESC
+         LIMIT $5 OFFSET $6",
+    );
+
+    let total: (i64,) = sqlx::query_as(count_sql)
+        .bind(provider)
+        .bind(model)
+        .bind(status)
+        .bind(api_key_id)
+        .fetch_one(pool)
+        .await?;
+
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let rows = sqlx::query_as::<_, crate::models::request::Request>(list_sql)
+        .bind(provider)
+        .bind(model)
+        .bind(status)
+        .bind(api_key_id)
+        .bind(per_page)
+        .bind((page - 1) * per_page)
+        .fetch_all(pool)
+        .await?;
+
+    #[cfg(feature = "sqlite")]
+    let rows: Vec<crate::models::request::Request> = sqlx::query_as::<_, RequestSqliteRow>(list_sql)
+        .bind(provider)
+        .bind(model)
+        .bind(status)
+        .bind(api_key_id)
+        .bind(per_page)
+        .bind((page - 1) * per_page)
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
 
     Ok((rows, total.0))
 }
 
 pub async fn get_by_id(
-    pool: &PgPool,
+    pool: &DbPool,
     id: Uuid,
 ) -> AppResult<Option<crate::models::request::Request>> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     let row = sqlx::query_as::<_, crate::models::request::Request>(
         "SELECT * FROM requests WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?;
+
+    #[cfg(feature = "sqlite")]
+    let row: Option<crate::models::request::Request> =
+        sqlx::query_as::<_, RequestSqliteRow>("SELECT * FROM requests WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .map(Into::into);
+
     Ok(row)
 }
 
 /// Look up per-token prices for a provider+model pair.
 /// Returns `(input_per_1m, output_per_1m)` or `None` if not found.
 pub async fn find_pricing(
-    pool: &PgPool,
+    pool: &DbPool,
     provider: &str,
     model: &str,
 ) -> AppResult<Option<(Decimal, Decimal)>> {
@@ -137,5 +252,13 @@ pub async fn find_pricing(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|r| (r.input_per_1m_tokens, r.output_per_1m_tokens)))
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    return Ok(row.map(|r| (r.input_per_1m_tokens, r.output_per_1m_tokens)));
+
+    #[cfg(feature = "sqlite")]
+    return Ok(row.and_then(|r| {
+        let input = r.input_per_1m_tokens.parse::<Decimal>().ok()?;
+        let output = r.output_per_1m_tokens.parse::<Decimal>().ok()?;
+        Some((input, output))
+    }));
 }

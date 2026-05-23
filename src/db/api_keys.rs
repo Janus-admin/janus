@@ -1,8 +1,7 @@
-use crate::{errors::AppResult, models::api_key::ApiKey};
+use crate::{db::DbPool, errors::AppResult, models::api_key::ApiKey};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 // ── Key-generation helpers ────────────────────────────────────────────────────
@@ -48,11 +47,74 @@ pub fn parse_sha256_hex(hex: &str) -> Option<[u8; 32]> {
     Some(bytes)
 }
 
+// ── SQLite-only row type ──────────────────────────────────────────────────────
+//
+// SQLite stores `allowed_models` as TEXT (a JSON array string) because SQLite
+// has no native array type.  We read it into this intermediate row type and
+// convert to ApiKey by deserialising the JSON.
+
+#[cfg(feature = "sqlite")]
+#[derive(sqlx::FromRow)]
+struct ApiKeyRowSqlite {
+    pub id: Uuid,
+    pub name: String,
+    pub key_hash: String,
+    pub key_sha256: Option<String>,
+    pub key_prefix: String,
+    pub workspace_id: Option<Uuid>,
+    // budget columns stored as TEXT in SQLite; read as String, parsed to Decimal in From<>
+    pub budget_limit: Option<String>,
+    pub budget_used: String,
+    pub rate_limit_rpm: Option<i32>,
+    pub rate_limit_tpm: Option<i32>,
+    pub allowed_models: Option<String>, // JSON: '["gpt-4o","claude-3-5-sonnet"]'
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+#[cfg(feature = "sqlite")]
+impl From<ApiKeyRowSqlite> for ApiKey {
+    fn from(row: ApiKeyRowSqlite) -> Self {
+        let allowed_models = row
+            .allowed_models
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok());
+        ApiKey {
+            id: row.id,
+            name: row.name,
+            key_hash: row.key_hash,
+            key_sha256: row.key_sha256,
+            key_prefix: row.key_prefix,
+            workspace_id: row.workspace_id,
+            budget_limit: row.budget_limit.and_then(|s| s.parse().ok()),
+            budget_used: row.budget_used.parse().unwrap_or_default(),
+            rate_limit_rpm: row.rate_limit_rpm,
+            rate_limit_tpm: row.rate_limit_tpm,
+            allowed_models,
+            is_active: row.is_active,
+            created_at: row.created_at,
+            expires_at: row.expires_at,
+            last_used_at: row.last_used_at,
+        }
+    }
+}
+
+// ── Shared helper: encode allowed_models for the active backend ───────────────
+
+#[cfg(feature = "sqlite")]
+fn encode_allowed_models(models: &Option<Vec<String>>) -> Option<String> {
+    models
+        .as_ref()
+        .map(|m| serde_json::to_string(m).unwrap_or_default())
+}
+
 // ── Database operations ───────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
 pub async fn create(
-    pool: &PgPool,
+    pool: &DbPool,
     id: Uuid,
     name: &str,
     key_hash: &str,
@@ -65,67 +127,131 @@ pub async fn create(
     allowed_models: Option<Vec<String>>,
     expires_at: Option<DateTime<Utc>>,
 ) -> AppResult<ApiKey> {
-    let key = sqlx::query_as::<_, ApiKey>(
-        "INSERT INTO api_keys (
-             id, name, key_hash, key_sha256, key_prefix, workspace_id,
-             budget_limit, budget_used, rate_limit_rpm, rate_limit_tpm,
-             allowed_models, is_active, created_at, expires_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,TRUE,$11,$12)
-         RETURNING *",
-    )
-    .bind(id)
-    .bind(name)
-    .bind(key_hash)
-    .bind(key_sha256)
-    .bind(key_prefix)
-    .bind(workspace_id)
-    .bind(budget_limit)
-    .bind(rate_limit_rpm)
-    .bind(rate_limit_tpm)
-    .bind(allowed_models)
-    .bind(Utc::now())
-    .bind(expires_at)
-    .fetch_one(pool)
-    .await?;
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        let key = sqlx::query_as::<_, ApiKey>(
+            "INSERT INTO api_keys (
+                 id, name, key_hash, key_sha256, key_prefix, workspace_id,
+                 budget_limit, budget_used, rate_limit_rpm, rate_limit_tpm,
+                 allowed_models, is_active, created_at, expires_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,TRUE,$11,$12)
+             RETURNING *",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(key_hash)
+        .bind(key_sha256)
+        .bind(key_prefix)
+        .bind(workspace_id)
+        .bind(budget_limit)
+        .bind(rate_limit_rpm)
+        .bind(rate_limit_tpm)
+        .bind(allowed_models)
+        .bind(Utc::now())
+        .bind(expires_at)
+        .fetch_one(pool)
+        .await?;
+        Ok(key)
+    }
 
-    Ok(key)
+    #[cfg(feature = "sqlite")]
+    {
+        let models_json = encode_allowed_models(&allowed_models);
+        let budget_limit_str = budget_limit.map(|d| d.to_string());
+        let row = sqlx::query_as::<_, ApiKeyRowSqlite>(
+            "INSERT INTO api_keys (
+                 id, name, key_hash, key_sha256, key_prefix, workspace_id,
+                 budget_limit, budget_used, rate_limit_rpm, rate_limit_tpm,
+                 allowed_models, is_active, created_at, expires_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,'0',$8,$9,$10,1,$11,$12)
+             RETURNING *",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(key_hash)
+        .bind(key_sha256)
+        .bind(key_prefix)
+        .bind(workspace_id)
+        .bind(budget_limit_str)
+        .bind(rate_limit_rpm)
+        .bind(rate_limit_tpm)
+        .bind(models_json)
+        .bind(Utc::now())
+        .bind(expires_at)
+        .fetch_one(pool)
+        .await?;
+        Ok(row.into())
+    }
 }
 
-pub async fn list(pool: &PgPool, page: i64, per_page: i64) -> AppResult<(Vec<ApiKey>, i64)> {
+pub async fn list(pool: &DbPool, page: i64, per_page: i64) -> AppResult<(Vec<ApiKey>, i64)> {
     let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_keys")
         .fetch_one(pool)
         .await?;
 
-    let keys = sqlx::query_as::<_, ApiKey>(
-        "SELECT * FROM api_keys ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-    )
-    .bind(per_page)
-    .bind((page - 1) * per_page)
-    .fetch_all(pool)
-    .await?;
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        let keys = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+        )
+        .bind(per_page)
+        .bind((page - 1) * per_page)
+        .fetch_all(pool)
+        .await?;
+        Ok((keys, total.0))
+    }
 
-    Ok((keys, total.0))
+    #[cfg(feature = "sqlite")]
+    {
+        let rows = sqlx::query_as::<_, ApiKeyRowSqlite>(
+            "SELECT * FROM api_keys ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+        )
+        .bind(per_page)
+        .bind((page - 1) * per_page)
+        .fetch_all(pool)
+        .await?;
+        Ok((rows.into_iter().map(Into::into).collect(), total.0))
+    }
 }
 
 /// Load every active key together with its sha256 bytes.
 /// Used at startup to populate the in-memory dashmap.
-pub async fn load_all_active(pool: &PgPool) -> AppResult<Vec<([u8; 32], ApiKey)>> {
-    let keys = sqlx::query_as::<_, ApiKey>(
-        "SELECT * FROM api_keys WHERE is_active = TRUE AND key_sha256 IS NOT NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+pub async fn load_all_active(pool: &DbPool) -> AppResult<Vec<([u8; 32], ApiKey)>> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        let keys = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys WHERE is_active = TRUE AND key_sha256 IS NOT NULL",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(keys
+            .into_iter()
+            .filter_map(|k| {
+                let hash = parse_sha256_hex(k.key_sha256.as_deref()?)?;
+                Some((hash, k))
+            })
+            .collect())
+    }
 
-    Ok(keys
-        .into_iter()
-        .filter_map(|k| {
-            let hash = parse_sha256_hex(k.key_sha256.as_deref()?)?;
-            Some((hash, k))
-        })
-        .collect())
+    #[cfg(feature = "sqlite")]
+    {
+        let rows = sqlx::query_as::<_, ApiKeyRowSqlite>(
+            "SELECT * FROM api_keys WHERE is_active = 1 AND key_sha256 IS NOT NULL",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                let hash = parse_sha256_hex(r.key_sha256.as_deref()?)?;
+                let key: ApiKey = r.into();
+                Some((hash, key))
+            })
+            .collect())
+    }
 }
 
-pub async fn update_last_used(pool: &PgPool, id: Uuid) -> AppResult<()> {
+pub async fn update_last_used(pool: &DbPool, id: Uuid) -> AppResult<()> {
     sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
         .bind(Utc::now())
         .bind(id)
@@ -134,21 +260,49 @@ pub async fn update_last_used(pool: &PgPool, id: Uuid) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn add_budget_used(pool: &PgPool, id: Uuid, amount: Decimal) -> AppResult<()> {
+pub async fn add_budget_used(pool: &DbPool, id: Uuid, amount: Decimal) -> AppResult<()> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     sqlx::query("UPDATE api_keys SET budget_used = budget_used + $1 WHERE id = $2")
         .bind(amount)
         .bind(id)
         .execute(pool)
         .await?;
+
+    #[cfg(feature = "sqlite")]
+    {
+        // SQLite stores budget_used as TEXT; use PRINTF to keep decimal notation.
+        let amount_f64 = f64::try_from(amount).unwrap_or(0.0);
+        sqlx::query(
+            "UPDATE api_keys SET budget_used = PRINTF('%.8f', CAST(budget_used AS REAL) + $1) WHERE id = $2",
+        )
+        .bind(amount_f64)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
 }
 
-pub async fn get_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<ApiKey>> {
-    let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
-    Ok(key)
+pub async fn get_by_id(pool: &DbPool, id: Uuid) -> AppResult<Option<ApiKey>> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        Ok(
+            sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?,
+        )
+    }
+
+    #[cfg(feature = "sqlite")]
+    {
+        let row = sqlx::query_as::<_, ApiKeyRowSqlite>("SELECT * FROM api_keys WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+        Ok(row.map(Into::into))
+    }
 }
 
 #[derive(Debug)]
@@ -162,7 +316,7 @@ pub struct UpdateKeyParams {
     pub is_active: Option<bool>,
 }
 
-pub async fn update_key(pool: &PgPool, id: Uuid, p: UpdateKeyParams) -> AppResult<Option<ApiKey>> {
+pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResult<Option<ApiKey>> {
     let existing = match get_by_id(pool, id).await? {
         Some(k) => k,
         None => return Ok(None),
@@ -176,28 +330,54 @@ pub async fn update_key(pool: &PgPool, id: Uuid, p: UpdateKeyParams) -> AppResul
     let expires_at = p.expires_at.unwrap_or(existing.expires_at);
     let is_active = p.is_active.unwrap_or(existing.is_active);
 
-    let key = sqlx::query_as::<_, ApiKey>(
-        "UPDATE api_keys SET
-             name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
-             allowed_models = $5, expires_at = $6, is_active = $7
-         WHERE id = $8
-         RETURNING *",
-    )
-    .bind(name)
-    .bind(budget_limit)
-    .bind(rate_limit_rpm)
-    .bind(rate_limit_tpm)
-    .bind(allowed_models)
-    .bind(expires_at)
-    .bind(is_active)
-    .bind(id)
-    .fetch_optional(pool)
-    .await?;
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        let key = sqlx::query_as::<_, ApiKey>(
+            "UPDATE api_keys SET
+                 name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
+                 allowed_models = $5, expires_at = $6, is_active = $7
+             WHERE id = $8
+             RETURNING *",
+        )
+        .bind(name)
+        .bind(budget_limit)
+        .bind(rate_limit_rpm)
+        .bind(rate_limit_tpm)
+        .bind(allowed_models)
+        .bind(expires_at)
+        .bind(is_active)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(key)
+    }
 
-    Ok(key)
+    #[cfg(feature = "sqlite")]
+    {
+        let models_json = encode_allowed_models(&allowed_models);
+        let budget_limit_str = budget_limit.map(|d| d.to_string());
+        let row = sqlx::query_as::<_, ApiKeyRowSqlite>(
+            "UPDATE api_keys SET
+                 name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
+                 allowed_models = $5, expires_at = $6, is_active = $7
+             WHERE id = $8
+             RETURNING *",
+        )
+        .bind(name)
+        .bind(budget_limit_str)
+        .bind(rate_limit_rpm)
+        .bind(rate_limit_tpm)
+        .bind(models_json)
+        .bind(expires_at)
+        .bind(is_active as i64)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row.map(Into::into))
+    }
 }
 
-pub async fn revoke_key(pool: &PgPool, id: Uuid) -> AppResult<bool> {
+pub async fn revoke_key(pool: &DbPool, id: Uuid) -> AppResult<bool> {
     let result = sqlx::query("UPDATE api_keys SET is_active = FALSE WHERE id = $1")
         .bind(id)
         .execute(pool)

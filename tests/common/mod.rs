@@ -201,16 +201,9 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     // Override the rate-limit window if requested (e.g. 1 s for fast tests).
     config.rate_limit_window_secs = opts.rate_limit_window_secs;
 
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&config.database_url)
+    let pool = velox::db::pool::connect(&config.database_url)
         .await
         .expect("Failed to connect to test database");
-
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
 
     // ── Build provider list ───────────────────────────────────────────────────
     let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
@@ -285,15 +278,19 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     // Persist the test key into the DB so the FK constraint on requests.api_key_id
     // is satisfied when the pipeline logs streaming requests.
+    // Use bound parameters for is_active ($5) and created_at ($6) so this query
+    // works on both PostgreSQL (BOOLEAN / TIMESTAMPTZ) and SQLite (INTEGER / TEXT).
     sqlx::query(
         "INSERT INTO api_keys (id, name, key_hash, key_prefix, is_active, created_at)
-         VALUES ($1, $2, $3, $4, TRUE, NOW())
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT DO NOTHING",
     )
     .bind(test_key_entry.id)
     .bind(&test_key_entry.name)
     .bind(format!("test-hash-{}", test_key_entry.id))
     .bind(&test_key_entry.key_prefix)
+    .bind(true)
+    .bind(Utc::now())
     .execute(&pool)
     .await
     .expect("Failed to insert test API key into DB");
@@ -329,9 +326,14 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
+    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+        velox::config::RuntimeConfig::from(&config),
+    ));
+
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
         config,
+        runtime_config,
         providers: registry,
         key_cache,
         rate_limiter,

@@ -61,9 +61,21 @@ pub async fn chat_completions(
         return e.into_response();
     }
 
-    // Rate limit gate.
+    // Rate limit gate (RPM).
     if let Some(rpm) = api_key.rate_limit_rpm {
         if let Err(retry_after) = state.rate_limiter.check_and_record(api_key.id, rpm) {
+            return AppError::RateLimitExceeded(Some(retry_after)).into_response();
+        }
+    }
+
+    // Token-per-minute gate (TPM) — rough pre-flight estimate.
+    if let Some(tpm) = api_key.rate_limit_tpm {
+        let estimated_tokens = estimate_request_tokens(&request);
+        if let Err(retry_after) =
+            state
+                .rate_limiter
+                .check_and_record_tokens(api_key.id, estimated_tokens, tpm)
+        {
             return AppError::RateLimitExceeded(Some(retry_after)).into_response();
         }
     }
@@ -79,21 +91,27 @@ pub async fn chat_completions(
         }
     }
 
+    // Snapshot mutable config once per request.
+    let rc = state.runtime_config.read().await;
+
     // Bypass cache when disabled globally or when the client sends X-Velox-Cache: false.
-    let bypass_cache = !state.config.cache_enabled
+    let bypass_cache = !rc.cache_enabled
         || headers
             .get("x-velox-cache")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.eq_ignore_ascii_case("false"))
             .unwrap_or(false);
 
-    let max_retries = state.config.max_retries;
+    let max_retries = rc.max_retries;
 
-    if state.config.log_request_bodies {
+    if rc.log_request_bodies {
         if let Ok(raw) = serde_json::to_string(&request) {
             tracing::debug!(body = %pii::scrub(&raw), "gateway request body");
         }
     }
+
+    let log_response_bodies = rc.log_response_bodies;
+    drop(rc); // release read lock before the potentially-long provider call
 
     if request.stream == Some(true) {
         let start = Instant::now();
@@ -164,7 +182,7 @@ pub async fn chat_completions(
                     &cache_hit,
                     false,
                 );
-                if state.config.log_response_bodies {
+                if log_response_bodies {
                     if let Ok(raw) = serde_json::to_string(&resp) {
                         tracing::debug!(body = %raw, "gateway response body");
                     }
@@ -197,6 +215,65 @@ pub async fn chat_completions(
             }
         }
     }
+}
+
+// ── GET /v1/models ────────────────────────────────────────────────────────────
+
+/// GET /v1/models
+///
+/// Returns the union of active models from `model_pricing`, formatted to match
+/// the OpenAI `/v1/models` response shape. No auth required (matches OpenAI behaviour).
+pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    #[derive(serde::Serialize, sqlx::FromRow)]
+    struct ModelRow {
+        provider: String,
+        model_id: String,
+        model_display_name: Option<String>,
+    }
+
+    let rows = sqlx::query_as::<_, ModelRow>(
+        "SELECT provider, model_id, model_display_name
+         FROM model_pricing
+         WHERE is_active = TRUE
+         ORDER BY provider, model_id",
+    )
+    .fetch_all(&state.pool)
+    .await;
+
+    match rows {
+        Err(e) => crate::errors::AppError::Anyhow(anyhow::anyhow!(e)).into_response(),
+        Ok(rows) => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let models: Vec<serde_json::Value> = rows
+                .into_iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "id":      r.model_id,
+                        "object":  "model",
+                        "created": now,
+                        "owned_by": r.provider,
+                    })
+                })
+                .collect();
+            Json(serde_json::json!({ "object": "list", "data": models })).into_response()
+        }
+    }
+}
+
+// ── Token estimation ──────────────────────────────────────────────────────────
+
+/// Rough token count estimate used for pre-flight TPM checks only.
+/// 4 chars ≈ 1 token (standard rule-of-thumb); cheaper than a real tokeniser.
+fn estimate_request_tokens(request: &crate::providers::ChatCompletionRequest) -> i64 {
+    let char_count: usize = request
+        .messages
+        .iter()
+        .map(|m| m.content.as_str().map(str::len).unwrap_or(50))
+        .sum();
+    ((char_count / 4) + 4).max(1) as i64
 }
 
 // ── Broadcast helper ──────────────────────────────────────────────────────────

@@ -1,6 +1,8 @@
 use crate::{db::requests as db_requests, errors::AppResult, state::AppState};
 use axum::{
     extract::{Path, Query, State},
+    http::header,
+    response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
@@ -54,6 +56,69 @@ pub async fn list_requests(
             "total": total,
         }
     })))
+}
+
+/// GET /admin/requests/export — download all matching requests as CSV.
+///
+/// Accepts the same query filters as `list_requests` (provider, model, status,
+/// api_key_id). Returns up to 10 000 rows. Response is `text/csv` with a
+/// `Content-Disposition: attachment` header so browsers trigger a download.
+pub async fn export_requests(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ListRequestsQuery>,
+) -> impl IntoResponse {
+    let (rows, _) = match db_requests::list_requests(
+        &state.pool,
+        1,
+        10_000,
+        params.provider.as_deref(),
+        params.model.as_deref(),
+        params.status.as_deref(),
+        params.api_key_id,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+
+    let mut csv = String::from(
+        "id,provider,model,prompt_tokens,completion_tokens,total_tokens,\
+         cost_usd,latency_ms,ttfb_ms,status,cache_type,stream,created_at\n",
+    );
+
+    for r in &rows {
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+            r.id,
+            r.provider,
+            r.model,
+            r.prompt_tokens.map(|v| v.to_string()).unwrap_or_default(),
+            r.completion_tokens
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            r.total_tokens.map(|v| v.to_string()).unwrap_or_default(),
+            r.cost_usd.map(|v| v.to_string()).unwrap_or_default(),
+            r.latency_ms.map(|v| v.to_string()).unwrap_or_default(),
+            r.ttfb_ms.map(|v| v.to_string()).unwrap_or_default(),
+            r.status,
+            r.cache_type.as_deref().unwrap_or(""),
+            r.stream,
+            r.created_at.to_rfc3339(),
+        ));
+    }
+
+    (
+        [
+            (header::CONTENT_TYPE, "text/csv"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"velox_requests.csv\"",
+            ),
+        ],
+        csv,
+    )
+        .into_response()
 }
 
 /// GET /admin/requests/:id — get a single request by ID.

@@ -80,6 +80,12 @@ impl CacheEngine {
         self.hot.is_empty()
     }
 
+    /// Remove a single entry from the hot layer by its hash.
+    /// Returns `true` if the entry was present and removed.
+    pub fn remove(&self, hash: &str) -> bool {
+        self.hot.remove(hash).is_some()
+    }
+
     // ── Semantic cache operations ─────────────────────────────────────────────
 
     /// Look up the most similar cached embedding. Returns `(hash, score)` if found.
@@ -100,7 +106,7 @@ impl CacheEngine {
     /// (if the semantic index is active) the embedding index.
     ///
     /// Called once at startup so restarts inherit the full in-memory state.
-    pub async fn warm_from_db(&self, pool: &sqlx::PgPool) -> usize {
+    pub async fn warm_from_db(&self, pool: &crate::db::DbPool) -> usize {
         match crate::db::cache::load_all_entries(pool).await {
             Ok(entries) => {
                 let mut loaded = 0usize;

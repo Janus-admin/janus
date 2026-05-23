@@ -1,15 +1,15 @@
 use crate::{errors::AppResult, models::provider::Provider};
 use chrono::Utc;
-use sqlx::PgPool;
+use crate::db::DbPool;
 
-pub async fn list_providers(pool: &PgPool) -> AppResult<Vec<Provider>> {
+pub async fn list_providers(pool: &DbPool) -> AppResult<Vec<Provider>> {
     let rows = sqlx::query_as::<_, Provider>("SELECT * FROM providers ORDER BY priority ASC")
         .fetch_all(pool)
         .await?;
     Ok(rows)
 }
 
-pub async fn get_provider(pool: &PgPool, id: &str) -> AppResult<Option<Provider>> {
+pub async fn get_provider(pool: &DbPool, id: &str) -> AppResult<Option<Provider>> {
     let row = sqlx::query_as::<_, Provider>("SELECT * FROM providers WHERE id = $1")
         .bind(id)
         .fetch_optional(pool)
@@ -27,7 +27,7 @@ pub struct UpdateProviderParams {
 }
 
 pub async fn update_provider(
-    pool: &PgPool,
+    pool: &DbPool,
     id: &str,
     p: UpdateProviderParams,
 ) -> AppResult<Option<Provider>> {
@@ -64,7 +64,7 @@ pub async fn update_provider(
     Ok(row)
 }
 
-pub async fn set_health_status(pool: &PgPool, id: &str, status: &str) -> AppResult<()> {
+pub async fn set_health_status(pool: &DbPool, id: &str, status: &str) -> AppResult<()> {
     sqlx::query("UPDATE providers SET health_status = $1, last_health_check = $2 WHERE id = $3")
         .bind(status)
         .bind(Utc::now())

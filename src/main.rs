@@ -1,11 +1,10 @@
 use dashmap::DashMap;
-use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use velox::{
     cache::{embedding::EmbeddingModel, CacheEngine},
     config::Config,
-    db::api_keys as db_api_keys,
+    db::{self, api_keys as db_api_keys},
     gateway::ProviderRegistry,
     metrics,
     middleware::rate_limit::RateLimiter,
@@ -35,13 +34,8 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load()?;
     let addr = format!("{}:{}", config.host, config.port);
 
-    let pool = PgPoolOptions::new()
-        .max_connections(config.db_pool_max_connections)
-        .connect(&config.database_url)
-        .await?;
-
-    sqlx::migrate!("./migrations").run(&pool).await?;
-    tracing::info!("Database migrations applied");
+    let pool = db::pool::connect(&config.database_url).await?;
+    tracing::info!("Database connected and migrations applied");
 
     // ── Build providers ───────────────────────────────────────────────────────
     let mut providers: Vec<Arc<dyn velox::providers::Provider>> = Vec::new();
@@ -145,15 +139,56 @@ async fn main() -> anyhow::Result<()> {
     // Receivers are created per WebSocket connection in the stream handler.
     let (event_tx, _) = tokio::sync::broadcast::channel(1_000);
 
+    let runtime_config = Arc::new(tokio::sync::RwLock::new(
+        velox::config::RuntimeConfig::from(&config),
+    ));
+
     let state = Arc::new(AppState {
         pool,
         config,
+        runtime_config,
         providers: registry,
         key_cache,
         rate_limiter,
         cache,
         event_tx,
     });
+
+    // ── Background: alert evaluation engine ──────────────────────────────────
+    {
+        let alert_engine = std::sync::Arc::new(velox::alerts::AlertEngine::new(state.pool.clone()));
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                if let Err(e) = alert_engine.evaluate().await {
+                    tracing::warn!("Alert evaluation error: {e}");
+                }
+            }
+        });
+    }
+
+    // ── Background: provider health checks ───────────────────────────────────
+    {
+        let pool = state.pool.clone();
+        let providers_for_hc = state.providers.providers().to_vec();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                for provider in &providers_for_hc {
+                    let status = provider.health_check().await;
+                    let _ = velox::db::providers::set_health_status(
+                        &pool,
+                        provider.name(),
+                        status.as_str(),
+                    )
+                    .await;
+                    tracing::debug!(provider = provider.name(), status = status.as_str(), "Health check");
+                }
+            }
+        });
+    }
 
     let app = create_router(state.clone());
 

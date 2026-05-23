@@ -34,7 +34,7 @@ cargo test 2>&1 | tail -20
 | What it is NOT | A Firebase clone, a BaaS, a database replacement |
 | Primary language | Rust |
 | Web framework | axum 0.7 |
-| Database | PostgreSQL (docker-compose), SQLite support planned for v2 |
+| Database | PostgreSQL (docker-compose) + SQLite (`--no-default-features --features sqlite`) |
 | Repository | /Users/wallex/rust-backend |
 | Roadmap | VELOX_ROADMAP.md |
 | Decisions | DECISIONS.md |
@@ -58,7 +58,9 @@ Phase 9: Mobile App          → [SKIPPED] — out of scope for v1
 
 **VELOX v0.1.0 IS FEATURE-COMPLETE.**
 
-Next work is V2 features. See VELOX_ROADMAP.md §15 for the backlog.
+Next work is V2 features. See **VELOX_V2_ROADMAP.md** for the full v2 plan.
+The v2 roadmap contains: gap analysis, 8 phases, test contracts, migration plan, and dependency plan.
+Always start a v2 session by reading VELOX_V2_ROADMAP.md §13 (Phase Status Tracker).
 
 ---
 

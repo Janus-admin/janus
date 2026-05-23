@@ -1,9 +1,10 @@
+use crate::db::DbPool;
 use crate::errors::{AppError, AppResult};
 use crate::models::user::{UpdateUserRequest, User};
-use sqlx::PgPool;
+use chrono::Utc;
 use uuid::Uuid;
 
-pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
+pub async fn find_by_email(pool: &DbPool, email: &str) -> AppResult<Option<User>> {
     let user = sqlx::query_as::<_, User>(
         "SELECT id, email, password_hash, name, created_at, updated_at
          FROM users WHERE email = $1",
@@ -14,7 +15,7 @@ pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>
     Ok(user)
 }
 
-pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
+pub async fn find_by_id(pool: &DbPool, id: Uuid) -> AppResult<Option<User>> {
     let user = sqlx::query_as::<_, User>(
         "SELECT id, email, password_hash, name, created_at, updated_at
          FROM users WHERE id = $1",
@@ -26,7 +27,7 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
 }
 
 pub async fn create(
-    pool: &PgPool,
+    pool: &DbPool,
     email: &str,
     password_hash: &str,
     name: &str,
@@ -45,17 +46,18 @@ pub async fn create(
     Ok(user)
 }
 
-pub async fn update(pool: &PgPool, id: Uuid, req: &UpdateUserRequest) -> AppResult<User> {
+pub async fn update(pool: &DbPool, id: Uuid, req: &UpdateUserRequest) -> AppResult<User> {
     let user = sqlx::query_as::<_, User>(
         "UPDATE users
          SET name = COALESCE($1, name),
              email = COALESCE($2, email),
-             updated_at = NOW()
-         WHERE id = $3
+             updated_at = $3
+         WHERE id = $4
          RETURNING id, email, password_hash, name, created_at, updated_at",
     )
     .bind(&req.name)
     .bind(&req.email)
+    .bind(Utc::now())
     .bind(id)
     .fetch_optional(pool)
     .await?
@@ -63,7 +65,7 @@ pub async fn update(pool: &PgPool, id: Uuid, req: &UpdateUserRequest) -> AppResu
     Ok(user)
 }
 
-pub async fn delete(pool: &PgPool, id: Uuid) -> AppResult<()> {
+pub async fn delete(pool: &DbPool, id: Uuid) -> AppResult<()> {
     let result = sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)
         .execute(pool)
@@ -75,7 +77,7 @@ pub async fn delete(pool: &PgPool, id: Uuid) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn list(pool: &PgPool, page: i64, per_page: i64) -> AppResult<Vec<User>> {
+pub async fn list(pool: &DbPool, page: i64, per_page: i64) -> AppResult<Vec<User>> {
     let users = sqlx::query_as::<_, User>(
         "SELECT id, email, password_hash, name, created_at, updated_at
          FROM users

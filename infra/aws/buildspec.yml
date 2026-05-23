@@ -1,0 +1,20 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - REPO_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+      - echo "REPO_URI=$REPO_URI"
+
+  build:
+    commands:
+      - echo "Building image (linux/amd64) at $(date)"
+      - docker build --platform linux/amd64 -t $REPO_URI:$IMAGE_TAG .
+
+  post_build:
+    commands:
+      - echo "Pushing image to ECR..."
+      - docker push $REPO_URI:$IMAGE_TAG
+      - echo "Build complete at $(date)"

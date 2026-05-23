@@ -18,7 +18,7 @@ use futures_util::StreamExt;
 use metrics::{counter, histogram};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
-use sqlx::PgPool;
+use crate::db::DbPool;
 use std::{convert::Infallible, sync::Arc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
@@ -60,7 +60,7 @@ fn prompt_text(request: &ChatCompletionRequest) -> String {
 /// Returns `(response, CacheHit)` where `CacheHit` describes how the response
 /// was sourced (live provider, exact cache, or semantic cache).
 pub async fn run(
-    pool: &PgPool,
+    pool: &DbPool,
     registry: &ProviderRegistry,
     request: &ChatCompletionRequest,
     api_key: &ApiKey,
@@ -117,6 +117,18 @@ pub async fn run(
     let mut last_error: Option<AppError> = None;
 
     'provider: for provider in &providers {
+        // Skip providers whose circuit breaker is open.
+        if let Some(cb) = registry.circuit_breakers.get(&provider.priority()) {
+            if cb.is_open() {
+                tracing::debug!(provider = provider.name(), "Circuit open — skipping provider");
+                last_error = Some(AppError::ProviderUnavailable(format!(
+                    "{} circuit open",
+                    provider.name()
+                )));
+                continue 'provider;
+            }
+        }
+
         let mut attempts = 0u32;
 
         loop {
@@ -126,6 +138,9 @@ pub async fn run(
 
             match result {
                 Ok(resp) => {
+                    if let Some(cb) = registry.circuit_breakers.get(&provider.priority()) {
+                        cb.record_success();
+                    }
                     let usage = &resp.usage;
                     let elapsed_secs = start.elapsed().as_secs_f64();
 
@@ -188,7 +203,7 @@ pub async fn run(
                         }
                     }
 
-                    // Fire-and-forget: log request + update budget + last_used.
+                    // Fire-and-forget: log request + update budget + last_used + daily_costs.
                     {
                         let pool = pool.clone();
                         let api_key_id = api_key.id;
@@ -217,6 +232,18 @@ pub async fn run(
                                 None,
                             )
                             .await;
+                            let _ = db::analytics::upsert_daily_cost(
+                                &pool,
+                                Some(api_key_id),
+                                workspace_id,
+                                provider_name,
+                                &model,
+                                pt as i64,
+                                ct as i64,
+                                cost,
+                                false,
+                            )
+                            .await;
                             if let Some(cost_value) = cost {
                                 if cost_value > Decimal::ZERO {
                                     let _ = db::api_keys::add_budget_used(
@@ -241,6 +268,13 @@ pub async fn run(
                         ProviderError::BadRequest(_) => "bad_request",
                         _ => "error",
                     };
+
+                    // Record failure in circuit breaker for retriable errors.
+                    if matches!(&e, ProviderError::Unavailable(_) | ProviderError::Timeout) {
+                        if let Some(cb) = registry.circuit_breakers.get(&provider.priority()) {
+                            cb.record_failure();
+                        }
+                    }
 
                     // Record error metrics
                     counter!("velox_requests_total", "provider" => provider.name(), "model" => request.model.clone(), "status" => status, "cache_type" => "none").increment(1);
@@ -317,7 +351,7 @@ pub async fn run(
 /// Returns `(response, CacheHit)`. On an exact or semantic cache hit the cached
 /// response is synthesized as a valid SSE stream.
 pub async fn run_streaming(
-    pool: PgPool,
+    pool: DbPool,
     registry: Arc<ProviderRegistry>,
     request: ChatCompletionRequest,
     api_key: ApiKey,
@@ -376,6 +410,18 @@ pub async fn run_streaming(
     let mut last_error: Option<AppError> = None;
 
     for provider in &providers {
+        // Skip providers whose circuit breaker is open.
+        if let Some(cb) = registry.circuit_breakers.get(&provider.priority()) {
+            if cb.is_open() {
+                tracing::debug!(provider = provider.name(), "Circuit open — skipping provider (stream)");
+                last_error = Some(AppError::ProviderUnavailable(format!(
+                    "{} circuit open",
+                    provider.name()
+                )));
+                continue;
+            }
+        }
+
         let mut attempts = 0u32;
 
         loop {
@@ -383,6 +429,11 @@ pub async fn run_streaming(
 
             if let Err(ref e) = stream_result {
                 let retriable = matches!(e, ProviderError::Unavailable(_) | ProviderError::Timeout);
+                if retriable {
+                    if let Some(cb) = registry.circuit_breakers.get(&provider.priority()) {
+                        cb.record_failure();
+                    }
+                }
                 if retriable && attempts < max_retries {
                     tracing::warn!(
                         provider = provider.name(),
@@ -401,6 +452,9 @@ pub async fn run_streaming(
                     break;
                 }
                 Ok(provider_stream) => {
+                    if let Some(cb) = registry.circuit_breakers.get(&provider.priority()) {
+                        cb.record_success();
+                    }
                     let provider_name = provider.name();
                     let api_key_id = api_key.id;
                     let workspace_id = api_key.workspace_id;
@@ -518,6 +572,18 @@ pub async fn run_streaming(
                                 ttfb_ms,
                             )
                             .await;
+                            let _ = db::analytics::upsert_daily_cost(
+                                &pool,
+                                Some(api_key_id),
+                                workspace_id,
+                                provider_name,
+                                &final_model,
+                                prompt_tokens as i64,
+                                completion_tokens as i64,
+                                cost,
+                                false,
+                            )
+                            .await;
 
                             if let Some(cost_value) = cost {
                                 if cost_value > Decimal::ZERO {
@@ -547,7 +613,7 @@ pub async fn run_streaming(
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run_with_workspace(
-    pool: &PgPool,
+    pool: &DbPool,
     registry: &ProviderRegistry,
     request: &ChatCompletionRequest,
     api_key: &ApiKey,
