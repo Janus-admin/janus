@@ -543,8 +543,13 @@ async fn v2_2_failed_delivery_recorded_with_error() {
     let pool = test_pool().await;
     let ws_id = default_workspace(&pool).await;
 
-    // Point to a non-existent URL to force delivery failure.
-    let bad_url = "http://127.0.0.1:19999/nonexistent";
+    // Wiremock server returning 500 forces a delivery failure via error_for_status().
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&mock_server)
+        .await;
+    let bad_url = format!("{}/webhook", mock_server.uri());
     let alert_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO alerts (id, workspace_id, name, type, threshold, window_minutes,
@@ -553,7 +558,7 @@ async fn v2_2_failed_delivery_recorded_with_error() {
     )
     .bind(alert_id)
     .bind(ws_id)
-    .bind(bad_url)
+    .bind(&bad_url)
     .execute(&pool)
     .await
     .unwrap();
@@ -597,11 +602,12 @@ async fn v2_2_failed_delivery_recorded_with_error() {
 #[tokio::test]
 async fn v2_2_create_alert_returns_id() {
     let base_url = common::spawn_app().await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
 
     let resp = client
         .post(format!("{}/admin/alerts", base_url))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .json(&serde_json::json!({
             "name": "Test Create Alert",
             "type": "spend_threshold",
@@ -633,11 +639,12 @@ async fn v2_2_create_alert_returns_id() {
 #[tokio::test]
 async fn v2_2_update_alert_changes_threshold() {
     let base_url = common::spawn_app().await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
 
     let create_resp = client
         .post(format!("{}/admin/alerts", base_url))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .json(&serde_json::json!({
             "name": "Update Threshold Test",
             "type": "spend_threshold",
@@ -651,7 +658,7 @@ async fn v2_2_update_alert_changes_threshold() {
 
     let patch_resp = client
         .patch(format!("{}/admin/alerts/{}", base_url, id))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .json(&serde_json::json!({ "threshold": 75.0 }))
         .send()
         .await
@@ -675,11 +682,12 @@ async fn v2_2_update_alert_changes_threshold() {
 #[tokio::test]
 async fn v2_2_delete_alert_removes_it() {
     let base_url = common::spawn_app().await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
 
     let create_resp = client
         .post(format!("{}/admin/alerts", base_url))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .json(&serde_json::json!({
             "name": "Delete Me",
             "type": "error_rate",
@@ -693,7 +701,7 @@ async fn v2_2_delete_alert_removes_it() {
 
     let del_resp = client
         .delete(format!("{}/admin/alerts/{}", base_url, id))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .unwrap();
@@ -701,7 +709,7 @@ async fn v2_2_delete_alert_removes_it() {
 
     let get_resp = client
         .get(format!("{}/admin/alerts/{}", base_url, id))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .unwrap();
@@ -717,11 +725,12 @@ async fn v2_2_test_endpoint_delivers_webhook_regardless_of_threshold() {
         .await;
 
     let base_url = common::spawn_app().await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
 
     let create_resp = client
         .post(format!("{}/admin/alerts", base_url))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .json(&serde_json::json!({
             "name": "Test Endpoint Alert",
             "type": "spend_threshold",
@@ -737,7 +746,7 @@ async fn v2_2_test_endpoint_delivers_webhook_regardless_of_threshold() {
 
     let test_resp = client
         .post(format!("{}/admin/alerts/{}/test", base_url, id))
-        .header("Authorization", common::auth_header())
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .unwrap();

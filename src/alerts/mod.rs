@@ -47,21 +47,28 @@ pub struct AlertEngine {
 
 impl AlertEngine {
     pub fn new(pool: DbPool) -> Self {
-        Self {
-            pool,
-            client: reqwest::Client::new(),
-        }
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build webhook HTTP client");
+        Self { pool, client }
     }
 
     pub async fn evaluate(&self) -> anyhow::Result<()> {
-        let alerts = sqlx::query_as::<_, AlertRow>(
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+        let active_filter = "WHERE is_active = TRUE";
+        #[cfg(feature = "sqlite")]
+        let active_filter = "WHERE is_active = 1";
+
+        let sql = format!(
             "SELECT id, name, type AS alert_type, threshold, window_minutes, last_triggered,
                     webhook_url, webhook_format, webhook_secret
-             FROM alerts
-             WHERE is_active = TRUE",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+             FROM alerts {active_filter}"
+        );
+
+        let alerts = sqlx::query_as::<_, AlertRow>(&sql)
+            .fetch_all(&self.pool)
+            .await?;
 
         for alert in alerts {
             // Cooldown: suppress re-fire within the same window.
@@ -124,19 +131,38 @@ impl AlertEngine {
 
         // Insert history row; delivery outcome updated after the attempt.
         let history_id = Uuid::new_v4();
-        let decimal_value = rust_decimal::Decimal::try_from(value).ok();
 
-        sqlx::query(
-            "INSERT INTO alert_history (id, alert_id, triggered_at, value, message, delivered)
-             VALUES ($1, $2, $3, $4, $5, FALSE)",
-        )
-        .bind(history_id)
-        .bind(alert.id)
-        .bind(now)
-        .bind(decimal_value)
-        .bind(&message)
-        .execute(&self.pool)
-        .await?;
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+        {
+            let decimal_value = rust_decimal::Decimal::try_from(value).ok();
+            sqlx::query(
+                "INSERT INTO alert_history (id, alert_id, triggered_at, value, message, delivered)
+                 VALUES ($1, $2, $3, $4, $5, FALSE)",
+            )
+            .bind(history_id)
+            .bind(alert.id)
+            .bind(now)
+            .bind(decimal_value)
+            .bind(&message)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        #[cfg(feature = "sqlite")]
+        {
+            let value_str = format!("{value:.8}");
+            sqlx::query(
+                "INSERT INTO alert_history (id, alert_id, triggered_at, value, message, delivered)
+                 VALUES ($1, $2, $3, $4, $5, 0)",
+            )
+            .bind(history_id)
+            .bind(alert.id)
+            .bind(now)
+            .bind(value_str)
+            .bind(&message)
+            .execute(&self.pool)
+            .await?;
+        }
 
         // Attempt webhook delivery (if configured).
         let (delivered, delivery_error) = if let Some(ref url) = alert.webhook_url {
@@ -239,8 +265,20 @@ impl AlertEngine {
         threshold: rust_decimal::Decimal,
     ) -> anyhow::Result<Option<f64>> {
         let cutoff = Utc::now() - chrono::Duration::minutes(window_minutes as i64);
+
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
         let row: (Option<i64>, Option<i64>) = sqlx::query_as(
             "SELECT COUNT(*) FILTER (WHERE status = 'error'), COUNT(*)
+             FROM requests WHERE created_at >= $1",
+        )
+        .bind(cutoff)
+        .fetch_one(&self.pool)
+        .await?;
+
+        // SQLite does not support FILTER — use CASE WHEN instead.
+        #[cfg(feature = "sqlite")]
+        let row: (Option<i64>, Option<i64>) = sqlx::query_as(
+            "SELECT SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), COUNT(*)
              FROM requests WHERE created_at >= $1",
         )
         .bind(cutoff)

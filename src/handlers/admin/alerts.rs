@@ -173,7 +173,10 @@ pub async fn test_alert(
         ));
     };
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
     let format = WebhookFormat::parse(&alert.webhook_format);
     let now = chrono::Utc::now();
     let ctx = WebhookContext {

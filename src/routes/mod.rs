@@ -1,4 +1,4 @@
-use crate::{handlers, state::AppState};
+use crate::{handlers, middleware::jwt::AuthUser, state::AppState};
 use axum::{
     routing::{delete, get, patch, post, put},
     Router,
@@ -25,8 +25,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/v1/models", get(handlers::gateway::list_models))
         .layer(RequestBodyLimitLayer::new(1024 * 1024)); // 1MB
 
-    Router::new()
-        .merge(gateway_routes)
+    // Admin routes — all require a valid JWT (dashboard user, not gateway key)
+    let admin_routes = Router::new()
         // ── Admin — Keys ─────────────────────────────────────────────────────
         .route("/admin/keys", post(handlers::admin::keys::create_key))
         .route("/admin/keys", get(handlers::admin::keys::list_keys))
@@ -110,6 +110,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/stream",
             get(handlers::admin::stream::stream_handler),
         )
+        .route_layer(axum::middleware::from_extractor_with_state::<
+            AuthUser,
+            Arc<AppState>,
+        >(state.clone()));
+
+    Router::new()
+        .merge(gateway_routes)
+        .merge(admin_routes)
         // ── Existing routes ──────────────────────────────────────────────────
         .route("/health", get(handlers::health::health_check))
         .route("/metrics", get(handlers::metrics::prometheus_handler))

@@ -213,9 +213,11 @@ async fn phase1_request_is_logged_with_cost() {
 #[tokio::test]
 async fn phase1_create_api_key_returns_prefixed_key() {
     let base_url = common::spawn_app().await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
     let response = client
         .post(format!("{}/admin/keys", base_url))
+        .header("Authorization", &admin_auth)
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "name": "Test Key"
@@ -248,9 +250,11 @@ async fn phase1_create_api_key_returns_prefixed_key() {
 #[tokio::test]
 async fn phase1_list_api_keys_never_returns_full_key() {
     let base_url = common::spawn_app().await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
     let response = client
         .get(format!("{}/admin/keys", base_url))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("Failed to reach server");

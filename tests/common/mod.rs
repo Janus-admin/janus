@@ -28,9 +28,50 @@ pub fn test_api_key() -> &'static str {
     "vx-sk-TestAPIKey00000000000000000000000000000000000000"
 }
 
-/// Authorization header value for the test API key.
+/// Authorization header value for the test API key (gateway routes only).
 pub fn auth_header() -> String {
     format!("Bearer {}", test_api_key())
+}
+
+/// Register a test admin user against the running app, log in, and return a
+/// `Bearer <jwt>` string for use on `/admin/*` routes.
+///
+/// Uses a fixed email so concurrent tests reuse the same account — the register
+/// call is idempotent (ignores 409 Conflict).
+pub async fn admin_auth_header(base_url: &str) -> String {
+    let client = reqwest::Client::new();
+
+    // Register — ignore conflict if already exists from a parallel test.
+    client
+        .post(format!("{}/api/v1/auth/register", base_url))
+        .json(&serde_json::json!({
+            "email": "test-admin@velox.test",
+            "password": "velox-test-password",
+            "name": "Test Admin"
+        }))
+        .send()
+        .await
+        .expect("register request failed");
+
+    // Login — always returns a fresh JWT.
+    let resp = client
+        .post(format!("{}/api/v1/auth/login", base_url))
+        .json(&serde_json::json!({
+            "email": "test-admin@velox.test",
+            "password": "velox-test-password"
+        }))
+        .send()
+        .await
+        .expect("login request failed");
+
+    assert_eq!(resp.status(), 200, "admin login must succeed");
+
+    let body: serde_json::Value = resp.json().await.expect("login response must be JSON");
+    let token = body["token"]
+        .as_str()
+        .expect("login response must contain token");
+
+    format!("Bearer {}", token)
 }
 
 /// Minimal valid OpenAI-format chat completion request body.

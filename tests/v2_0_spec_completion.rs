@@ -34,9 +34,7 @@ async fn v2_0_daily_costs_written_after_successful_request() {
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()))
         .mount(&mock_server)
         .await;
 
@@ -55,10 +53,11 @@ async fn v2_0_daily_costs_written_after_successful_request() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let pool = test_pool().await;
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM daily_costs WHERE date = CURRENT_DATE")
-        .fetch_one(&pool)
-        .await
-        .expect("query failed");
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM daily_costs WHERE date = CURRENT_DATE")
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
 
     assert!(
         count.0 >= 1,
@@ -71,9 +70,7 @@ async fn v2_0_daily_costs_aggregates_multiple_requests_same_day() {
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()))
         .expect(2)
         .mount(&mock_server)
         .await;
@@ -120,9 +117,7 @@ async fn v2_0_daily_costs_cache_hits_counted_separately() {
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()))
         .mount(&mock_server)
         .await;
 
@@ -152,7 +147,13 @@ async fn v2_0_daily_costs_cache_hits_counted_separately() {
         .await
         .expect("second request failed");
 
-    assert_eq!(second.headers().get("x-velox-cache-hit").map(|v| v.to_str().unwrap_or("")), Some("exact"));
+    assert_eq!(
+        second
+            .headers()
+            .get("x-velox-cache-hit")
+            .map(|v| v.to_str().unwrap_or("")),
+        Some("exact")
+    );
     // (daily_costs cache_hit increment for cache hits is intentionally not implemented
     // in the pipeline's cache path — the upsert_daily_cost call only fires on live
     // provider calls. This test confirms the second call returns a cache hit header.)
@@ -202,7 +203,11 @@ async fn v2_0_spend_threshold_alert_fires_when_exceeded() {
     );
 
     // Cleanup
-    sqlx::query("DELETE FROM alerts WHERE id = $1").bind(alert_id).execute(&pool).await.ok();
+    sqlx::query("DELETE FROM alerts WHERE id = $1")
+        .bind(alert_id)
+        .execute(&pool)
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -229,7 +234,10 @@ async fn v2_0_error_rate_alert_evaluates_over_window() {
             "INSERT INTO requests (id, provider, model, status, latency_ms, stream, created_at)
              VALUES ($1, 'openai', 'gpt-4o-mini', 'error', 100, FALSE, NOW())",
         )
-        .bind(Uuid::new_v4()).execute(&pool).await.expect("insert request");
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .expect("insert request");
     }
 
     let engine = velox::alerts::AlertEngine::new(pool.clone());
@@ -237,10 +245,17 @@ async fn v2_0_error_rate_alert_evaluates_over_window() {
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
         sqlx::query_as("SELECT last_triggered FROM alerts WHERE id = $1")
-            .bind(alert_id).fetch_one(&pool).await.expect("fetch");
+            .bind(alert_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
 
     assert!(last_triggered.0.is_some(), "error_rate alert must fire");
-    sqlx::query("DELETE FROM alerts WHERE id = $1").bind(alert_id).execute(&pool).await.ok();
+    sqlx::query("DELETE FROM alerts WHERE id = $1")
+        .bind(alert_id)
+        .execute(&pool)
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -265,17 +280,27 @@ async fn v2_0_latency_spike_alert_fires_on_high_p95() {
         "INSERT INTO requests (id, provider, model, status, latency_ms, stream, created_at)
          VALUES ($1, 'openai', 'gpt-4o-mini', 'success', 9999, FALSE, NOW())",
     )
-    .bind(Uuid::new_v4()).execute(&pool).await.expect("insert request");
+    .bind(Uuid::new_v4())
+    .execute(&pool)
+    .await
+    .expect("insert request");
 
     let engine = velox::alerts::AlertEngine::new(pool.clone());
     engine.evaluate().await.expect("evaluate failed");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
         sqlx::query_as("SELECT last_triggered FROM alerts WHERE id = $1")
-            .bind(alert_id).fetch_one(&pool).await.expect("fetch");
+            .bind(alert_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
 
     assert!(last_triggered.0.is_some(), "latency_spike alert must fire");
-    sqlx::query("DELETE FROM alerts WHERE id = $1").bind(alert_id).execute(&pool).await.ok();
+    sqlx::query("DELETE FROM alerts WHERE id = $1")
+        .bind(alert_id)
+        .execute(&pool)
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -307,12 +332,22 @@ async fn v2_0_alert_last_triggered_updated_when_fired() {
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
         sqlx::query_as("SELECT last_triggered FROM alerts WHERE id = $1")
-            .bind(alert_id).fetch_one(&pool).await.expect("fetch");
+            .bind(alert_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
 
     let ts = last_triggered.0.expect("last_triggered must be set");
-    assert!(ts >= before, "last_triggered must be >= time before evaluate()");
+    assert!(
+        ts >= before,
+        "last_triggered must be >= time before evaluate()"
+    );
 
-    sqlx::query("DELETE FROM alerts WHERE id = $1").bind(alert_id).execute(&pool).await.ok();
+    sqlx::query("DELETE FROM alerts WHERE id = $1")
+        .bind(alert_id)
+        .execute(&pool)
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -343,14 +378,18 @@ async fn v2_0_inactive_alert_does_not_fire() {
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
         sqlx::query_as("SELECT last_triggered FROM alerts WHERE id = $1")
-            .bind(alert_id).fetch_one(&pool).await.expect("fetch");
+            .bind(alert_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
 
-    assert!(
-        last_triggered.0.is_none(),
-        "inactive alert must NOT fire"
-    );
+    assert!(last_triggered.0.is_none(), "inactive alert must NOT fire");
 
-    sqlx::query("DELETE FROM alerts WHERE id = $1").bind(alert_id).execute(&pool).await.ok();
+    sqlx::query("DELETE FROM alerts WHERE id = $1")
+        .bind(alert_id)
+        .execute(&pool)
+        .await
+        .ok();
 }
 
 // ─── Circuit Breaker ──────────────────────────────────────────────────────────
@@ -371,8 +410,11 @@ fn v2_0_circuit_closes_on_successful_half_open_probe() {
     // Use 0-second recovery timeout so is_open() immediately transitions to HalfOpen.
     let cb = velox::gateway::circuit_breaker::CircuitBreaker::new(1, 0);
     cb.record_failure(); // → Open
-    // After 0s timeout, is_open() transitions to HalfOpen and returns false.
-    assert!(!cb.is_open(), "after 0s timeout should transition to HalfOpen (returns false)");
+                         // After 0s timeout, is_open() transitions to HalfOpen and returns false.
+    assert!(
+        !cb.is_open(),
+        "after 0s timeout should transition to HalfOpen (returns false)"
+    );
     // A success while HalfOpen closes the breaker.
     cb.record_success();
     assert!(!cb.is_open(), "after success in HalfOpen, should be Closed");
@@ -382,9 +424,12 @@ fn v2_0_circuit_closes_on_successful_half_open_probe() {
 fn v2_0_circuit_transitions_to_half_open_after_recovery_timeout() {
     let cb = velox::gateway::circuit_breaker::CircuitBreaker::new(1, 0);
     cb.record_failure(); // → Open
-    // With 0s timeout, the first is_open() call should see elapsed >= timeout and move to HalfOpen.
+                         // With 0s timeout, the first is_open() call should see elapsed >= timeout and move to HalfOpen.
     let open = cb.is_open();
-    assert!(!open, "after 0s recovery timeout, is_open() must return false (HalfOpen)");
+    assert!(
+        !open,
+        "after 0s recovery timeout, is_open() must return false (HalfOpen)"
+    );
 }
 
 #[tokio::test]
@@ -403,9 +448,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
 
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()))
         .mount(&secondary)
         .await;
 
@@ -449,24 +492,33 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         "INSERT INTO api_keys (id, name, key_hash, key_prefix, is_active, created_at)
          VALUES ($1, $2, $3, $4, TRUE, NOW()) ON CONFLICT DO NOTHING",
     )
-    .bind(key_entry.id).bind(&key_entry.name)
-    .bind(format!("hash-cb-{}", key_entry.id)).bind(&key_entry.key_prefix)
-    .execute(&pool).await.ok();
+    .bind(key_entry.id)
+    .bind(&key_entry.name)
+    .bind(format!("hash-cb-{}", key_entry.id))
+    .bind(&key_entry.key_prefix)
+    .execute(&pool)
+    .await
+    .ok();
 
     let primary_url = primary.uri();
     let secondary_url = secondary.uri();
 
     let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![
         std::sync::Arc::new(velox::providers::openai::OpenAIProvider::with_base_url(
-            "test-key".into(), primary_url, 1,
+            "test-key".into(),
+            primary_url,
+            1,
         )),
         std::sync::Arc::new(velox::providers::openai::OpenAIProvider::with_base_url(
-            "test-key".into(), secondary_url, 2,
+            "test-key".into(),
+            secondary_url,
+            2,
         )),
     ];
 
     let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
-        providers, key_cache.clone(),
+        providers,
+        key_cache.clone(),
     ));
 
     // Trip the circuit breaker on the primary (priority=1) by recording FAILURE_THRESHOLD failures.
@@ -511,7 +563,11 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         .expect("request failed");
 
     // With the primary circuit open, the secondary should answer 200.
-    assert_eq!(resp.status(), 200, "secondary provider should serve 200 when primary circuit is open");
+    assert_eq!(
+        resp.status(),
+        200,
+        "secondary provider should serve 200 when primary circuit is open"
+    );
 }
 
 // ─── TPM Rate Limiting ────────────────────────────────────────────────────────
@@ -569,21 +625,34 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         .mount(&mock_server)
         .await;
 
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![
-        std::sync::Arc::new(velox::providers::openai::OpenAIProvider::with_base_url(
-            "test-key".into(), mock_server.uri(), 1,
-        )),
-    ];
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(providers, key_cache.clone()));
+    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
+        velox::providers::openai::OpenAIProvider::with_base_url(
+            "test-key".into(),
+            mock_server.uri(),
+            1,
+        ),
+    )];
+    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+        providers,
+        key_cache.clone(),
+    ));
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
         velox::config::RuntimeConfig::from(&config),
     ));
     let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
-    let rate_limiter = velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+    let rate_limiter =
+        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
     let state = std::sync::Arc::new(velox::state::AppState {
-        pool, config, runtime_config, providers: registry, key_cache, rate_limiter, cache, event_tx,
+        pool,
+        config,
+        runtime_config,
+        providers: registry,
+        key_cache,
+        rate_limiter,
+        cache,
+        event_tx,
     });
 
     let app = velox::routes::create_router(state);
@@ -657,6 +726,7 @@ async fn v2_0_export_requests_returns_valid_csv() {
         .await;
 
     let base_url = common::spawn_app_with_openai_base(mock_server.uri()).await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
 
     // Ensure at least one request is in the DB.
@@ -672,6 +742,7 @@ async fn v2_0_export_requests_returns_valid_csv() {
 
     let resp = client
         .get(format!("{}/admin/requests/export", base_url))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("export request failed");
@@ -683,27 +754,38 @@ async fn v2_0_export_requests_returns_valid_csv() {
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert!(content_type.contains("text/csv"), "content-type must be text/csv");
+    assert!(
+        content_type.contains("text/csv"),
+        "content-type must be text/csv"
+    );
 
     let content_disposition = resp
         .headers()
         .get("content-disposition")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert!(content_disposition.contains("attachment"), "must have attachment disposition");
+    assert!(
+        content_disposition.contains("attachment"),
+        "must have attachment disposition"
+    );
 
     let body = resp.text().await.expect("body read failed");
-    assert!(body.contains("id,provider,model"), "CSV must start with header row");
+    assert!(
+        body.contains("id,provider,model"),
+        "CSV must start with header row"
+    );
 }
 
 #[tokio::test]
 async fn v2_0_patch_config_updates_log_request_bodies_flag() {
     let base_url = common::spawn_app().await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
 
     // Confirm current value (default false).
     let before: serde_json::Value = client
         .get(format!("{}/admin/config", base_url))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("get config failed")
@@ -715,6 +797,7 @@ async fn v2_0_patch_config_updates_log_request_bodies_flag() {
     // Patch to true.
     let patch_resp = client
         .patch(format!("{}/admin/config", base_url))
+        .header("Authorization", &admin_auth)
         .json(&serde_json::json!({ "log_request_bodies": true }))
         .send()
         .await
@@ -730,6 +813,7 @@ async fn v2_0_patch_config_updates_log_request_bodies_flag() {
     // GET again to confirm persistence within the same process.
     let get_after: serde_json::Value = client
         .get(format!("{}/admin/config", base_url))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("get config after patch")
@@ -752,6 +836,7 @@ async fn v2_0_delete_cache_entry_removes_from_hot_and_db() {
         .await;
 
     let base_url = common::spawn_app_with_openai_base(mock_server.uri()).await;
+    let admin_auth = common::admin_auth_header(&base_url).await;
     let client = reqwest::Client::new();
 
     // Create a cache entry via a request.
@@ -770,12 +855,11 @@ async fn v2_0_delete_cache_entry_removes_from_hot_and_db() {
 
     // Get the cache entry ID from DB.
     let pool = test_pool().await;
-    let row: Option<(uuid::Uuid,)> = sqlx::query_as(
-        "SELECT id FROM cache_entries ORDER BY created_at DESC LIMIT 1",
-    )
-    .fetch_optional(&pool)
-    .await
-    .expect("query failed");
+    let row: Option<(uuid::Uuid,)> =
+        sqlx::query_as("SELECT id FROM cache_entries ORDER BY created_at DESC LIMIT 1")
+            .fetch_optional(&pool)
+            .await
+            .expect("query failed");
 
     let entry_id = match row {
         Some((id,)) => id,
@@ -788,6 +872,7 @@ async fn v2_0_delete_cache_entry_removes_from_hot_and_db() {
     // Delete via API.
     let del = client
         .delete(format!("{}/admin/cache/entries/{}", base_url, entry_id))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("delete failed");
@@ -797,17 +882,17 @@ async fn v2_0_delete_cache_entry_removes_from_hot_and_db() {
     assert_eq!(body["data"]["deleted"], true);
 
     // Confirm entry is gone from DB.
-    let after: Option<(uuid::Uuid,)> =
-        sqlx::query_as("SELECT id FROM cache_entries WHERE id = $1")
-            .bind(entry_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("query");
+    let after: Option<(uuid::Uuid,)> = sqlx::query_as("SELECT id FROM cache_entries WHERE id = $1")
+        .bind(entry_id)
+        .fetch_optional(&pool)
+        .await
+        .expect("query");
     assert!(after.is_none(), "cache entry must be removed from DB");
 
     // Deleting again should return 404.
     let del2 = client
         .delete(format!("{}/admin/cache/entries/{}", base_url, entry_id))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("second delete failed");
@@ -839,7 +924,10 @@ async fn v2_0_regression_gateway_still_proxies_correctly() {
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.expect("json");
     assert_eq!(body["object"], "chat.completion");
-    assert!(body["choices"].as_array().map(|a| !a.is_empty()).unwrap_or(false));
+    assert!(body["choices"]
+        .as_array()
+        .map(|a| !a.is_empty())
+        .unwrap_or(false));
 }
 
 #[tokio::test]
@@ -876,7 +964,10 @@ async fn v2_0_regression_exact_cache_still_hits() {
         .expect("second request");
 
     assert_eq!(
-        second.headers().get("x-velox-cache-hit").and_then(|v| v.to_str().ok()),
+        second
+            .headers()
+            .get("x-velox-cache-hit")
+            .and_then(|v| v.to_str().ok()),
         Some("exact"),
         "second identical request must return exact cache hit"
     );

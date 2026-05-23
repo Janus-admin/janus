@@ -171,6 +171,7 @@ async fn phase4_cache_stats_show_correct_savings() {
     let (base, mock_server) = common::spawn_app_with_wiremock().await;
     mount_ok(&mock_server).await;
 
+    let admin_auth = common::admin_auth_header(&base).await;
     let client = reqwest::Client::new();
     let body = unique_chat_request();
 
@@ -194,6 +195,7 @@ async fn phase4_cache_stats_show_correct_savings() {
     // Check stats.
     let stats = client
         .get(format!("{}/admin/cache/stats", base))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("stats request must reach server");
@@ -227,6 +229,7 @@ async fn phase4_flush_cache_causes_miss_on_next_request() {
     let (base, mock_server) = common::spawn_app_with_wiremock().await;
     mount_ok(&mock_server).await;
 
+    let admin_auth = common::admin_auth_header(&base).await;
     let client = reqwest::Client::new();
     let body = unique_chat_request();
 
@@ -248,6 +251,7 @@ async fn phase4_flush_cache_causes_miss_on_next_request() {
     // Flush the cache.
     let flush = client
         .delete(format!("{}/admin/cache", base))
+        .header("Authorization", &admin_auth)
         .send()
         .await
         .expect("flush request must reach server");
