@@ -68,6 +68,9 @@ metrics = "0.22"
 metrics-exporter-prometheus = "0.14"
 regex = "1"
 
+# ─── V2-2: Webhook Alerts ─────────────────────────────────────────────────────
+hmac = "0.12"
+
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]
 wiremock = "0.6"

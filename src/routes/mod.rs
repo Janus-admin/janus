@@ -76,6 +76,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/providers/:id/test",
             post(handlers::admin::providers::test_provider),
         )
+        // ── Admin — Alerts ───────────────────────────────────────────────────
+        .route("/admin/alerts", post(handlers::admin::alerts::create_alert))
+        .route("/admin/alerts", get(handlers::admin::alerts::list_alerts))
+        .route("/admin/alerts/:id", get(handlers::admin::alerts::get_alert))
+        .route(
+            "/admin/alerts/:id",
+            patch(handlers::admin::alerts::update_alert),
+        )
+        .route(
+            "/admin/alerts/:id",
+            delete(handlers::admin::alerts::delete_alert),
+        )
+        .route(
+            "/admin/alerts/:id/test",
+            post(handlers::admin::alerts::test_alert),
+        )
         // ── Admin — Cache ────────────────────────────────────────────────────
         .route("/admin/cache/stats", get(handlers::admin::cache::get_stats))
         .route("/admin/cache", delete(handlers::admin::cache::flush_cache))

@@ -1210,7 +1210,7 @@ hmac = "0.12"     # HMAC-SHA256 webhook signature
 |---|---|---|---|
 | V2-0 | Spec Completion | ✅ Complete (2026-05-23) | 0012 |
 | V2-1 | SQLite Support | ✅ Complete (2026-05-23) | (sqlite dir) |
-| V2-2 | Webhook Alerts | ⬜ Not started | 0013 |
+| V2-2 | Webhook Alerts | ✅ Complete (2026-05-23) | 0013 |
 | V2-3 | Extended API Compat | ⬜ Not started | 0014 |
 | V2-4 | Intelligent Routing | ⬜ Not started | 0015 |
 | V2-5 | Prompt Management | ⬜ Not started | 0016 |
