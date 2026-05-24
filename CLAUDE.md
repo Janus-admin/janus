@@ -480,6 +480,12 @@ velox/
     PostgreSQL embeddings at startup via `warm_from_db()`. No snapshot file needed —
     the DB is the source of truth. HNSW indexing is planned for V3-1.
 
+11. **Test function names MUST match the file name convention — use `vX_Y_` not `vXpY_`.**
+    File `tests/v4_0_foundation.rs` → functions named `v4_0_something`, NOT `v4p0_something`.
+    Rule: the dot in the version number is always an underscore `_`, never the letter `p`.
+    This matters because `cargo test v4_0` uses substring matching — if functions say `v4p0_`
+    the filter finds nothing. Always verify: `cargo test v4_0 -- --list` shows your tests.
+
 ---
 
 ## Test Commands (run these to verify health)
