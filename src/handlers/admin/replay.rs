@@ -169,6 +169,13 @@ pub async fn replay_request(
             )
         });
 
+    let cache_hit_str = match cache_hit {
+        crate::cache::CacheHit::None => "none",
+        crate::cache::CacheHit::Exact => "exact",
+        crate::cache::CacheHit::Semantic(_) => "semantic",
+    };
+    let cache_type_opt = if cache_hit_str == "none" { None } else { Some(cache_hit_str) };
+
     // Store the replay record and get the new request ID.
     let request_body_str = serde_json::to_string(&chat_req).ok();
     let new_id = db::requests::insert_request_for_replay(
@@ -185,15 +192,11 @@ pub async fn replay_request(
         request_body_str.as_deref(),
         Some(id),
         false,
+        cache_type_opt,
     )
     .await?;
 
     let _ = provider_name; // suppress warning — used below
-    let cache_hit_str = match cache_hit {
-        crate::cache::CacheHit::None => "none",
-        crate::cache::CacheHit::Exact => "exact",
-        crate::cache::CacheHit::Semantic(_) => "semantic",
-    };
 
     // Build JSON response body.
     let body_val = json!({
@@ -319,18 +322,31 @@ pub async fn playground(
         .map(|p| p.name().to_string())
         .unwrap_or_default();
 
-    let cost = db::requests::find_pricing(&state.pool, &provider_used, &resp.model)
-        .await
-        .ok()
-        .flatten()
-        .map(|(input, output)| {
-            pricing::calculate_cost(
-                resp.usage.prompt_tokens,
-                resp.usage.completion_tokens,
-                input,
-                output,
-            )
-        });
+    // Only charge cost when the provider was actually called.
+    // Cache hits (exact or semantic) cost $0 — the response came from cache.
+    let cost = if matches!(cache_hit, crate::cache::CacheHit::None) {
+        db::requests::find_pricing(&state.pool, &provider_used, &resp.model)
+            .await
+            .ok()
+            .flatten()
+            .map(|(input, output)| {
+                pricing::calculate_cost(
+                    resp.usage.prompt_tokens,
+                    resp.usage.completion_tokens,
+                    input,
+                    output,
+                )
+            })
+    } else {
+        Some(rust_decimal::Decimal::ZERO)
+    };
+
+    let cache_hit_str = match cache_hit {
+        crate::cache::CacheHit::None => "none",
+        crate::cache::CacheHit::Exact => "exact",
+        crate::cache::CacheHit::Semantic(_) => "semantic",
+    };
+    let cache_type_opt = if cache_hit_str == "none" { None } else { Some(cache_hit_str) };
 
     let request_body_str = serde_json::to_string(&chat_req).ok();
     let new_id = db::requests::insert_request_for_replay(
@@ -347,14 +363,9 @@ pub async fn playground(
         request_body_str.as_deref(),
         None,
         true,
+        cache_type_opt,
     )
     .await?;
-
-    let cache_hit_str = match cache_hit {
-        crate::cache::CacheHit::None => "none",
-        crate::cache::CacheHit::Exact => "exact",
-        crate::cache::CacheHit::Semantic(_) => "semantic",
-    };
 
     let cost_str = cost.map(|c| c.to_string());
 

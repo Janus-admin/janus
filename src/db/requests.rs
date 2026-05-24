@@ -354,6 +354,7 @@ pub async fn insert_request_for_replay(
     request_body: Option<&str>,
     replay_of_request_id: Option<Uuid>,
     is_playground: bool,
+    cache_type: Option<&str>,
 ) -> AppResult<Uuid> {
     let id = Uuid::new_v4();
 
@@ -368,8 +369,8 @@ pub async fn insert_request_for_replay(
              id, provider, model,
              prompt_tokens, completion_tokens, total_tokens, cost_usd,
              latency_ms, status, stream,
-             request_body, replay_of_request_id, is_playground, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+             request_body, replay_of_request_id, is_playground, cache_type, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
     )
     .bind(id)
     .bind(provider)
@@ -384,6 +385,7 @@ pub async fn insert_request_for_replay(
     .bind(request_body)
     .bind(replay_of_request_id)
     .bind(is_playground)
+    .bind(cache_type)
     .bind(Utc::now())
     .execute(pool)
     .await?;
@@ -396,8 +398,8 @@ pub async fn insert_request_for_replay(
                  id, provider, model,
                  prompt_tokens, completion_tokens, total_tokens, cost_usd,
                  latency_ms, status, stream,
-                 request_body, replay_of_request_id, is_playground, created_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+                 request_body, replay_of_request_id, is_playground, cache_type, created_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
         )
         .bind(id)
         .bind(provider)
@@ -412,6 +414,7 @@ pub async fn insert_request_for_replay(
         .bind(request_body)
         .bind(replay_id_str)
         .bind(is_playground)
+        .bind(cache_type)
         .bind(Utc::now())
         .execute(pool)
         .await?;
