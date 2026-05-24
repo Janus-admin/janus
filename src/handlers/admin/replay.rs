@@ -148,6 +148,7 @@ pub async fn replay_request(
         cache_ttl_secs,
         false,
         opts.provider.as_deref(),
+        "/admin/replay",
     )
     .await?;
     let latency_ms = start.elapsed().as_millis() as i64;
@@ -174,7 +175,11 @@ pub async fn replay_request(
         crate::cache::CacheHit::Exact => "exact",
         crate::cache::CacheHit::Semantic(_) => "semantic",
     };
-    let cache_type_opt = if cache_hit_str == "none" { None } else { Some(cache_hit_str) };
+    let cache_type_opt = if cache_hit_str == "none" {
+        None
+    } else {
+        Some(cache_hit_str)
+    };
 
     // Store the replay record and get the new request ID.
     let request_body_str = serde_json::to_string(&chat_req).ok();
@@ -308,6 +313,7 @@ pub async fn playground(
         cache_ttl_secs,
         false,
         None,
+        "/admin/playground",
     )
     .await?;
     let latency_ms = start.elapsed().as_millis() as i64;
@@ -346,7 +352,11 @@ pub async fn playground(
         crate::cache::CacheHit::Exact => "exact",
         crate::cache::CacheHit::Semantic(_) => "semantic",
     };
-    let cache_type_opt = if cache_hit_str == "none" { None } else { Some(cache_hit_str) };
+    let cache_type_opt = if cache_hit_str == "none" {
+        None
+    } else {
+        Some(cache_hit_str)
+    };
 
     let request_body_str = serde_json::to_string(&chat_req).ok();
     let new_id = db::requests::insert_request_for_replay(

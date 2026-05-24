@@ -313,6 +313,8 @@ fn v3_1_regression_exact_cache_unaffected() {
                 role: "assistant".to_string(),
                 content: json!("ok"),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             finish_reason: Some("stop".to_string()),
             logprobs: None,

@@ -3,6 +3,7 @@ pub mod dedup;
 pub mod pipeline;
 pub mod router;
 pub mod strategies;
+pub mod tool_extract;
 
 use crate::models::api_key::ApiKey;
 use crate::providers::Provider;

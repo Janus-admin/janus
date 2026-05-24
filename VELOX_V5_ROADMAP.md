@@ -1532,7 +1532,7 @@ toxiproxy_rust = "0.2"   # chaos testing
 
 | Phase | Type | Description | Status | Migration |
 |---|---|---|---|---|
-| V5-0 | Backend | API Surface Expansion (embeddings, images, audio, models, tools) | ⏳ Not started | 0027 |
+| V5-0 | Backend | API Surface Expansion (embeddings, images, audio, models, tools) | ✅ Complete (2026-05-25) | 0027 |
 | V5-1 | Backend + SDKs | SDKs, CLI, OpenAPI | ⏳ Not started | — |
 | V5-2 | Backend + Infra | Deployment & Migration Tooling | ⏳ Not started | — |
 | V5-3a | Backend + Frontend | OIDC + SCIM | ⏳ Not started | 0028 |

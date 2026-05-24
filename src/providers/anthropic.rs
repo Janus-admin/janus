@@ -564,6 +564,8 @@ fn to_openai_response(resp: AnthropicResponse) -> ChatCompletionResponse {
                 role: "assistant".to_string(),
                 content: Value::String(text),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             finish_reason,
             logprobs: None,

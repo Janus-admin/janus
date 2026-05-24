@@ -199,6 +199,8 @@ impl Provider for BedrockProvider {
                     role: "assistant".to_string(),
                     content: Value::String(text),
                     name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
                 finish_reason: Some(finish_reason),
                 logprobs: None,
@@ -485,16 +487,22 @@ mod tests {
                 role: "system".to_string(),
                 content: json!("You are helpful."),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: json!("Hi"),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             ChatMessage {
                 role: "assistant".to_string(),
                 content: json!("Hello!"),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ];
 
@@ -512,11 +520,15 @@ mod tests {
                 role: "tool".to_string(),
                 content: json!("ignored"),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: json!("kept"),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ];
 

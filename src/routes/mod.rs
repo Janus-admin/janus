@@ -16,7 +16,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // Gateway routes with 1MB size limit
+    // Gateway routes with 1MB size limit (audio multipart raised to 25MB below)
     let gateway_routes = Router::new()
         .route(
             "/v1/chat/completions",
@@ -28,7 +28,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(handlers::gateway::legacy_completions),
         )
         .route("/v1/models", get(handlers::gateway::list_models))
+        // ── V5-0: new modality endpoints ─────────────────────────────────────
+        .route(
+            "/v1/images/generations",
+            post(handlers::gateway::images_generations),
+        )
+        .route("/v1/audio/speech", post(handlers::gateway::audio_speech))
         .layer(RequestBodyLimitLayer::new(1024 * 1024)); // 1MB
+
+    // Audio upload gets a higher cap (matches OpenAI's 25MB file limit).
+    let audio_upload_routes = Router::new()
+        .route(
+            "/v1/audio/transcriptions",
+            post(handlers::gateway::audio_transcriptions),
+        )
+        .layer(RequestBodyLimitLayer::new(25 * 1024 * 1024)); // 25MB
 
     // Admin routes — all require a valid JWT (dashboard user, not gateway key)
     let admin_routes = Router::new()
@@ -86,10 +100,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(handlers::admin::analytics::simulate),
         )
         // ── Admin — Models (pricing catalogue) ──────────────────────────────
-        .route(
-            "/admin/models",
-            get(handlers::admin::models::list_models),
-        )
+        .route("/admin/models", get(handlers::admin::models::list_models))
         // ── Admin — Providers ────────────────────────────────────────────────
         .route(
             "/admin/providers",
@@ -188,6 +199,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .merge(gateway_routes)
+        .merge(audio_upload_routes)
         .merge(admin_routes)
         .merge(mcp_routes)
         // ── Existing routes ──────────────────────────────────────────────────

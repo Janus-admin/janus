@@ -92,6 +92,10 @@ impl From<RequestSqliteRow> for crate::models::request::Request {
 
 /// Insert a completed request into the audit log.
 /// Intentionally takes flat params to keep callers readable.
+///
+/// V5-0: accepts `endpoint` (e.g. `/v1/chat/completions`) and `tool_calls`
+/// (extracted JSON for function-calling audit). Both are stored on the
+/// `requests` row added by migration 0027.
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_request(
     pool: &DbPool,
@@ -109,18 +113,26 @@ pub async fn insert_request(
     ttfb_ms: Option<i32>,
     prompt_version_id: Option<Uuid>,
     downgrade_triggered: bool,
+    endpoint: &str,
+    tool_calls: Option<&serde_json::Value>,
 ) -> AppResult<()> {
     // SQLite stores cost_usd as TEXT; rebind as string in sqlite builds.
     #[cfg(feature = "sqlite")]
     let cost_usd = cost_usd.map(|d| d.to_string());
+
+    // SQLite has no JSONB — encode tool_calls as a JSON text blob.
+    #[cfg(feature = "sqlite")]
+    let tool_calls_bind: Option<String> = tool_calls.map(|v| v.to_string());
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let tool_calls_bind: Option<serde_json::Value> = tool_calls.cloned();
 
     sqlx::query(
         "INSERT INTO requests (
              id, api_key_id, workspace_id, provider, model,
              prompt_tokens, completion_tokens, total_tokens, cost_usd,
              latency_ms, status, stream, ttfb_ms, prompt_version_id,
-             downgrade_triggered, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
+             downgrade_triggered, endpoint, tool_calls, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)",
     )
     .bind(Uuid::new_v4())
     .bind(api_key_id)
@@ -137,6 +149,8 @@ pub async fn insert_request(
     .bind(ttfb_ms)
     .bind(prompt_version_id)
     .bind(downgrade_triggered)
+    .bind(endpoint)
+    .bind(tool_calls_bind)
     .bind(Utc::now())
     .execute(pool)
     .await?;
@@ -290,7 +304,8 @@ pub async fn get_by_id(
     Ok(row)
 }
 
-/// Insert an embedding request into the audit log (`request_type = 'embedding'`).
+/// Insert an embedding request into the audit log
+/// (`request_type = 'embedding'`, `endpoint = '/v1/embeddings'`).
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_embedding_request(
     pool: &DbPool,
@@ -311,8 +326,8 @@ pub async fn insert_embedding_request(
         "INSERT INTO requests (
              id, api_key_id, workspace_id, provider, model,
              prompt_tokens, total_tokens, cost_usd,
-             latency_ms, status, stream, request_type, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+             latency_ms, status, stream, request_type, endpoint, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
     )
     .bind(Uuid::new_v4())
     .bind(api_key_id)
@@ -326,6 +341,49 @@ pub async fn insert_embedding_request(
     .bind(status)
     .bind(false)
     .bind("embedding")
+    .bind("/v1/embeddings")
+    .bind(Utc::now())
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Insert a non-token modality request (images / audio) into the audit log.
+/// Token columns stay NULL; cost reflects modality-specific pricing.
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_modality_request(
+    pool: &DbPool,
+    api_key_id: Option<Uuid>,
+    workspace_id: Option<Uuid>,
+    provider: &str,
+    model: &str,
+    cost_usd: Option<Decimal>,
+    latency_ms: i32,
+    status: &str,
+    request_type: &str,
+    endpoint: &str,
+) -> AppResult<()> {
+    #[cfg(feature = "sqlite")]
+    let cost_usd = cost_usd.map(|d| d.to_string());
+
+    sqlx::query(
+        "INSERT INTO requests (
+             id, api_key_id, workspace_id, provider, model,
+             cost_usd, latency_ms, status, stream, request_type, endpoint, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(api_key_id)
+    .bind(workspace_id)
+    .bind(provider)
+    .bind(model)
+    .bind(cost_usd)
+    .bind(latency_ms)
+    .bind(status)
+    .bind(false)
+    .bind(request_type)
+    .bind(endpoint)
     .bind(Utc::now())
     .execute(pool)
     .await?;
@@ -471,9 +529,8 @@ pub async fn find_pricing(
     // 2. Fallback: strip trailing date suffix (-YYYY-MM-DD) and retry.
     //    Covers versioned OpenAI IDs like `gpt-4o-mini-2024-07-18`.
     static DATE_SUFFIX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = DATE_SUFFIX.get_or_init(|| {
-        regex::Regex::new(r"-\d{4}-\d{2}-\d{2}$").expect("valid regex")
-    });
+    let re =
+        DATE_SUFFIX.get_or_init(|| regex::Regex::new(r"-\d{4}-\d{2}-\d{2}$").expect("valid regex"));
     if re.is_match(model) {
         let canonical = re.replace(model, "").to_string();
         if let Some(pair) = query_one(pool, provider, &canonical).await? {
@@ -482,4 +539,57 @@ pub async fn find_pricing(
     }
 
     Ok(None)
+}
+
+/// Look up modality-specific pricing for a provider+model (V5-0).
+/// Returns `(price_per_image, price_per_audio_second, price_per_character)`.
+/// Any column NULL in the DB comes back as `None`.
+pub async fn find_modality_pricing(
+    pool: &DbPool,
+    provider: &str,
+    model: &str,
+) -> AppResult<(Option<Decimal>, Option<Decimal>, Option<Decimal>)> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        price_per_image: Option<Decimal>,
+        price_per_audio_second: Option<Decimal>,
+        price_per_character: Option<Decimal>,
+    }
+    #[cfg(feature = "sqlite")]
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        price_per_image: Option<String>,
+        price_per_audio_second: Option<String>,
+        price_per_character: Option<String>,
+    }
+
+    let row = sqlx::query_as::<_, Row>(
+        "SELECT price_per_image, price_per_audio_second, price_per_character
+         FROM model_pricing
+         WHERE provider = $1 AND model_id = $2 AND is_active = TRUE
+         LIMIT 1",
+    )
+    .bind(provider)
+    .bind(model)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(r) = row else {
+        return Ok((None, None, None));
+    };
+
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    return Ok((
+        r.price_per_image,
+        r.price_per_audio_second,
+        r.price_per_character,
+    ));
+
+    #[cfg(feature = "sqlite")]
+    return Ok((
+        r.price_per_image.and_then(|s| s.parse().ok()),
+        r.price_per_audio_second.and_then(|s| s.parse().ok()),
+        r.price_per_character.and_then(|s| s.parse().ok()),
+    ));
 }

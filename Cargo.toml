@@ -16,7 +16,7 @@ sqlite   = ["sqlx/sqlite", "sqlx/any"]
 
 # ─── Core (present from project start) ────────────────────────────────────────
 [dependencies]
-axum = { version = "0.7", features = ["macros", "ws"] }
+axum = { version = "0.7", features = ["macros", "ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "sqlite", "any", "uuid", "chrono", "macros", "rust_decimal"] }
 serde = { version = "1", features = ["derive"] }
@@ -39,7 +39,7 @@ clap = { version = "4", features = ["derive"] }
 rust_decimal = { version = "1", features = ["serde-float"] }
 
 # ─── Phase 1: Core Proxy ──────────────────────────────────────────────────────
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
 dashmap = "6"
 sha2 = "0.10"
 aes-gcm = "0.10"

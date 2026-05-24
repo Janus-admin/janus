@@ -79,6 +79,8 @@ impl Provider for DemoProvider {
                     role: "assistant".to_string(),
                     content: serde_json::Value::String(reply),
                     name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
                 finish_reason: Some("stop".to_string()),
                 logprobs: None,

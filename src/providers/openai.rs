@@ -1,12 +1,13 @@
 use super::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, EmbeddingRequest,
-    EmbeddingResponse, Provider, ProviderError, ProviderStream,
+    EmbeddingResponse, ImagesRequest, ImagesResponse, ModelInfo, Provider, ProviderError,
+    ProviderStream, SpeechRequest, SpeechStream, TranscribeRequest, TranscribeResponse,
 };
 use crate::models::provider::HealthStatus;
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
-use reqwest::{Client, StatusCode};
+use reqwest::{multipart, Client, StatusCode};
 use std::time::Duration;
 
 pub struct OpenAIProvider {
@@ -172,6 +173,170 @@ impl Provider for OpenAIProvider {
         resp.json::<EmbeddingResponse>()
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))
+    }
+
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            data: Vec<ModelInfo>,
+        }
+        let url = format!("{}/models", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(ProviderError::Http)?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Unavailable(format!(
+                "list_models HTTP {status}: {text}"
+            )));
+        }
+        let wire: Wire = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        Ok(wire.data)
+    }
+
+    async fn images_generate(
+        &self,
+        request: &ImagesRequest,
+    ) -> Result<ImagesResponse, ProviderError> {
+        let url = format!("{}/images/generations", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(request)
+            .send()
+            .await
+            .map_err(ProviderError::Http)?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(match status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
+                StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,
+                StatusCode::BAD_REQUEST => ProviderError::BadRequest(text),
+                _ => ProviderError::Unavailable(format!("images HTTP {status}: {text}")),
+            });
+        }
+        resp.json::<ImagesResponse>()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))
+    }
+
+    async fn audio_transcribe(
+        &self,
+        request: TranscribeRequest,
+    ) -> Result<TranscribeResponse, ProviderError> {
+        let url = format!("{}/audio/transcriptions", self.base_url);
+
+        let file_part = multipart::Part::bytes(request.file_bytes.to_vec())
+            .file_name(request.filename)
+            .mime_str("application/octet-stream")
+            .map_err(|e| ProviderError::BadRequest(e.to_string()))?;
+
+        let mut form = multipart::Form::new()
+            .text("model", request.model)
+            .part("file", file_part);
+        if let Some(lang) = request.language {
+            form = form.text("language", lang);
+        }
+        if let Some(prompt) = request.prompt {
+            form = form.text("prompt", prompt);
+        }
+        if let Some(fmt) = request.response_format {
+            form = form.text("response_format", fmt);
+        }
+        if let Some(t) = request.temperature {
+            form = form.text("temperature", t.to_string());
+        }
+
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(ProviderError::Http)?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(match status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
+                StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,
+                StatusCode::BAD_REQUEST => ProviderError::BadRequest(text),
+                _ => ProviderError::Unavailable(format!("transcribe HTTP {status}: {text}")),
+            });
+        }
+
+        // OpenAI returns `application/json` for json/verbose_json; plain text otherwise.
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        if content_type.contains("application/json") {
+            resp.json::<TranscribeResponse>()
+                .await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))
+        } else {
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            Ok(TranscribeResponse {
+                text,
+                duration: None,
+            })
+        }
+    }
+
+    async fn audio_speech(&self, request: &SpeechRequest) -> Result<SpeechStream, ProviderError> {
+        let url = format!("{}/audio/speech", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(request)
+            .send()
+            .await
+            .map_err(ProviderError::Http)?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(match status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
+                StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,
+                StatusCode::BAD_REQUEST => ProviderError::BadRequest(text),
+                _ => ProviderError::Unavailable(format!("speech HTTP {status}: {text}")),
+            });
+        }
+
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("audio/mpeg")
+            .to_string();
+
+        let byte_stream = resp
+            .bytes_stream()
+            .map(|chunk| chunk.map_err(ProviderError::Http));
+
+        Ok(SpeechStream {
+            content_type,
+            bytes: Box::pin(byte_stream),
+        })
     }
 
     async fn health_check(&self) -> HealthStatus {

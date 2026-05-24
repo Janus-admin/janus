@@ -35,6 +35,26 @@ pub fn calculate_cost_f64(
     Some((p / million * input_per_1m) + (c / million * output_per_1m))
 }
 
+// ── V5-0 modality cost helpers ────────────────────────────────────────────────
+
+/// Image generation cost: flat per-image fee × image count.
+pub fn calculate_image_cost(image_count: u32, price_per_image: Decimal) -> Decimal {
+    Decimal::from(image_count) * price_per_image
+}
+
+/// Audio transcription cost: per-second rate × duration in seconds.
+/// `duration_seconds` is a float because providers return fractional durations
+/// (e.g. 12.34s); we round-trip through Decimal::from_f64 for precision.
+pub fn calculate_audio_cost(duration_seconds: f64, price_per_second: Decimal) -> Option<Decimal> {
+    let d = Decimal::from_f64(duration_seconds)?;
+    Some(d * price_per_second)
+}
+
+/// Speech synthesis cost: per-character rate × character count.
+pub fn calculate_character_cost(char_count: u32, price_per_character: Decimal) -> Decimal {
+    Decimal::from(char_count) * price_per_character
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

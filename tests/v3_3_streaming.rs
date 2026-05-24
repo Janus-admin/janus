@@ -314,6 +314,8 @@ fn v3_3_streaming_cache_hit_still_works() {
                 role: "assistant".to_string(),
                 content: serde_json::Value::String("from cache".to_string()),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             finish_reason: Some("stop".to_string()),
             logprobs: None,

@@ -103,7 +103,7 @@ async fn v4_9_qdrant_lookup_returns_above_threshold_match() {
 
     // Query with a close-but-not-identical unit vector in the same direction.
     // Cosine similarity ≈ 1.0 after normalization — should exceed 0.9.
-    let query = vec![0.99_f32, 0.01, 0.0, 0.0];
+    let query = [0.99_f32, 0.01, 0.0, 0.0];
     // Normalize manually so Qdrant cosine distance is computed correctly.
     let len = (query.iter().map(|x| x * x).sum::<f32>()).sqrt();
     let query_norm: Vec<f32> = query.iter().map(|x| x / len).collect();

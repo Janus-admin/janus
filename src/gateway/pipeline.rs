@@ -2,7 +2,7 @@ use super::{
     dedup::{DedupRole, DeduplicatedResult, InFlightDeduplicator},
     router,
     strategies::RoutingStrategy,
-    ProviderRegistry,
+    tool_extract, ProviderRegistry,
 };
 use crate::db::DbPool;
 use crate::{
@@ -91,7 +91,11 @@ pub async fn run(
     downgrade_triggered: bool,
     // When Some, only the provider with this string ID is tried (replay override).
     only_provider: Option<&str>,
+    // V5-0: route this request is being served on, written to requests.endpoint.
+    endpoint: &str,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
+    // V5-0: own the endpoint string so it can be moved into spawned audit-log tasks.
+    let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
     // Clone request so plugins can mutate it without affecting the caller.
     let mut request = request.clone();
 
@@ -381,6 +385,10 @@ pub async fn run(
                             dedup.release(&hash);
                         }
 
+                        // V5-0: extract function-calling audit (tools + tool_calls) once,
+                        // before the response is moved into the spawned task.
+                        let tool_calls = tool_extract::extract(effective_request, &resp);
+
                         // Fire-and-forget: log request + update budget + last_used + daily_costs.
                         {
                             let pool = pool.clone();
@@ -393,6 +401,7 @@ pub async fn run(
                                 usage.completion_tokens as i32,
                                 usage.total_tokens as i32,
                             );
+                            let endpoint_log = endpoint_log_arc.clone();
                             tokio::spawn(async move {
                                 let _ = db::requests::insert_request(
                                     &pool,
@@ -410,6 +419,8 @@ pub async fn run(
                                     None,
                                     prompt_version_id,
                                     downgrade_triggered,
+                                    &endpoint_log,
+                                    tool_calls.as_ref(),
                                 )
                                 .await;
                                 let _ = db::analytics::upsert_daily_cost(
@@ -476,6 +487,7 @@ pub async fn run(
                             let workspace_id = api_key.workspace_id;
                             let provider_name = provider.name();
                             let model = effective_request.model.clone();
+                            let endpoint_log = endpoint_log_arc.clone();
                             tokio::spawn(async move {
                                 let _ = db::requests::insert_request(
                                     &pool,
@@ -493,6 +505,8 @@ pub async fn run(
                                     None,
                                     None,
                                     downgrade_triggered,
+                                    &endpoint_log,
+                                    None,
                                 )
                                 .await;
                             });
@@ -571,7 +585,10 @@ pub async fn run_streaming(
     // reserved for future use when streaming cache writes are added.
     _cache_ttl_secs: u64,
     downgrade_triggered: bool,
+    // V5-0: route this stream is being served on, written to requests.endpoint.
+    endpoint: &str,
 ) -> AppResult<(Response, CacheHit)> {
+    let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
     // ── Plugin before_request chain ───────────────────────────────────────────
     match plugins::run_before(&plugin_chain, &mut request, &api_key).await {
         Ok(()) => {}
@@ -818,6 +835,7 @@ pub async fn run_streaming(
 
                             let provider_for_metrics = provider_name.to_string();
                             let model_for_metrics = final_model.clone();
+                            let endpoint_log = endpoint_log_arc.clone();
                             tokio::spawn(async move {
                                 let cost =
                                     db::requests::find_pricing(&pool, provider_name, &final_model)
@@ -859,6 +877,8 @@ pub async fn run_streaming(
                                     ttfb_ms,
                                     prompt_version_id,
                                     downgrade_triggered,
+                                    &endpoint_log,
+                                    None, // streaming tool_calls audit deferred to V5-1
                                 )
                                 .await;
                                 let _ = db::analytics::upsert_daily_cost(
@@ -919,6 +939,7 @@ pub async fn run_with_workspace(
     dedup: &InFlightDeduplicator,
     cache_ttl_secs: u64,
     downgrade_triggered: bool,
+    endpoint: &str,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     let key_with_workspace = ApiKey {
         workspace_id,
@@ -941,6 +962,7 @@ pub async fn run_with_workspace(
         cache_ttl_secs,
         downgrade_triggered,
         None,
+        endpoint,
     )
     .await
 }
@@ -1018,5 +1040,8 @@ pub fn map_provider_error(e: ProviderError) -> AppError {
         ProviderError::BadRequest(msg) => AppError::BadRequest(msg),
         ProviderError::Http(e) => AppError::ProviderUnavailable(e.to_string()),
         ProviderError::ParseError(msg) => AppError::ProviderUnavailable(msg),
+        ProviderError::Unsupported(name) => {
+            AppError::BadRequest(format!("Modality not supported by provider '{name}'"))
+        }
     }
 }

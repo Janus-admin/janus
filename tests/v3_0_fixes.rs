@@ -33,6 +33,8 @@ fn dummy_response() -> Arc<ChatCompletionResponse> {
                 role: "assistant".to_string(),
                 content: json!("Hello!"),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             finish_reason: Some("stop".to_string()),
             logprobs: None,

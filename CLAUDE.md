@@ -196,6 +196,19 @@ before touching any code on a V5 phase.
 - [x] `Cargo.toml` — Added `qdrant-client = "1.9"`
 - [x] `tests/v4_9_vector_store.rs` — 6 acceptance tests; Qdrant-dependent tests skip gracefully when instance not running (CI-safe); full suite runs with `docker run -p 6334:6334 qdrant/qdrant`
 
+### Velox-Specific Rust Modules (V5-0 — API Surface Expansion)
+- [x] `migrations/0027_api_expansion.sql` (+ sqlite mirror): adds `requests.tool_calls` (JSONB) and `requests.endpoint` (VARCHAR(50), default `/v1/chat/completions`); GIN/B-tree indexes; adds `price_per_image`, `price_per_audio_second`, `price_per_character` to `model_pricing`
+- [x] `src/providers/mod.rs`: new modality types (`ModelInfo`, `ImagesRequest/Response`, `TranscribeRequest/Response`, `SpeechRequest/Stream`); extends `Provider` trait with `list_models`, `images_generate`, `audio_transcribe`, `audio_speech` (all default to `ProviderError::Unsupported`); extends `ChatMessage` with `tool_calls` + `tool_call_id` so function-calling responses survive round-trip
+- [x] `src/providers/openai.rs`: implements all four new trait methods against `/v1/models`, `/v1/images/generations`, `/v1/audio/transcriptions` (multipart), `/v1/audio/speech` (streaming bytes)
+- [x] `src/gateway/tool_extract.rs`: pulls `tools` from the request and `tool_calls` from the response into a single JSON value for persistence
+- [x] `src/gateway/pipeline.rs`: now takes `endpoint: &str`; carries it through all `insert_request` callsites (success, error, streaming) via an `Arc<str>` cloned per spawn; tool_calls extracted on the non-streaming success path (streaming tool_calls audit deferred)
+- [x] `src/db/requests.rs`: `insert_request` now accepts `endpoint` + `tool_calls`; `insert_embedding_request` hardcodes `/v1/embeddings`; new `insert_modality_request` helper for non-token-priced rows; new `find_modality_pricing` returns `(price_per_image, per_second, per_character)`
+- [x] `src/pricing/mod.rs`: new `calculate_image_cost`, `calculate_audio_cost`, `calculate_character_cost` helpers
+- [x] `src/handlers/gateway.rs`: rewrites `/v1/models` to aggregate from providers behind a 5-second in-memory TTL (`OnceLock<Mutex<…>>`); adds `images_generations`, `audio_transcriptions` (multipart via `axum::extract::Multipart`), `audio_speech` (binary streaming response with provider-negotiated content-type)
+- [x] `src/routes/mod.rs`: wires `/v1/images/generations`, `/v1/audio/speech` (1 MB limit), and `/v1/audio/transcriptions` on a separate 25 MB-limit branch for audio uploads
+- [x] `Cargo.toml`: adds `axum` feature `multipart` + `reqwest` feature `multipart`
+- [x] `tests/v5_0_api_expansion.rs`: 14 acceptance tests — embeddings shape/cost/priority, `/v1/models` aggregation + 5-second TTL, images passthrough + per-image cost, audio multipart + speech streaming, legacy completions, tool-calls extraction into requests row, endpoint-per-route attribution, unsupported modality error path, regression on chat completions
+
 ---
 
 ## Locked Architectural Decisions

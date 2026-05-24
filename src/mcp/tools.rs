@@ -186,6 +186,7 @@ async fn proxy_llm_request(state: &Arc<AppState>, args: Value) -> Result<Value, 
         0,     // no TTL for MCP calls
         false, // MCP calls are internal — no budget downgrade
         None,
+        "/mcp/chat",
     )
     .await
     {

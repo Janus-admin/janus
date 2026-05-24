@@ -5,20 +5,26 @@ use crate::{
     gateway::{pipeline, strategies::RoutingStrategy},
     middleware::api_key_auth::GatewayAuth,
     middleware::budget::{check_budget, DowngradeDecision},
-    pii,
+    pii, pricing,
     pricing::calculate_cost,
     prompts::template,
-    providers::{ChatCompletionRequest, ChatMessage, EmbeddingRequest},
+    providers::{
+        ChatCompletionRequest, ChatMessage, EmbeddingRequest, ImagesRequest, ModelInfo,
+        SpeechRequest, TranscribeRequest,
+    },
     state::AppState,
     telemetry,
 };
 use axum::{
-    extract::{rejection::JsonRejection, FromRequest, State},
+    body::Body,
+    extract::{rejection::JsonRejection, FromRequest, Multipart, State},
     http::{HeaderMap, HeaderValue, Request},
     response::IntoResponse,
     Json,
 };
+use bytes::Bytes;
 use chrono::Utc;
+use futures_util::StreamExt;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -267,6 +273,7 @@ async fn chat_completions_inner(
             state.plugins.clone(),
             cache_ttl_secs,
             downgrade_triggered,
+            "/v1/chat/completions",
         )
         .await
         {
@@ -330,6 +337,7 @@ async fn chat_completions_inner(
             cache_ttl_secs,
             downgrade_triggered,
             None,
+            "/v1/chat/completions",
         )
         .await
         {
@@ -394,16 +402,58 @@ async fn chat_completions_inner(
 
 // ── GET /v1/models ────────────────────────────────────────────────────────────
 
+/// V5-0: aggregate provider + DB models, served from a 5-second in-memory cache.
+/// Re-reading on every request would hammer provider /models endpoints.
+type ModelsCacheCell = std::sync::Mutex<Option<(std::time::Instant, Vec<ModelInfo>)>>;
+static MODELS_CACHE: std::sync::OnceLock<ModelsCacheCell> = std::sync::OnceLock::new();
+
+const MODELS_CACHE_TTL_SECS: u64 = 5;
+
+fn models_cache() -> &'static ModelsCacheCell {
+    MODELS_CACHE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
 /// GET /v1/models
 ///
-/// Returns the union of active models from `model_pricing`, formatted to match
-/// the OpenAI `/v1/models` response shape. No auth required (matches OpenAI behaviour).
+/// Aggregates models from every enabled provider (those that implement
+/// `Provider::list_models`) and unions with the active rows from
+/// `model_pricing`. Result is cached in-memory for 5 seconds.
+/// No auth required — matches OpenAI behaviour.
 pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    #[derive(serde::Serialize, sqlx::FromRow)]
+    // Cache hit (within TTL): return immediately.
+    {
+        let guard = models_cache().lock().unwrap();
+        if let Some((ts, ref cached)) = *guard {
+            if ts.elapsed().as_secs() < MODELS_CACHE_TTL_SECS {
+                return Json(serde_json::json!({
+                    "object": "list",
+                    "data":   cached.clone(),
+                }))
+                .into_response();
+            }
+        }
+    }
+
+    let mut by_id: std::collections::BTreeMap<String, ModelInfo> =
+        std::collections::BTreeMap::new();
+
+    // 1. Live provider aggregation — best effort, errors silently dropped.
+    for provider in state.providers.providers() {
+        if !provider.is_enabled() {
+            continue;
+        }
+        if let Ok(models) = provider.list_models().await {
+            for m in models {
+                by_id.entry(m.id.clone()).or_insert(m);
+            }
+        }
+    }
+
+    // 2. Augment with DB catalogue so non-introspecting providers still appear.
+    #[derive(sqlx::FromRow)]
     struct ModelRow {
         provider: String,
         model_id: String,
-        model_display_name: Option<String>,
     }
 
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
@@ -412,32 +462,313 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let active_clause = "WHERE is_active = 1";
 
     let sql = format!(
-        "SELECT provider, model_id, model_display_name FROM model_pricing {active_clause} ORDER BY provider, model_id"
+        "SELECT provider, model_id FROM model_pricing {active_clause} ORDER BY provider, model_id"
     );
 
-    let rows = sqlx::query_as::<_, ModelRow>(&sql)
+    if let Ok(rows) = sqlx::query_as::<_, ModelRow>(&sql)
         .fetch_all(&state.pool)
-        .await;
+        .await
+    {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        for r in rows {
+            by_id.entry(r.model_id.clone()).or_insert(ModelInfo {
+                id: r.model_id,
+                object: "model".to_string(),
+                created: now,
+                owned_by: r.provider,
+            });
+        }
+    }
 
-    match rows {
-        Err(e) => crate::errors::AppError::Anyhow(anyhow::anyhow!(e)).into_response(),
-        Ok(rows) => {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let models: Vec<serde_json::Value> = rows
-                .into_iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "id":      r.model_id,
-                        "object":  "model",
-                        "created": now,
-                        "owned_by": r.provider,
-                    })
-                })
-                .collect();
-            Json(serde_json::json!({ "object": "list", "data": models })).into_response()
+    let aggregated: Vec<ModelInfo> = by_id.into_values().collect();
+
+    // Refresh cache.
+    {
+        let mut guard = models_cache().lock().unwrap();
+        *guard = Some((std::time::Instant::now(), aggregated.clone()));
+    }
+
+    Json(serde_json::json!({
+        "object": "list",
+        "data":   aggregated,
+    }))
+    .into_response()
+}
+
+// ── POST /v1/images/generations ───────────────────────────────────────────────
+
+/// POST /v1/images/generations
+///
+/// OpenAI-compatible image generation. No caching (high cost, low repetition).
+/// Cost is per-image, looked up from `model_pricing.price_per_image`.
+pub async fn images_generations(
+    State(state): State<Arc<AppState>>,
+    GatewayAuth(api_key): GatewayAuth,
+    ValidatedJson(request): ValidatedJson<ImagesRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = check_budget(&api_key, &state.config.budget_downgrade) {
+        return e.into_response();
+    }
+
+    let provider = match crate::gateway::router::select_provider(&state.providers, &request.model) {
+        Some(p) => p,
+        None => {
+            return AppError::ProviderUnavailable("No providers available".into()).into_response()
+        }
+    };
+
+    let start = Instant::now();
+    let result = provider.images_generate(&request).await;
+    let latency_ms = start.elapsed().as_millis() as i32;
+
+    match result {
+        Ok(resp) => {
+            let image_count = resp.data.len() as u32;
+            let (price_per_image, _, _) =
+                db::requests::find_modality_pricing(&state.pool, provider.name(), &request.model)
+                    .await
+                    .unwrap_or((None, None, None));
+            let cost = price_per_image.map(|p| pricing::calculate_image_cost(image_count, p));
+
+            let _ = db::requests::insert_modality_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &request.model,
+                cost,
+                latency_ms,
+                "success",
+                "images",
+                "/v1/images/generations",
+            )
+            .await;
+
+            Json(resp).into_response()
+        }
+        Err(e) => {
+            let _ = db::requests::insert_modality_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &request.model,
+                None,
+                latency_ms,
+                "error",
+                "images",
+                "/v1/images/generations",
+            )
+            .await;
+            crate::gateway::pipeline::map_provider_error(e).into_response()
+        }
+    }
+}
+
+// ── POST /v1/audio/transcriptions ─────────────────────────────────────────────
+
+/// POST /v1/audio/transcriptions
+///
+/// Multipart upload (OpenAI-compatible). Returns transcribed text.
+/// Cost is per-audio-second when the provider reports a duration.
+pub async fn audio_transcriptions(
+    State(state): State<Arc<AppState>>,
+    GatewayAuth(api_key): GatewayAuth,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    if let Err(e) = check_budget(&api_key, &state.config.budget_downgrade) {
+        return e.into_response();
+    }
+
+    let mut model = String::new();
+    let mut file_bytes: Option<Bytes> = None;
+    let mut filename = "audio.bin".to_string();
+    let mut language: Option<String> = None;
+    let mut prompt: Option<String> = None;
+    let mut response_format: Option<String> = None;
+    let mut temperature: Option<f64> = None;
+
+    while let Some(field) = multipart.next_field().await.transpose() {
+        let field = match field {
+            Ok(f) => f,
+            Err(e) => return AppError::BadRequest(format!("multipart error: {e}")).into_response(),
+        };
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "model" => model = field.text().await.unwrap_or_default(),
+            "language" => language = field.text().await.ok(),
+            "prompt" => prompt = field.text().await.ok(),
+            "response_format" => response_format = field.text().await.ok(),
+            "temperature" => {
+                temperature = field.text().await.ok().and_then(|s| s.parse::<f64>().ok())
+            }
+            "file" => {
+                if let Some(fname) = field.file_name() {
+                    filename = fname.to_string();
+                }
+                file_bytes = field.bytes().await.ok();
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+
+    let Some(bytes) = file_bytes else {
+        return AppError::BadRequest("missing 'file' part".into()).into_response();
+    };
+    if model.is_empty() {
+        return AppError::BadRequest("missing 'model' part".into()).into_response();
+    }
+
+    let provider = match crate::gateway::router::select_provider(&state.providers, &model) {
+        Some(p) => p,
+        None => {
+            return AppError::ProviderUnavailable("No providers available".into()).into_response()
+        }
+    };
+
+    let req = TranscribeRequest {
+        model: model.clone(),
+        file_bytes: bytes,
+        filename,
+        language,
+        prompt,
+        response_format,
+        temperature,
+    };
+
+    let start = Instant::now();
+    let result = provider.audio_transcribe(req).await;
+    let latency_ms = start.elapsed().as_millis() as i32;
+
+    match result {
+        Ok(resp) => {
+            let (_, price_per_second, _) =
+                db::requests::find_modality_pricing(&state.pool, provider.name(), &model)
+                    .await
+                    .unwrap_or((None, None, None));
+            let cost = match (resp.duration, price_per_second) {
+                (Some(d), Some(p)) => pricing::calculate_audio_cost(d, p),
+                _ => None,
+            };
+
+            let _ = db::requests::insert_modality_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &model,
+                cost,
+                latency_ms,
+                "success",
+                "audio_transcribe",
+                "/v1/audio/transcriptions",
+            )
+            .await;
+
+            Json(resp).into_response()
+        }
+        Err(e) => {
+            let _ = db::requests::insert_modality_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &model,
+                None,
+                latency_ms,
+                "error",
+                "audio_transcribe",
+                "/v1/audio/transcriptions",
+            )
+            .await;
+            crate::gateway::pipeline::map_provider_error(e).into_response()
+        }
+    }
+}
+
+// ── POST /v1/audio/speech ─────────────────────────────────────────────────────
+
+/// POST /v1/audio/speech
+///
+/// Text-to-speech. Returns a streaming binary audio body.
+/// Cost is per-input-character from `model_pricing.price_per_character`.
+pub async fn audio_speech(
+    State(state): State<Arc<AppState>>,
+    GatewayAuth(api_key): GatewayAuth,
+    ValidatedJson(request): ValidatedJson<SpeechRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = check_budget(&api_key, &state.config.budget_downgrade) {
+        return e.into_response();
+    }
+
+    let provider = match crate::gateway::router::select_provider(&state.providers, &request.model) {
+        Some(p) => p,
+        None => {
+            return AppError::ProviderUnavailable("No providers available".into()).into_response()
+        }
+    };
+
+    let start = Instant::now();
+    let result = provider.audio_speech(&request).await;
+    let latency_ms = start.elapsed().as_millis() as i32;
+
+    match result {
+        Ok(stream) => {
+            // Compute cost up-front from input character count; the provider
+            // returns audio whose size we don't pre-know.
+            let char_count = request.input.chars().count() as u32;
+            let (_, _, price_per_char) =
+                db::requests::find_modality_pricing(&state.pool, provider.name(), &request.model)
+                    .await
+                    .unwrap_or((None, None, None));
+            let cost = price_per_char.map(|p| pricing::calculate_character_cost(char_count, p));
+
+            let _ = db::requests::insert_modality_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &request.model,
+                cost,
+                latency_ms,
+                "success",
+                "audio_speech",
+                "/v1/audio/speech",
+            )
+            .await;
+
+            let content_type = stream.content_type.clone();
+            let body_stream = stream
+                .bytes
+                .map(|chunk| chunk.map_err(std::io::Error::other));
+            let body = Body::from_stream(body_stream);
+
+            let mut response = axum::http::Response::new(body);
+            if let Ok(v) = HeaderValue::from_str(&content_type) {
+                response.headers_mut().insert("content-type", v);
+            }
+            response.into_response()
+        }
+        Err(e) => {
+            let _ = db::requests::insert_modality_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &request.model,
+                None,
+                latency_ms,
+                "error",
+                "audio_speech",
+                "/v1/audio/speech",
+            )
+            .await;
+            crate::gateway::pipeline::map_provider_error(e).into_response()
         }
     }
 }
@@ -453,12 +784,16 @@ fn inject_prompt(request: &mut ChatCompletionRequest, system_prompt: Option<&str
             role: "system".to_string(),
             content: serde_json::Value::String(sys.to_string()),
             name: None,
+            tool_calls: None,
+            tool_call_id: None,
         });
     }
     prepend.push(ChatMessage {
         role: "user".to_string(),
         content: serde_json::Value::String(content.to_string()),
         name: None,
+        tool_calls: None,
+        tool_call_id: None,
     });
     prepend.extend(std::mem::take(&mut request.messages));
     request.messages = prepend;
@@ -686,6 +1021,8 @@ pub async fn legacy_completions(
             role: "user".to_string(),
             content: serde_json::Value::String(prompt_text),
             name: None,
+            tool_calls: None,
+            tool_call_id: None,
         }],
         max_tokens: request.max_tokens,
         temperature: request.temperature,
@@ -740,6 +1077,7 @@ pub async fn legacy_completions(
         0,     // no TTL for legacy completions endpoint
         false, // legacy completions bypass downgrade — budget check above uses simple path
         None,
+        "/v1/completions",
     )
     .await
     {

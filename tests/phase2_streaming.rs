@@ -325,7 +325,7 @@ async fn phase2_streaming_request_cost_tracked_correctly() {
         "completion_tokens must match mock usage"
     );
     assert!(
-        cost_usd.map_or(false, |c| c > rust_decimal::Decimal::ZERO),
+        cost_usd.is_some_and(|c| c > rust_decimal::Decimal::ZERO),
         "cost_usd must be > 0 — gpt-4o-mini is priced in model_pricing; got {cost_usd:?}"
     );
     assert!(
