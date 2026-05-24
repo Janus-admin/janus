@@ -376,6 +376,9 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // ── Background: provider quality scores ──────────────────────────────────
+    velox::analytics::quality_score::start(state.pool.clone());
+
     // ── Background: cluster tasks ─────────────────────────────────────────────
     #[cfg(not(feature = "sqlite"))]
     if state.config.cluster.enabled {

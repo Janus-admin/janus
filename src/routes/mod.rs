@@ -72,6 +72,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/analytics/cache",
             get(handlers::admin::analytics::cache),
         )
+        .route(
+            "/admin/analytics/simulate",
+            get(handlers::admin::analytics::simulate),
+        )
         // ── Admin — Providers ────────────────────────────────────────────────
         .route(
             "/admin/providers",

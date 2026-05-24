@@ -1,6 +1,7 @@
 #![allow(dead_code)] // structs used in Phase 1+ handlers
 
 use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 /// Provider health states as stored in the `providers` table.
@@ -49,6 +50,8 @@ pub struct Provider {
     pub health_status: String,
     pub last_health_check: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
+    pub quality_score: Decimal,
+    pub quality_updated_at: Option<DateTime<Utc>>,
 }
 
 /// Safe public view of a provider (no encrypted key).
@@ -63,6 +66,9 @@ pub struct ProviderView {
     pub max_retries: i32,
     pub health_status: String,
     pub last_health_check: Option<DateTime<Utc>>,
+    #[serde(with = "rust_decimal::serde::float")]
+    pub quality_score: Decimal,
+    pub quality_updated_at: Option<DateTime<Utc>>,
 }
 
 impl From<Provider> for ProviderView {
@@ -77,6 +83,8 @@ impl From<Provider> for ProviderView {
             max_retries: p.max_retries,
             health_status: p.health_status,
             last_health_check: p.last_health_check,
+            quality_score: p.quality_score,
+            quality_updated_at: p.quality_updated_at,
         }
     }
 }

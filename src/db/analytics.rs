@@ -1,8 +1,11 @@
 use crate::{db::DbPool, errors::AppResult};
 #[cfg(feature = "sqlite")]
 use chrono::Utc;
+#[cfg(feature = "sqlite")]
+use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 use serde::Serialize;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 // ── Daily costs upsert ────────────────────────────────────────────────────────
@@ -647,5 +650,281 @@ pub async fn cache_analytics(pool: &DbPool, hours: i32) -> AppResult<serde_json:
             "by_type":        by_type,
             "avg_semantic_similarity": avg_similarity,
         }))
+    }
+}
+
+// ── Cost simulator ────────────────────────────────────────────────────────────
+
+pub struct SimulateParams {
+    pub strategy: String,
+    pub period_days: i32,
+    /// model_id → replacement model_id for pricing lookup
+    pub model_overrides: HashMap<String, String>,
+}
+
+/// Recalculate costs for all requests in the period under a different strategy
+/// and/or with model substitutions. Returns the original vs simulated breakdown.
+pub async fn simulate_cost(
+    pool: &DbPool,
+    params: &SimulateParams,
+) -> AppResult<serde_json::Value> {
+    let rows = fetch_model_aggregates(pool, params.period_days).await?;
+    let pricing = fetch_pricing_map(pool).await?;
+
+    let mut original_total = Decimal::ZERO;
+    let mut simulated_total = Decimal::ZERO;
+    let mut request_count: i64 = 0;
+    let mut by_model: Vec<serde_json::Value> = Vec::new();
+
+    for row in &rows {
+        let orig_cost = row.original_cost.unwrap_or(Decimal::ZERO);
+        original_total += orig_cost;
+        request_count += row.request_count;
+
+        // Apply model override (e.g. gpt-4o → gpt-4o-mini for pricing lookup).
+        let lookup_model = params
+            .model_overrides
+            .get(&row.model)
+            .cloned()
+            .unwrap_or_else(|| row.model.clone());
+
+        let sim_cost = match params.strategy.as_str() {
+            "priority" => orig_cost,
+            "cost_optimized" => {
+                let best = pricing
+                    .values()
+                    .filter(|p| p.model_id == lookup_model)
+                    .min_by(|a, b| {
+                        let cost_a = a.input_per_1m + a.output_per_1m;
+                        let cost_b = b.input_per_1m + b.output_per_1m;
+                        cost_a.partial_cmp(&cost_b).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                best.map(|p| {
+                    crate::pricing::calculate_cost(
+                        row.prompt_tokens as u32,
+                        row.completion_tokens as u32,
+                        p.input_per_1m,
+                        p.output_per_1m,
+                    )
+                })
+                .unwrap_or(orig_cost)
+            }
+            "round_robin" => {
+                let matching: Vec<_> = pricing
+                    .values()
+                    .filter(|p| p.model_id == lookup_model)
+                    .collect();
+                if matching.is_empty() {
+                    orig_cost
+                } else {
+                    let avg_input = matching.iter().map(|p| p.input_per_1m).sum::<Decimal>()
+                        / Decimal::from(matching.len() as u32);
+                    let avg_output = matching.iter().map(|p| p.output_per_1m).sum::<Decimal>()
+                        / Decimal::from(matching.len() as u32);
+                    crate::pricing::calculate_cost(
+                        row.prompt_tokens as u32,
+                        row.completion_tokens as u32,
+                        avg_input,
+                        avg_output,
+                    )
+                }
+            }
+            _ => orig_cost,
+        };
+
+        simulated_total += sim_cost;
+
+        by_model.push(serde_json::json!({
+            "model":              row.model,
+            "request_count":      row.request_count,
+            "original_cost_usd":  decimal_to_f64(orig_cost),
+            "simulated_cost_usd": decimal_to_f64(sim_cost),
+        }));
+    }
+
+    let savings = original_total - simulated_total;
+    let savings_pct = if original_total.is_zero() {
+        0.0_f64
+    } else {
+        (savings / original_total * Decimal::from(100))
+            .try_into()
+            .unwrap_or(0.0_f64)
+    };
+
+    Ok(serde_json::json!({
+        "data": {
+            "strategy":           params.strategy,
+            "period":             format!("{}d", params.period_days),
+            "original_cost_usd":  decimal_to_f64(original_total),
+            "simulated_cost_usd": decimal_to_f64(simulated_total),
+            "savings_usd":        decimal_to_f64(savings),
+            "savings_percent":    savings_pct,
+            "request_count":      request_count,
+            "by_model":           by_model,
+        }
+    }))
+}
+
+fn decimal_to_f64(d: Decimal) -> f64 {
+    f64::try_from(d).unwrap_or(0.0)
+}
+
+struct ModelAggregate {
+    model: String,
+    request_count: i64,
+    prompt_tokens: i64,
+    completion_tokens: i64,
+    original_cost: Option<Decimal>,
+}
+
+struct PricingEntry {
+    model_id: String,
+    input_per_1m: Decimal,
+    output_per_1m: Decimal,
+}
+
+async fn fetch_model_aggregates(
+    pool: &DbPool,
+    days: i32,
+) -> AppResult<Vec<ModelAggregate>> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        let interval = format!("{} days", days);
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            model: String,
+            request_count: i64,
+            prompt_tokens: Option<i64>,
+            completion_tokens: Option<i64>,
+            original_cost: Option<Decimal>,
+        }
+        let rows = sqlx::query_as::<_, Row>(
+            "SELECT
+                 model,
+                 COUNT(*)                      AS request_count,
+                 SUM(prompt_tokens)::bigint    AS prompt_tokens,
+                 SUM(completion_tokens)::bigint AS completion_tokens,
+                 SUM(cost_usd)                 AS original_cost
+             FROM requests
+             WHERE created_at >= NOW() - $1::interval
+               AND status = 'success'
+             GROUP BY model",
+        )
+        .bind(&interval)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| ModelAggregate {
+                model: r.model,
+                request_count: r.request_count,
+                prompt_tokens: r.prompt_tokens.unwrap_or(0),
+                completion_tokens: r.completion_tokens.unwrap_or(0),
+                original_cost: r.original_cost,
+            })
+            .collect())
+    }
+
+    #[cfg(feature = "sqlite")]
+    {
+        let cutoff = Utc::now() - chrono::Duration::days(days as i64);
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            model: String,
+            request_count: i64,
+            prompt_tokens: Option<i64>,
+            completion_tokens: Option<i64>,
+            original_cost: Option<f64>,
+        }
+        let rows = sqlx::query_as::<_, Row>(
+            "SELECT
+                 model,
+                 COUNT(*)              AS request_count,
+                 SUM(prompt_tokens)    AS prompt_tokens,
+                 SUM(completion_tokens) AS completion_tokens,
+                 SUM(cost_usd)         AS original_cost
+             FROM requests
+             WHERE created_at >= $1 AND status = 'success'
+             GROUP BY model",
+        )
+        .bind(cutoff)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| ModelAggregate {
+                model: r.model,
+                request_count: r.request_count,
+                prompt_tokens: r.prompt_tokens.unwrap_or(0),
+                completion_tokens: r.completion_tokens.unwrap_or(0),
+                original_cost: r.original_cost.and_then(|v| Decimal::from_f64(v)),
+            })
+            .collect())
+    }
+}
+
+async fn fetch_pricing_map(pool: &DbPool) -> AppResult<HashMap<String, PricingEntry>> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            provider: String,
+            model_id: String,
+            input_per_1m_tokens: Decimal,
+            output_per_1m_tokens: Decimal,
+        }
+        let rows = sqlx::query_as::<_, Row>(
+            "SELECT provider, model_id, input_per_1m_tokens, output_per_1m_tokens
+             FROM model_pricing WHERE is_active = true",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let key = format!("{}:{}", r.provider, r.model_id);
+                (
+                    key,
+                    PricingEntry {
+                        model_id: r.model_id,
+                        input_per_1m: r.input_per_1m_tokens,
+                        output_per_1m: r.output_per_1m_tokens,
+                    },
+                )
+            })
+            .collect())
+    }
+
+    #[cfg(feature = "sqlite")]
+    {
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            provider: String,
+            model_id: String,
+            input_per_1m_tokens: f64,
+            output_per_1m_tokens: f64,
+        }
+        let rows = sqlx::query_as::<_, Row>(
+            "SELECT provider, model_id, input_per_1m_tokens, output_per_1m_tokens
+             FROM model_pricing WHERE is_active = 1",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                let input = Decimal::from_f64(r.input_per_1m_tokens)?;
+                let output = Decimal::from_f64(r.output_per_1m_tokens)?;
+                let key = format!("{}:{}", r.provider, r.model_id);
+                Some((
+                    key,
+                    PricingEntry {
+                        model_id: r.model_id,
+                        input_per_1m: input,
+                        output_per_1m: output,
+                    },
+                ))
+            })
+            .collect())
     }
 }

@@ -1,4 +1,5 @@
 pub mod alerts;
+pub mod analytics;
 pub mod cache;
 pub mod cluster;
 pub mod config;

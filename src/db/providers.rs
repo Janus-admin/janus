@@ -1,6 +1,7 @@
 use crate::db::DbPool;
 use crate::{errors::AppResult, models::provider::Provider};
 use chrono::Utc;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 
 pub async fn list_providers(pool: &DbPool) -> AppResult<Vec<Provider>> {
@@ -94,5 +95,32 @@ pub async fn set_health_status(pool: &DbPool, id: &str, status: &str) -> AppResu
         .bind(id)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+pub async fn update_quality_score(pool: &DbPool, id: &str, score: Decimal) -> AppResult<()> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    sqlx::query(
+        "UPDATE providers SET quality_score = $1, quality_updated_at = $2 WHERE id = $3",
+    )
+    .bind(score)
+    .bind(Utc::now())
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    #[cfg(feature = "sqlite")]
+    {
+        let score_f64 = f64::try_from(score).unwrap_or(1.0);
+        sqlx::query(
+            "UPDATE providers SET quality_score = $1, quality_updated_at = $2 WHERE id = $3",
+        )
+        .bind(score_f64)
+        .bind(Utc::now())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
 }
