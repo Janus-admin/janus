@@ -56,6 +56,10 @@ rand = "0.8"
 eventsource-stream = "0.2"
 tokio-stream = { version = "0.1", features = ["sync"] }
 
+# ─── V3-3: Streaming Hardening ─────────────────────────────────────────────────
+# tokio-util was a transitive dep; declare it explicitly for stability.
+tokio-util = "0.7"
+
 # ─── Phase 5: Semantic Cache ──────────────────────────────────────────────────
 ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
 tokenizers = "0.19"
