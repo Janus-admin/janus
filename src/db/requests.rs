@@ -422,29 +422,61 @@ pub async fn insert_request_for_replay(
 
 /// Look up per-token prices for a provider+model pair.
 /// Returns `(input_per_1m, output_per_1m)` or `None` if not found.
+///
+/// Falls back to a date-stripped model ID when the exact ID isn't found —
+/// e.g. `gpt-4o-mini-2024-07-18` → `gpt-4o-mini`. This handles the common
+/// pattern where OpenAI returns a versioned model ID in the response even
+/// when the client requested the canonical alias.
 pub async fn find_pricing(
     pool: &DbPool,
     provider: &str,
     model: &str,
 ) -> AppResult<Option<(Decimal, Decimal)>> {
-    let row = sqlx::query_as::<_, PricingRow>(
-        "SELECT input_per_1m_tokens, output_per_1m_tokens
-         FROM model_pricing
-         WHERE provider = $1 AND model_id = $2 AND is_active = TRUE
-         LIMIT 1",
-    )
-    .bind(provider)
-    .bind(model)
-    .fetch_optional(pool)
-    .await?;
+    // Helper: run one SQL lookup and map the row to a price pair.
+    async fn query_one(
+        pool: &DbPool,
+        provider: &str,
+        model: &str,
+    ) -> AppResult<Option<(Decimal, Decimal)>> {
+        let row = sqlx::query_as::<_, PricingRow>(
+            "SELECT input_per_1m_tokens, output_per_1m_tokens
+             FROM model_pricing
+             WHERE provider = $1 AND model_id = $2 AND is_active = TRUE
+             LIMIT 1",
+        )
+        .bind(provider)
+        .bind(model)
+        .fetch_optional(pool)
+        .await?;
 
-    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-    return Ok(row.map(|r| (r.input_per_1m_tokens, r.output_per_1m_tokens)));
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+        return Ok(row.map(|r| (r.input_per_1m_tokens, r.output_per_1m_tokens)));
 
-    #[cfg(feature = "sqlite")]
-    return Ok(row.and_then(|r| {
-        let input = r.input_per_1m_tokens.parse::<Decimal>().ok()?;
-        let output = r.output_per_1m_tokens.parse::<Decimal>().ok()?;
-        Some((input, output))
-    }));
+        #[cfg(feature = "sqlite")]
+        return Ok(row.and_then(|r| {
+            let input = r.input_per_1m_tokens.parse::<Decimal>().ok()?;
+            let output = r.output_per_1m_tokens.parse::<Decimal>().ok()?;
+            Some((input, output))
+        }));
+    }
+
+    // 1. Exact match.
+    if let Some(pair) = query_one(pool, provider, model).await? {
+        return Ok(Some(pair));
+    }
+
+    // 2. Fallback: strip trailing date suffix (-YYYY-MM-DD) and retry.
+    //    Covers versioned OpenAI IDs like `gpt-4o-mini-2024-07-18`.
+    static DATE_SUFFIX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = DATE_SUFFIX.get_or_init(|| {
+        regex::Regex::new(r"-\d{4}-\d{2}-\d{2}$").expect("valid regex")
+    });
+    if re.is_match(model) {
+        let canonical = re.replace(model, "").to_string();
+        if let Some(pair) = query_one(pool, provider, &canonical).await? {
+            return Ok(Some(pair));
+        }
+    }
+
+    Ok(None)
 }

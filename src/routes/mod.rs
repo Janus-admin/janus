@@ -85,6 +85,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/analytics/simulate",
             get(handlers::admin::analytics::simulate),
         )
+        // ── Admin — Models (pricing catalogue) ──────────────────────────────
+        .route(
+            "/admin/models",
+            get(handlers::admin::models::list_models),
+        )
         // ── Admin — Providers ────────────────────────────────────────────────
         .route(
             "/admin/providers",
