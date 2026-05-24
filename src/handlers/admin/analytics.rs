@@ -1,4 +1,12 @@
-use crate::{db::analytics as db_analytics, errors::AppResult, state::AppState};
+use crate::{
+    db::analytics as db_analytics,
+    errors::AppResult,
+    middleware::{
+        jwt::AuthUser,
+        rbac::{require_role, Role},
+    },
+    state::AppState,
+};
 use axum::{
     extract::{Query, State},
     Json,
@@ -37,7 +45,11 @@ fn default_24() -> i32 {
 ///
 /// Returns aggregated stats for today, last 7 days, and last 30 days:
 /// request count, cost, tokens, cache-hit count, error count, avg latency.
-pub async fn overview(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
+pub async fn overview(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+) -> AppResult<Json<Value>> {
+    require_role(Role::BillingViewer, &auth.0, &state).await?;
     let stats = db_analytics::overview_stats(&state.pool).await?;
     Ok(Json(stats))
 }
@@ -47,8 +59,10 @@ pub async fn overview(State(state): State<Arc<AppState>>) -> AppResult<Json<Valu
 /// Cost breakdown split three ways: by calendar day, by provider, by model.
 pub async fn costs(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Query(params): Query<CostQuery>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::BillingViewer, &auth.0, &state).await?;
     let days = params.days.clamp(1, 365);
     let data = db_analytics::cost_breakdown(&state.pool, days).await?;
     Ok(Json(data))
@@ -59,8 +73,10 @@ pub async fn costs(
 /// p50/p95/p99 latency per model+provider over the requested window.
 pub async fn latency(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Query(params): Query<HoursQuery>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::BillingViewer, &auth.0, &state).await?;
     let hours = params.hours.clamp(1, 720);
     let rows = db_analytics::latency_percentiles(&state.pool, hours).await?;
     Ok(Json(serde_json::json!({ "data": rows })))
@@ -71,8 +87,10 @@ pub async fn latency(
 /// Cache hit rate, tokens saved, cost saved — split by exact vs semantic.
 pub async fn cache(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Query(params): Query<HoursQuery>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::BillingViewer, &auth.0, &state).await?;
     let hours = params.hours.clamp(1, 720);
     let data = db_analytics::cache_analytics(&state.pool, hours).await?;
     Ok(Json(data))
@@ -105,8 +123,10 @@ fn default_period_30d() -> String {
 /// with model substitutions. Returns original vs simulated cost + per-model breakdown.
 pub async fn simulate(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Query(params): Query<SimulateQuery>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::BillingViewer, &auth.0, &state).await?;
     let strategy = match params.strategy.as_str() {
         "cost_optimized" | "round_robin" | "priority" => params.strategy.clone(),
         _ => {

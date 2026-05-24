@@ -304,6 +304,8 @@ export interface VeloxProvider {
   max_retries: number;
   health_status: string;
   last_health_check: string | null;
+  quality_score: number | null;
+  quality_updated_at: string | null;
 }
 
 export interface UpdateProviderRequest {
@@ -489,6 +491,58 @@ export interface PromptVersion {
   created_at: string;
 }
 
+// ── System Readiness ─────────────────────────────────────────────────────────
+
+export type CheckStatus = "pass" | "warn" | "fail";
+
+export interface ReadinessCheck {
+  name: string;
+  status: CheckStatus;
+  message: string;
+}
+
+export interface DoctorReport {
+  checks: ReadinessCheck[];
+  errors: number;
+  warnings: number;
+  healthy: boolean;
+}
+
+export const system = {
+  readiness: () =>
+    apiFetch<{ data: DoctorReport }>("/admin/system/readiness"),
+};
+
+// ── Cost Simulator ────────────────────────────────────────────────────────────
+
+export interface SimulateModelRow {
+  model: string;
+  request_count: number;
+  original_cost_usd: number;
+  simulated_cost_usd: number;
+}
+
+export interface SimulateResult {
+  strategy: string;
+  period: string;
+  original_cost_usd: number;
+  simulated_cost_usd: number;
+  savings_usd: number;
+  savings_percent: number;
+  request_count: number;
+  by_model: SimulateModelRow[];
+}
+
+export const simulate = {
+  run: (strategy: string, period: string, modelOverrides?: Record<string, string>) => {
+    const p = new URLSearchParams({ strategy, period });
+    if (modelOverrides && Object.keys(modelOverrides).length > 0) {
+      p.set("model_overrides", JSON.stringify(modelOverrides));
+    }
+    return apiFetch<{ data: SimulateResult }>(`/admin/analytics/simulate?${p}`);
+  },
+};
+
 export const promptsApi = {
   list: (page = 1, per_page = 50) =>
     apiFetch<{ data: Prompt[]; meta: Meta }>(
@@ -523,5 +577,52 @@ export const promptsApi = {
     apiFetch<{ data: PromptVersion }>(
       `/admin/prompts/${promptId}/versions/${version}`,
       { method: "PATCH", body: JSON.stringify(body) }
+    ),
+};
+
+// ── Workspaces / Members (V4-8) ───────────────────────────────────────────────
+
+export interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  member_count: number;
+  created_at: string;
+}
+
+export const workspacesApi = {
+  list: () =>
+    apiFetch<{ data: Workspace[]; meta: { total: number } }>("/admin/workspaces"),
+};
+
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  email: string;
+  name: string;
+  role: "admin" | "api_manager" | "billing_viewer" | "read_only";
+  created_at: string;
+}
+
+export const membersApi = {
+  list: (workspaceId: string) =>
+    apiFetch<{ data: WorkspaceMember[]; meta: { total: number } }>(
+      `/admin/workspaces/${workspaceId}/members`
+    ),
+  add: (workspaceId: string, body: { email: string; role: string }) =>
+    apiFetch<{ data: WorkspaceMember }>(
+      `/admin/workspaces/${workspaceId}/members`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+  update: (workspaceId: string, userId: string, role: string) =>
+    apiFetch<{ data: { role: string } }>(
+      `/admin/workspaces/${workspaceId}/members/${userId}`,
+      { method: "PATCH", body: JSON.stringify({ role }) }
+    ),
+  remove: (workspaceId: string, userId: string) =>
+    apiFetch<void>(
+      `/admin/workspaces/${workspaceId}/members/${userId}`,
+      { method: "DELETE" }
     ),
 };

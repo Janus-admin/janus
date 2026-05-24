@@ -5,6 +5,7 @@ pub mod cache;
 pub mod pool;
 pub mod prompts;
 pub mod providers;
+pub mod rbac;
 pub mod requests;
 pub mod users;
 

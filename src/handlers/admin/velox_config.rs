@@ -1,4 +1,11 @@
-use crate::{errors::AppResult, state::AppState};
+use crate::{
+    errors::AppResult,
+    middleware::{
+        jwt::AuthUser,
+        rbac::{require_role, Role},
+    },
+    state::AppState,
+};
 use axum::{extract::State, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -20,8 +27,10 @@ pub struct PatchConfigRequest {
 /// Secrets and server/db parameters are not patchable; they require a restart.
 pub async fn patch_config(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Json(body): Json<PatchConfigRequest>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::Admin, &auth.0, &state).await?;
     let mut rc = state.runtime_config.write().await;
 
     if let Some(v) = body.log_request_bodies {

@@ -1,4 +1,12 @@
-use crate::{db::requests as db_requests, errors::AppResult, state::AppState};
+use crate::{
+    db::requests as db_requests,
+    errors::AppResult,
+    middleware::{
+        jwt::AuthUser,
+        rbac::{require_role, Role},
+    },
+    state::AppState,
+};
 use axum::{
     extract::{Path, Query, State},
     http::header,
@@ -42,8 +50,10 @@ fn default_per_page() -> i64 {
 /// `X-Velox-Audit-Hash: <sha256-of-response-body>` for tamper detection.
 pub async fn list_requests(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Query(params): Query<ListRequestsQuery>,
 ) -> AppResult<Response> {
+    require_role(Role::BillingViewer, &auth.0, &state).await?;
     let page = params.page.max(1);
     let per_page = params.per_page.clamp(1, 100);
 
@@ -95,8 +105,12 @@ pub async fn list_requests(
 /// `Content-Disposition: attachment` header so browsers trigger a download.
 pub async fn export_requests(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Query(params): Query<ListRequestsQuery>,
 ) -> impl IntoResponse {
+    if let Err(e) = require_role(Role::BillingViewer, &auth.0, &state).await {
+        return e.into_response();
+    }
     let (rows, _) = match db_requests::list_requests(
         &state.pool,
         1,

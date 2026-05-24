@@ -26,6 +26,10 @@ import {
   LogOut,
   Bell,
   FileText,
+  HeartPulse,
+  Terminal,
+  Calculator,
+  Users,
 } from "lucide-react";
 
 const NAV = [
@@ -33,10 +37,14 @@ const NAV = [
   { href: "/requests", label: "Requests", icon: List },
   { href: "/live", label: "Live Feed", icon: Radio },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/analytics/simulate", label: "Cost Simulator", icon: Calculator },
   { href: "/keys", label: "API Keys", icon: Key },
   { href: "/providers", label: "Providers", icon: Cpu },
+  { href: "/playground", label: "Playground", icon: Terminal },
+  { href: "/health", label: "Health", icon: HeartPulse },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/prompts", label: "Prompts", icon: FileText },
+  { href: "/workspaces", label: "Workspaces", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

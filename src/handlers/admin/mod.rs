@@ -2,6 +2,7 @@ pub mod alerts;
 pub mod analytics;
 pub mod cache;
 pub mod keys;
+pub mod members;
 pub mod prompts;
 pub mod providers;
 pub mod replay;

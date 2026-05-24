@@ -1,6 +1,10 @@
 use crate::{
     db::api_keys as db_api_keys,
     errors::AppResult,
+    middleware::{
+        jwt::AuthUser,
+        rbac::{require_role, Role},
+    },
     models::api_key::{ApiKeyView, CreateApiKeyRequest, CreateApiKeyResponse},
     state::AppState,
 };
@@ -42,8 +46,10 @@ fn default_per_page() -> i64 {
 /// The dashboard should instruct users to copy it immediately.
 pub async fn create_key(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Json(body): Json<CreateApiKeyRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    require_role(Role::ApiManager, &auth.0, &state).await?;
     let raw_key = db_api_keys::generate_key();
 
     // bcrypt hash stored as the canonical credential (verified at creation; not for auth)
@@ -148,9 +154,11 @@ pub struct UpdateKeyRequest {
 /// PATCH /admin/keys/:id — update mutable key fields.
 pub async fn update_key(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
     Json(body): Json<UpdateKeyRequest>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::ApiManager, &auth.0, &state).await?;
     use rust_decimal::Decimal;
     use std::str::FromStr;
 
@@ -251,8 +259,10 @@ pub async fn update_key(
 /// The new full key is returned ONCE here. Copy it immediately — it is never stored.
 pub async fn rotate_key(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    require_role(Role::ApiManager, &auth.0, &state).await?;
     let new_raw_key = db_api_keys::generate_key();
     let new_key_hash = hash(&new_raw_key, DEFAULT_COST)
         .map_err(|e| crate::errors::AppError::Anyhow(anyhow::anyhow!(e)))?;
@@ -303,8 +313,10 @@ pub async fn rotate_key(
 /// In cluster mode a `pg_notify` is issued so other nodes also evict the key.
 pub async fn revoke_key(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
 ) -> AppResult<(axum::http::StatusCode, Json<Value>)> {
+    require_role(Role::ApiManager, &auth.0, &state).await?;
     // Revoke in DB.
     let deleted = db_api_keys::revoke_key(&state.pool, id).await?;
     if !deleted {

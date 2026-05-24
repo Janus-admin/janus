@@ -58,9 +58,10 @@ Phase 9: Mobile App          → [SKIPPED] — out of scope for v1
 
 **VELOX v0.1.0 IS FEATURE-COMPLETE. V2 is also complete (all 8 phases, 2026-05-23).**
 
-Current work is V3 — hardening, scaling, enterprise readiness.
-See **VELOX_V3_ROADMAP.md** for the full v3 plan.
-Always start a v3 session by reading VELOX_V3_ROADMAP.md §11 (Phase Status Tracker).
+Current work is V4 — enterprise features (RBAC, analytics, replay, quality scoring).
+See **VELOX_V4_ROADMAP.md** for the full v4 plan.
+V4-0 through V4-8 are complete (2026-05-24). Only V4-9 (external vector stores) remains.
+Always start a v4 session by reading VELOX_V4_ROADMAP.md §16 (Phase Status Tracker).
 
 ---
 
@@ -174,6 +175,15 @@ Always start a v3 session by reading VELOX_V3_ROADMAP.md §11 (Phase Status Trac
 - [x] `docs/deployment/docker.md` — Docker Compose production setup
 - [x] `docs/deployment/systemd.md` — Linux system service (hardened unit file + nginx proxy)
 - [x] `docs/deployment/kubernetes.md` — Kubernetes manifests, ServiceMonitor, persistent volume for models
+
+### Velox-Specific Rust Modules (V4-8 — RBAC / True Multi-tenancy)
+- [x] `migrations/0024_rbac.sql` — Creates `roles` (4 roles) and `workspace_members` tables; seeds existing users as admin on all workspaces via cross-join INSERT
+- [x] `src/db/rbac.rs` — DB queries: `get_user_highest_role`, `get_role_in_workspace`, `list_members`, `add_member`, `update_member_role`, `remove_member`, `find_user_by_email`, `list_workspaces`
+- [x] `src/middleware/rbac.rs` — `Role` enum (ReadOnly=1..Admin=4, Ord-comparable); `require_role()` global check; `require_role_in_workspace()` workspace-scoped check; bootstrap rule: no memberships → admin
+- [x] `src/handlers/admin/members.rs` — `GET /admin/workspaces`, member CRUD endpoints (`list_members`, `add_member`, `update_member`, `remove_member`)
+- [x] `dashboard/src/app/(dashboard)/workspaces/page.tsx` — Workspace management page with expandable workspace cards, member table, add/edit/remove member dialogs
+- [x] RBAC enforcement added to all admin handlers: `analytics.*` (BillingViewer+), `keys.*` (ApiManager+), `cache.*` (Admin), `providers.test_provider` (Admin), `velox_config.patch_config` (Admin), `requests.*` (BillingViewer+)
+- [x] `tests/v4_8_rbac.rs` — 14 acceptance tests covering role enforcement, bootstrap rule, cross-workspace isolation, migration seeding
 
 ---
 

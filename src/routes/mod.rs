@@ -156,6 +156,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/stream",
             get(handlers::admin::stream::stream_handler),
         )
+        // ── Admin — Workspaces + Members (V4-8) ──────────────────────────────
+        .route(
+            "/admin/workspaces",
+            get(handlers::admin::members::list_workspaces),
+        )
+        .route(
+            "/admin/workspaces/:workspace_id/members",
+            get(handlers::admin::members::list_members).post(handlers::admin::members::add_member),
+        )
+        .route(
+            "/admin/workspaces/:workspace_id/members/:user_id",
+            patch(handlers::admin::members::update_member)
+                .delete(handlers::admin::members::remove_member),
+        )
         .route_layer(axum::middleware::from_extractor_with_state::<
             AuthUser,
             Arc<AppState>,

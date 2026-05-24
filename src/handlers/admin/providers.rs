@@ -1,6 +1,10 @@
 use crate::{
     db::providers as db_providers,
     errors::AppResult,
+    middleware::{
+        jwt::AuthUser,
+        rbac::{require_role, Role},
+    },
     models::provider::{ProviderView, UpdateProviderRequest},
     state::AppState,
 };
@@ -73,8 +77,10 @@ pub async fn update_provider(
 /// the stored API key is valid. Updates health_status in DB and returns the result.
 pub async fn test_provider(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    require_role(Role::Admin, &auth.0, &state).await?;
     let provider = db_providers::get_provider(&state.pool, &id)
         .await?
         .ok_or_else(|| crate::errors::AppError::NotFound(format!("Provider {id}")))?;
