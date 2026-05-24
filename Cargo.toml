@@ -35,7 +35,7 @@ anyhow = "1"
 
 # ─── Phase 0: Foundation ───────────────────────────────────────────────────────
 config = "0.14"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 rust_decimal = { version = "1", features = ["serde-float"] }
 
 # ─── Phase 1: Core Proxy ──────────────────────────────────────────────────────
@@ -86,6 +86,11 @@ qdrant-client = "1.9"
 
 # ─── V2-2: Webhook Alerts ─────────────────────────────────────────────────────
 hmac = "0.12"
+
+# ─── V5-1: OpenAPI / Swagger UI ───────────────────────────────────────────────
+utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono", "decimal"] }
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
+toml = "0.8"
 
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]

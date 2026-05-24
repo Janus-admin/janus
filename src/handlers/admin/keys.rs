@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 // ── Request / response types ──────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListKeysQuery {
     #[serde(default = "default_page")]
     pub page: i64,
@@ -44,6 +44,18 @@ fn default_per_page() -> i64 {
 ///
 /// The full `vx-sk-...` key is returned ONCE here and never again.
 /// The dashboard should instruct users to copy it immediately.
+#[utoipa::path(
+    post,
+    path = "/admin/keys",
+    tag = "Keys",
+    request_body = CreateApiKeyRequest,
+    responses(
+        (status = 201, description = "Key created — full secret returned ONCE", body = serde_json::Value),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden — requires ApiManager role or higher"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn create_key(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -101,6 +113,17 @@ pub async fn create_key(
 }
 
 /// GET /admin/keys — list all API keys (JWT-protected admin route).
+#[utoipa::path(
+    get,
+    path = "/admin/keys",
+    tag = "Keys",
+    params(ListKeysQuery),
+    responses(
+        (status = 200, description = "Paginated list of API keys", body = serde_json::Value),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_keys(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListKeysQuery>,
@@ -123,6 +146,18 @@ pub async fn list_keys(
 }
 
 /// GET /admin/keys/:id — get a single key by ID.
+#[utoipa::path(
+    get,
+    path = "/admin/keys/{id}",
+    tag = "Keys",
+    params(("id" = uuid::Uuid, Path, description = "API key UUID")),
+    responses(
+        (status = 200, description = "Key details", body = serde_json::Value),
+        (status = 404, description = "Key not found"),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn get_key(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
@@ -152,6 +187,19 @@ pub struct UpdateKeyRequest {
 }
 
 /// PATCH /admin/keys/:id — update mutable key fields.
+#[utoipa::path(
+    patch,
+    path = "/admin/keys/{id}",
+    tag = "Keys",
+    params(("id" = uuid::Uuid, Path, description = "API key UUID")),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Updated key view", body = serde_json::Value),
+        (status = 404, description = "Key not found"),
+        (status = 403, description = "Forbidden — requires ApiManager role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn update_key(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -257,6 +305,18 @@ pub async fn update_key(
 /// period expires the old key is rejected by the auth middleware.
 ///
 /// The new full key is returned ONCE here. Copy it immediately — it is never stored.
+#[utoipa::path(
+    post,
+    path = "/admin/keys/{id}/rotate",
+    tag = "Keys",
+    params(("id" = uuid::Uuid, Path, description = "API key UUID")),
+    responses(
+        (status = 200, description = "Rotated — new secret returned ONCE; old secret valid during grace window", body = serde_json::Value),
+        (status = 404, description = "Key not found"),
+        (status = 403, description = "Forbidden — requires ApiManager role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn rotate_key(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -311,6 +371,18 @@ pub async fn rotate_key(
 /// Soft-delete: sets `is_active = false` without removing the record.
 /// The key is removed from the in-memory dashmap so it stops working immediately.
 /// In cluster mode a `pg_notify` is issued so other nodes also evict the key.
+#[utoipa::path(
+    delete,
+    path = "/admin/keys/{id}",
+    tag = "Keys",
+    params(("id" = uuid::Uuid, Path, description = "API key UUID")),
+    responses(
+        (status = 200, description = "Key revoked", body = serde_json::Value),
+        (status = 404, description = "Key not found"),
+        (status = 403, description = "Forbidden — requires ApiManager role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn revoke_key(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,

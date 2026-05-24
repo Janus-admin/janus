@@ -202,6 +202,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .merge(audio_upload_routes)
         .merge(admin_routes)
         .merge(mcp_routes)
+        // V5-1: OpenAPI spec + Swagger UI — unauthenticated by design
+        .merge(handlers::admin::docs::router())
         // ── Existing routes ──────────────────────────────────────────────────
         .route("/health", get(handlers::health::health_check))
         .route("/metrics", get(handlers::metrics::prometheus_handler))

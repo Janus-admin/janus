@@ -65,6 +65,9 @@ See **VELOX_V4_ROADMAP.md §16** for the full phase history.
 Read that file's §16 (phase status), §17 (locked decisions), and §18 (session start ritual)
 before touching any code on a V5 phase.
 
+V5-0 (API Surface Expansion) and V5-1 server side (OpenAPI + Swagger UI + `velox` CLI)
+are complete. SDK repos (velox-python, velox-node) are V5-1b and live in separate repos.
+
 ---
 
 ## What Has Been Built
@@ -208,6 +211,18 @@ before touching any code on a V5 phase.
 - [x] `src/routes/mod.rs`: wires `/v1/images/generations`, `/v1/audio/speech` (1 MB limit), and `/v1/audio/transcriptions` on a separate 25 MB-limit branch for audio uploads
 - [x] `Cargo.toml`: adds `axum` feature `multipart` + `reqwest` feature `multipart`
 - [x] `tests/v5_0_api_expansion.rs`: 14 acceptance tests — embeddings shape/cost/priority, `/v1/models` aggregation + 5-second TTL, images passthrough + per-image cost, audio multipart + speech streaming, legacy completions, tool-calls extraction into requests row, endpoint-per-route attribution, unsupported modality error path, regression on chat completions
+
+### Velox-Specific Rust Modules (V5-1 — OpenAPI + Swagger UI + `velox` CLI)
+- [x] `src/openapi.rs`: `VeloxApiDoc` derived via `utoipa::OpenApi`; combines every annotated handler into a single OpenAPI 3.1 document; declares `bearer_jwt` + `api_key` security schemes via a `Modify` impl; tag-per-domain (Keys, Requests, Analytics, Models, Providers, Alerts, Cache, Prompts, Config, System, Workspaces, Gateway)
+- [x] Every admin handler and every gateway handler now carries a `#[utoipa::path(...)]` annotation (`src/handlers/admin/*.rs`, `src/handlers/gateway.rs`); query-param structs that flow into the spec gained `utoipa::IntoParams` (`ListKeysQuery`, `ListRequestsQuery`, `ListPromptsQuery`, `CostQuery`, `HoursQuery`, `SimulateQuery`)
+- [x] `src/models/api_key.rs`: derives `ToSchema` on `CreateApiKeyRequest`, `CreateApiKeyResponse`, `ApiKeyView`
+- [x] `src/handlers/admin/docs.rs`: returns the `SwaggerUi::new("/admin/docs").url("/admin/openapi.json", VeloxApiDoc::openapi())` sub-router; both endpoints are unauthenticated by design so prospects can read the spec before authenticating
+- [x] `src/routes/mod.rs`: merges the docs sub-router at the top level so paths land on `/admin/openapi.json` and `/admin/docs`
+- [x] `src/cli/{mod,admin_client,keys,migrate,config,import}.rs`: `velox` CLI — single binary with clap subcommands. `serve` (default, no subcommand) preserves the old boot path; `doctor`, `demo`, `mcp-stdio` cover the old `--doctor` / `--demo` / `--mcp-stdio` flags; `keys list|create|rotate|revoke`, `migrate up|status`, `config get|set key=value`, `import litellm|portkey|openrouter` (stubs — full impl in V5-2). Admin-API calls resolve URL+token from `--url`/`--token`, `VELOX_URL`/`VELOX_ADMIN_TOKEN`, or `~/.config/velox/cli.toml`
+- [x] `src/main.rs`: rewritten to delegate to `velox::cli::run` for non-serve subcommands; the serve path stays byte-for-byte equivalent to the pre-V5-1 behaviour (mcp-stdio, doctor, demo are now subcommands but carry the same semantics)
+- [x] `Cargo.toml`: adds `utoipa` 5 (with `axum_extras`, `uuid`, `chrono`, `decimal` features), `utoipa-swagger-ui` 8 (with `axum` feature), `toml` 0.8 (CLI config file), and enables `clap` `env` feature for env-var-backed CLI flags
+- [x] `tests/v5_1_openapi.rs`: 5 acceptance tests covering `/admin/openapi.json` returns a 3.1 spec, the spec includes every annotated admin + gateway endpoint, Swagger UI returns 200 + HTML + static asset, response handlers unchanged
+- [x] `tests/v5_1_cli.rs`: 7 acceptance tests covering CLI help lists every subcommand, default-serve when no subcommand, `keys create` flag parsing, global `--url`/`--token` propagation, `keys create` + `config get` round-tripping through the admin API, `migrate status` reading `_sqlx_migrations`
 
 ---
 

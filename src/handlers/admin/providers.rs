@@ -19,6 +19,15 @@ use std::sync::Arc;
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// GET /admin/providers — list all providers with health status.
+#[utoipa::path(
+    get,
+    path = "/admin/providers",
+    tag = "Providers",
+    responses(
+        (status = 200, description = "Provider list with health status", body = serde_json::Value),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_providers(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
     let providers = db_providers::list_providers(&state.pool).await?;
     let views: Vec<ProviderView> = providers.into_iter().map(ProviderView::from).collect();
@@ -30,6 +39,18 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> AppResult<Jso
 /// Persists to DB immediately. Changes to API keys take effect on next restart.
 /// Changes to is_enabled / priority affect routing immediately via the DB record
 /// (the running ProviderRegistry is seeded at startup, restart required for those too).
+#[utoipa::path(
+    patch,
+    path = "/admin/providers/{id}",
+    tag = "Providers",
+    params(("id" = String, Path, description = "Provider ID, e.g. \"openai\"")),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Updated provider view", body = serde_json::Value),
+        (status = 404, description = "Provider not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn update_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -75,6 +96,18 @@ pub async fn update_provider(
 ///
 /// Makes a lightweight HTTP request to verify the provider is reachable and that
 /// the stored API key is valid. Updates health_status in DB and returns the result.
+#[utoipa::path(
+    post,
+    path = "/admin/providers/{id}/test",
+    tag = "Providers",
+    params(("id" = String, Path, description = "Provider ID, e.g. \"openai\"")),
+    responses(
+        (status = 200, description = "Provider reachable; result body has health_status + http_status", body = serde_json::Value),
+        (status = 503, description = "Provider unreachable", body = serde_json::Value),
+        (status = 403, description = "Forbidden — requires Admin role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn test_provider(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,

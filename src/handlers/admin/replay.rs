@@ -81,6 +81,21 @@ pub struct ReplayOptions {
 }
 
 /// POST /admin/requests/:id/replay
+#[utoipa::path(
+    post,
+    path = "/admin/requests/{id}/replay",
+    tag = "Requests",
+    params(("id" = uuid::Uuid, Path, description = "Original request UUID")),
+    request_body(
+        content = serde_json::Value,
+        description = "Optional overrides: provider, skip_cache, stream, model",
+    ),
+    responses(
+        (status = 200, description = "Replayed response (JSON or SSE stream)"),
+        (status = 404, description = "Original request not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn replay_request(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
@@ -267,6 +282,20 @@ pub struct PlaygroundRequest {
 /// - No budget or rate-limit checks.
 /// - Request records are flagged `is_playground = true`.
 /// - Response includes extended metadata headers.
+#[utoipa::path(
+    post,
+    path = "/admin/playground",
+    tag = "Requests",
+    request_body(
+        content = serde_json::Value,
+        description = "OpenAI-format ChatCompletion request",
+    ),
+    responses(
+        (status = 200, description = "Pipeline response (JSON or SSE stream)"),
+        (status = 400, description = "Invalid request body"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn playground(
     State(state): State<Arc<AppState>>,
     Json(body): Json<Value>,

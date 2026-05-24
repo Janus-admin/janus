@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListRequestsQuery {
     #[serde(default = "default_page")]
     pub page: i64,
@@ -48,6 +48,17 @@ fn default_per_page() -> i64 {
 ///
 /// V3-5: adds start_time, end_time, has_cache_hit filters and returns
 /// `X-Velox-Audit-Hash: <sha256-of-response-body>` for tamper detection.
+#[utoipa::path(
+    get,
+    path = "/admin/requests",
+    tag = "Requests",
+    params(ListRequestsQuery),
+    responses(
+        (status = 200, description = "Paginated requests with X-Velox-Audit-Hash header", body = serde_json::Value),
+        (status = 403, description = "Forbidden — requires BillingViewer role or higher"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_requests(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -103,6 +114,17 @@ pub async fn list_requests(
 /// Accepts the same query filters as `list_requests` (provider, model, status,
 /// api_key_id). Returns up to 10 000 rows. Response is `text/csv` with a
 /// `Content-Disposition: attachment` header so browsers trigger a download.
+#[utoipa::path(
+    get,
+    path = "/admin/requests/export",
+    tag = "Requests",
+    params(ListRequestsQuery),
+    responses(
+        (status = 200, description = "CSV download of up to 10,000 matching requests", content_type = "text/csv"),
+        (status = 403, description = "Forbidden — requires BillingViewer role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn export_requests(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -169,6 +191,17 @@ pub async fn export_requests(
 }
 
 /// GET /admin/requests/:id — get a single request by ID.
+#[utoipa::path(
+    get,
+    path = "/admin/requests/{id}",
+    tag = "Requests",
+    params(("id" = uuid::Uuid, Path, description = "Request UUID")),
+    responses(
+        (status = 200, description = "Request row", body = serde_json::Value),
+        (status = 404, description = "Request not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn get_request(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,

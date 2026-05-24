@@ -25,6 +25,17 @@ pub struct PatchConfigRequest {
 /// PATCH /admin/config — update runtime-safe config fields.
 ///
 /// Secrets and server/db parameters are not patchable; they require a restart.
+#[utoipa::path(
+    patch,
+    path = "/admin/config",
+    tag = "Config",
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Updated runtime-safe config", body = serde_json::Value),
+        (status = 403, description = "Forbidden — requires Admin role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn patch_config(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -64,6 +75,15 @@ pub async fn patch_config(
 ///
 /// Secrets (jwt_secret, encryption_key, provider API keys) are never included.
 /// This is read-only in Phase 6. Runtime mutation will be added in Phase 7.
+#[utoipa::path(
+    get,
+    path = "/admin/config",
+    tag = "Config",
+    responses(
+        (status = 200, description = "Current runtime configuration (no secrets)", body = serde_json::Value),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn get_config(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
     let c = &state.config;
     let rc = state.runtime_config.read().await;

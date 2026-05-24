@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 // ── Query / request types ─────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListPromptsQuery {
     #[serde(default = "default_page")]
     pub page: i64,
@@ -47,6 +47,16 @@ pub struct UpdateVersionRequest {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// POST /admin/prompts — create a prompt.
+#[utoipa::path(
+    post,
+    path = "/admin/prompts",
+    tag = "Prompts",
+    request_body = serde_json::Value,
+    responses(
+        (status = 201, description = "Prompt created", body = serde_json::Value),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn create_prompt(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreatePromptRequest>,
@@ -58,6 +68,16 @@ pub async fn create_prompt(
 }
 
 /// GET /admin/prompts — list all prompts (paginated).
+#[utoipa::path(
+    get,
+    path = "/admin/prompts",
+    tag = "Prompts",
+    params(ListPromptsQuery),
+    responses(
+        (status = 200, description = "Paginated prompt list", body = serde_json::Value),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_prompts(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListPromptsQuery>,
@@ -72,6 +92,17 @@ pub async fn list_prompts(
 }
 
 /// GET /admin/prompts/:id — get a prompt with all its versions.
+#[utoipa::path(
+    get,
+    path = "/admin/prompts/{id}",
+    tag = "Prompts",
+    params(("id" = uuid::Uuid, Path, description = "Prompt UUID")),
+    responses(
+        (status = 200, description = "Prompt + all versions", body = serde_json::Value),
+        (status = 404, description = "Prompt not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn get_prompt(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
@@ -86,6 +117,18 @@ pub async fn get_prompt(
 }
 
 /// POST /admin/prompts/:id/versions — create a new version for a prompt.
+#[utoipa::path(
+    post,
+    path = "/admin/prompts/{id}/versions",
+    tag = "Prompts",
+    params(("id" = uuid::Uuid, Path, description = "Prompt UUID")),
+    request_body = serde_json::Value,
+    responses(
+        (status = 201, description = "Version created", body = serde_json::Value),
+        (status = 404, description = "Prompt not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn create_version(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
@@ -109,6 +152,21 @@ pub async fn create_version(
 }
 
 /// PATCH /admin/prompts/:id/versions/:version — update is_active / ab_weight.
+#[utoipa::path(
+    patch,
+    path = "/admin/prompts/{id}/versions/{version}",
+    tag = "Prompts",
+    params(
+        ("id" = uuid::Uuid, Path, description = "Prompt UUID"),
+        ("version" = i32, Path, description = "Version number"),
+    ),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Updated version", body = serde_json::Value),
+        (status = 404, description = "Version not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn update_version(
     State(state): State<Arc<AppState>>,
     Path((id, version)): Path<(Uuid, i32)>,
@@ -124,6 +182,17 @@ pub async fn update_version(
 }
 
 /// DELETE /admin/prompts/:id — delete a prompt and all its versions.
+#[utoipa::path(
+    delete,
+    path = "/admin/prompts/{id}",
+    tag = "Prompts",
+    params(("id" = uuid::Uuid, Path, description = "Prompt UUID")),
+    responses(
+        (status = 200, description = "Prompt and versions deleted", body = serde_json::Value),
+        (status = 404, description = "Prompt not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn delete_prompt(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,

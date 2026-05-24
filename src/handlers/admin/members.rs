@@ -78,6 +78,16 @@ struct WorkspaceView {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// GET /admin/workspaces — list all workspaces with member counts.
+#[utoipa::path(
+    get,
+    path = "/admin/workspaces",
+    tag = "Workspaces",
+    responses(
+        (status = 200, description = "Workspaces + member counts", body = serde_json::Value),
+        (status = 403, description = "Forbidden — requires Admin role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_workspaces(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -102,6 +112,17 @@ pub async fn list_workspaces(
 }
 
 /// GET /admin/workspaces/:workspace_id/members
+#[utoipa::path(
+    get,
+    path = "/admin/workspaces/{workspace_id}/members",
+    tag = "Workspaces",
+    params(("workspace_id" = uuid::Uuid, Path, description = "Workspace UUID")),
+    responses(
+        (status = 200, description = "Workspace members", body = serde_json::Value),
+        (status = 403, description = "Forbidden — requires Admin role in this workspace"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_members(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -119,6 +140,19 @@ pub async fn list_members(
 }
 
 /// POST /admin/workspaces/:workspace_id/members
+#[utoipa::path(
+    post,
+    path = "/admin/workspaces/{workspace_id}/members",
+    tag = "Workspaces",
+    params(("workspace_id" = uuid::Uuid, Path, description = "Workspace UUID")),
+    request_body = serde_json::Value,
+    responses(
+        (status = 201, description = "Member added", body = serde_json::Value),
+        (status = 400, description = "Invalid role"),
+        (status = 404, description = "User not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn add_member(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -147,6 +181,21 @@ pub async fn add_member(
 }
 
 /// PATCH /admin/workspaces/:workspace_id/members/:user_id
+#[utoipa::path(
+    patch,
+    path = "/admin/workspaces/{workspace_id}/members/{user_id}",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = uuid::Uuid, Path, description = "Workspace UUID"),
+        ("user_id" = uuid::Uuid, Path, description = "User UUID"),
+    ),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Member role updated", body = serde_json::Value),
+        (status = 400, description = "Invalid role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn update_member(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -168,6 +217,20 @@ pub async fn update_member(
 }
 
 /// DELETE /admin/workspaces/:workspace_id/members/:user_id
+#[utoipa::path(
+    delete,
+    path = "/admin/workspaces/{workspace_id}/members/{user_id}",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = uuid::Uuid, Path, description = "Workspace UUID"),
+        ("user_id" = uuid::Uuid, Path, description = "User UUID"),
+    ),
+    responses(
+        (status = 204, description = "Member removed"),
+        (status = 403, description = "Forbidden"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn remove_member(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,

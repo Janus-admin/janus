@@ -7,6 +7,7 @@ use velox::{
         embedding::EmbeddingModel, index::qdrant::QdrantIndex, policy::SemanticCachePolicy,
         CacheEngine,
     },
+    cli::{Cli, Command},
     cluster::rate_limit::DbRateLimiter,
     config::Config,
     db::{self, api_keys as db_api_keys},
@@ -22,32 +23,56 @@ use velox::{
     state::AppState,
 };
 
-/// Velox — Self-hosted AI gateway.
-#[derive(Parser)]
-#[command(version, about)]
-struct Args {
-    /// Run in MCP stdio mode: read JSON-RPC 2.0 from stdin, write responses to stdout.
-    /// Requires the admin JWT to be passed in the `initialize` message params.token.
-    #[arg(long)]
+/// Resolved server mode after CLI parsing.
+struct ServeMode {
     mcp_stdio: bool,
-
-    /// Run system readiness checks and exit.
-    /// Checks database, JWT secret, encryption key, providers, embedding model, and disk space.
-    #[arg(long)]
     doctor: bool,
-
-    /// Start in demo mode: use a mock provider, seed demo data, no real API keys needed.
-    /// Login: admin@velox.local / demo-password
-    /// Requires DATABASE_URL to point to a SQLite database (or sqlite::memory:).
-    #[arg(long)]
     demo: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
-
+    let cli = Cli::parse();
     dotenvy::dotenv().ok();
+
+    // Dispatch CLI subcommands. Anything that isn't "boot the server" exits
+    // here without spinning up the full app state.
+    let serve_mode = match cli.command {
+        None | Some(Command::Serve(_)) => ServeMode {
+            mcp_stdio: false,
+            doctor: false,
+            demo: false,
+        },
+        Some(Command::Doctor) => ServeMode {
+            mcp_stdio: false,
+            doctor: true,
+            demo: false,
+        },
+        Some(Command::Demo) => ServeMode {
+            mcp_stdio: false,
+            doctor: false,
+            demo: true,
+        },
+        Some(Command::McpStdio) => ServeMode {
+            mcp_stdio: true,
+            doctor: false,
+            demo: false,
+        },
+        Some(Command::Keys(sub)) => {
+            return velox::cli::keys::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
+        }
+        Some(Command::Migrate(sub)) => {
+            return velox::cli::migrate::run(sub).await;
+        }
+        Some(Command::Config(sub)) => {
+            return velox::cli::config::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
+        }
+        Some(Command::Import(sub)) => {
+            return velox::cli::import::run(sub).await;
+        }
+    };
+
+    let args = serve_mode;
 
     let config = Config::load()?;
 

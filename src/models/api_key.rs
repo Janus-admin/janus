@@ -3,6 +3,7 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Database row from the `api_keys` table.
@@ -53,7 +54,7 @@ pub struct ApiKey {
 }
 
 /// Payload for creating a new API key.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApiKeyRequest {
     pub name: String,
     pub workspace_id: Option<Uuid>,
@@ -75,7 +76,7 @@ fn default_routing_strategy() -> String {
 }
 
 /// Response returned once on key creation — full key shown here, never again.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CreateApiKeyResponse {
     pub id: Uuid,
     pub name: String,
@@ -86,7 +87,7 @@ pub struct CreateApiKeyResponse {
 }
 
 /// Safe public view of an API key (no hashes, no full key).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ApiKeyView {
     pub id: Uuid,
     pub name: String,

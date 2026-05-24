@@ -18,14 +18,14 @@ use std::sync::Arc;
 
 // ── Query params ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct CostQuery {
     /// Number of days to look back (default: 30).
     #[serde(default = "default_30")]
     pub days: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct HoursQuery {
     /// Number of hours to look back (default: 24).
     #[serde(default = "default_24")]
@@ -45,6 +45,16 @@ fn default_24() -> i32 {
 ///
 /// Returns aggregated stats for today, last 7 days, and last 30 days:
 /// request count, cost, tokens, cache-hit count, error count, avg latency.
+#[utoipa::path(
+    get,
+    path = "/admin/analytics/overview",
+    tag = "Analytics",
+    responses(
+        (status = 200, description = "Aggregated stats for today/7d/30d", body = serde_json::Value),
+        (status = 403, description = "Forbidden — requires BillingViewer role"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn overview(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -57,6 +67,17 @@ pub async fn overview(
 /// GET /admin/analytics/costs?days=30
 ///
 /// Cost breakdown split three ways: by calendar day, by provider, by model.
+#[utoipa::path(
+    get,
+    path = "/admin/analytics/costs",
+    tag = "Analytics",
+    params(CostQuery),
+    responses(
+        (status = 200, description = "Cost breakdown by day/provider/model", body = serde_json::Value),
+        (status = 403, description = "Forbidden"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn costs(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -71,6 +92,17 @@ pub async fn costs(
 /// GET /admin/analytics/latency?hours=24
 ///
 /// p50/p95/p99 latency per model+provider over the requested window.
+#[utoipa::path(
+    get,
+    path = "/admin/analytics/latency",
+    tag = "Analytics",
+    params(HoursQuery),
+    responses(
+        (status = 200, description = "p50/p95/p99 latency per model+provider", body = serde_json::Value),
+        (status = 403, description = "Forbidden"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn latency(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -85,6 +117,17 @@ pub async fn latency(
 /// GET /admin/analytics/cache?hours=24
 ///
 /// Cache hit rate, tokens saved, cost saved — split by exact vs semantic.
+#[utoipa::path(
+    get,
+    path = "/admin/analytics/cache",
+    tag = "Analytics",
+    params(HoursQuery),
+    responses(
+        (status = 200, description = "Cache hit rate / tokens-saved / cost-saved", body = serde_json::Value),
+        (status = 403, description = "Forbidden"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn cache(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -98,7 +141,7 @@ pub async fn cache(
 
 // ── Cost simulator ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct SimulateQuery {
     /// `cost_optimized` | `round_robin` | `priority` (default: cost_optimized)
     #[serde(default = "default_cost_optimized")]
@@ -121,6 +164,17 @@ fn default_period_30d() -> String {
 ///
 /// Recalculates costs for past requests under a different routing strategy and/or
 /// with model substitutions. Returns original vs simulated cost + per-model breakdown.
+#[utoipa::path(
+    get,
+    path = "/admin/analytics/simulate",
+    tag = "Analytics",
+    params(SimulateQuery),
+    responses(
+        (status = 200, description = "Original vs simulated cost", body = serde_json::Value),
+        (status = 403, description = "Forbidden"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn simulate(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,

@@ -1533,7 +1533,7 @@ toxiproxy_rust = "0.2"   # chaos testing
 | Phase | Type | Description | Status | Migration |
 |---|---|---|---|---|
 | V5-0 | Backend | API Surface Expansion (embeddings, images, audio, models, tools) | ✅ Complete (2026-05-25) | 0027 |
-| V5-1 | Backend + SDKs | SDKs, CLI, OpenAPI | ⏳ Not started | — |
+| V5-1 | Backend + SDKs | SDKs, CLI, OpenAPI | ✅ Server side complete (2026-05-25); SDKs live in separate repos (V5-1b) | — |
 | V5-2 | Backend + Infra | Deployment & Migration Tooling | ⏳ Not started | — |
 | V5-3a | Backend + Frontend | OIDC + SCIM | ⏳ Not started | 0028 |
 | V5-3b | Backend + Frontend | SAML 2.0 | ⏳ Not started | 0028 (shared) |

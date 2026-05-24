@@ -17,6 +17,16 @@ pub struct ModelRow {
 }
 
 /// GET /admin/models — list all active models with pricing info.
+#[utoipa::path(
+    get,
+    path = "/admin/models",
+    tag = "Models",
+    responses(
+        (status = 200, description = "Active model pricing catalogue", body = serde_json::Value),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_models(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
     let rows = sqlx::query_as!(
         ModelRow,

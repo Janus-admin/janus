@@ -1,6 +1,7 @@
 pub mod alerts;
 pub mod analytics;
 pub mod cache;
+pub mod cli;
 pub mod cluster;
 pub mod config;
 pub mod crypto;
@@ -15,6 +16,7 @@ pub mod mcp;
 pub mod metrics;
 pub mod middleware;
 pub mod models;
+pub mod openapi;
 pub mod pii;
 pub mod plugins;
 pub mod pricing;

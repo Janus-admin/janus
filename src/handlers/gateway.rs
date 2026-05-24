@@ -69,6 +69,23 @@ where
 /// Response header `X-Velox-Cache-Hit: exact` is present on exact cache hits.
 /// Response header `X-Velox-Cache-Hit: semantic` + `X-Velox-Cache-Similarity: 0.97`
 /// are present on semantic cache hits.
+#[utoipa::path(
+    post,
+    path = "/v1/chat/completions",
+    tag = "Gateway",
+    request_body(
+        content = serde_json::Value,
+        description = "OpenAI-format ChatCompletionRequest (model, messages, stream, etc.)",
+    ),
+    responses(
+        (status = 200, description = "OpenAI-format ChatCompletion (JSON) or SSE stream when `stream: true`"),
+        (status = 401, description = "Invalid API key"),
+        (status = 402, description = "Budget exceeded for this key"),
+        (status = 429, description = "Rate limit exceeded — `Retry-After` header present"),
+        (status = 503, description = "All providers unavailable"),
+    ),
+    security(("api_key" = [])),
+)]
 pub async fn chat_completions(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
@@ -419,6 +436,14 @@ fn models_cache() -> &'static ModelsCacheCell {
 /// `Provider::list_models`) and unions with the active rows from
 /// `model_pricing`. Result is cached in-memory for 5 seconds.
 /// No auth required — matches OpenAI behaviour.
+#[utoipa::path(
+    get,
+    path = "/v1/models",
+    tag = "Gateway",
+    responses(
+        (status = 200, description = "OpenAI-format `{object: \"list\", data: [...]}` model list", body = serde_json::Value),
+    ),
+)]
 pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Cache hit (within TTL): return immediately.
     {
@@ -504,6 +529,19 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoRespons
 ///
 /// OpenAI-compatible image generation. No caching (high cost, low repetition).
 /// Cost is per-image, looked up from `model_pricing.price_per_image`.
+#[utoipa::path(
+    post,
+    path = "/v1/images/generations",
+    tag = "Gateway",
+    request_body(content = serde_json::Value, description = "OpenAI-format image generation request"),
+    responses(
+        (status = 200, description = "OpenAI-format image response", body = serde_json::Value),
+        (status = 401, description = "Invalid API key"),
+        (status = 402, description = "Budget exceeded"),
+        (status = 503, description = "Provider unavailable"),
+    ),
+    security(("api_key" = [])),
+)]
 pub async fn images_generations(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
@@ -574,6 +612,19 @@ pub async fn images_generations(
 ///
 /// Multipart upload (OpenAI-compatible). Returns transcribed text.
 /// Cost is per-audio-second when the provider reports a duration.
+#[utoipa::path(
+    post,
+    path = "/v1/audio/transcriptions",
+    tag = "Gateway",
+    request_body(content_type = "multipart/form-data", description = "Fields: `model` (string), `file` (audio file), plus OpenAI transcription options"),
+    responses(
+        (status = 200, description = "OpenAI-format transcription response", body = serde_json::Value),
+        (status = 400, description = "Missing or invalid multipart fields"),
+        (status = 401, description = "Invalid API key"),
+        (status = 402, description = "Budget exceeded"),
+    ),
+    security(("api_key" = [])),
+)]
 pub async fn audio_transcriptions(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
@@ -697,6 +748,18 @@ pub async fn audio_transcriptions(
 ///
 /// Text-to-speech. Returns a streaming binary audio body.
 /// Cost is per-input-character from `model_pricing.price_per_character`.
+#[utoipa::path(
+    post,
+    path = "/v1/audio/speech",
+    tag = "Gateway",
+    request_body(content = serde_json::Value, description = "OpenAI-format TTS request: model, input, voice, response_format"),
+    responses(
+        (status = 200, description = "Binary audio stream (Content-Type matches response_format)"),
+        (status = 401, description = "Invalid API key"),
+        (status = 402, description = "Budget exceeded"),
+    ),
+    security(("api_key" = [])),
+)]
 pub async fn audio_speech(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
@@ -890,6 +953,19 @@ fn broadcast_event(
 ///
 /// OpenAI-compatible embeddings endpoint. Supports exact caching (no semantic
 /// cache — embeddings are the index, not the queries). Logged with `request_type = 'embedding'`.
+#[utoipa::path(
+    post,
+    path = "/v1/embeddings",
+    tag = "Gateway",
+    request_body(content = serde_json::Value, description = "OpenAI-format embeddings request"),
+    responses(
+        (status = 200, description = "OpenAI-format embeddings response", body = serde_json::Value),
+        (status = 401, description = "Invalid API key"),
+        (status = 402, description = "Budget exceeded"),
+        (status = 503, description = "Provider unavailable"),
+    ),
+    security(("api_key" = [])),
+)]
 pub async fn embeddings(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,
@@ -995,6 +1071,18 @@ pub struct LegacyCompletionRequest {
 ///
 /// Legacy completions endpoint. Converts `prompt` → single user message, calls
 /// the chat pipeline internally, and returns in legacy Completions response format.
+#[utoipa::path(
+    post,
+    path = "/v1/completions",
+    tag = "Gateway",
+    request_body(content = serde_json::Value, description = "Legacy OpenAI completions request (prompt + model)"),
+    responses(
+        (status = 200, description = "Legacy OpenAI-format completion (JSON or SSE stream)"),
+        (status = 401, description = "Invalid API key"),
+        (status = 402, description = "Budget exceeded"),
+    ),
+    security(("api_key" = [])),
+)]
 pub async fn legacy_completions(
     State(state): State<Arc<AppState>>,
     GatewayAuth(api_key): GatewayAuth,

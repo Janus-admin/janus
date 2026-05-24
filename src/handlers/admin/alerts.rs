@@ -54,6 +54,17 @@ pub struct UpdateAlertRequest {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// POST /admin/alerts
+#[utoipa::path(
+    post,
+    path = "/admin/alerts",
+    tag = "Alerts",
+    request_body = serde_json::Value,
+    responses(
+        (status = 201, description = "Created alert", body = serde_json::Value),
+        (status = 400, description = "Invalid threshold value"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn create_alert(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateAlertRequest>,
@@ -79,6 +90,15 @@ pub async fn create_alert(
 }
 
 /// GET /admin/alerts
+#[utoipa::path(
+    get,
+    path = "/admin/alerts",
+    tag = "Alerts",
+    responses(
+        (status = 200, description = "Alerts list", body = serde_json::Value),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn list_alerts(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
     let alerts = db_alerts::list(&state.pool).await?;
     Ok(Json(json!({
@@ -88,6 +108,17 @@ pub async fn list_alerts(State(state): State<Arc<AppState>>) -> AppResult<Json<V
 }
 
 /// GET /admin/alerts/:id  — returns alert + history
+#[utoipa::path(
+    get,
+    path = "/admin/alerts/{id}",
+    tag = "Alerts",
+    params(("id" = uuid::Uuid, Path, description = "Alert UUID")),
+    responses(
+        (status = 200, description = "Alert + recent history", body = serde_json::Value),
+        (status = 404, description = "Alert not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn get_alert(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
@@ -107,6 +138,18 @@ pub async fn get_alert(
 }
 
 /// PATCH /admin/alerts/:id
+#[utoipa::path(
+    patch,
+    path = "/admin/alerts/{id}",
+    tag = "Alerts",
+    params(("id" = uuid::Uuid, Path, description = "Alert UUID")),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Updated alert", body = serde_json::Value),
+        (status = 404, description = "Alert not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn update_alert(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
@@ -147,6 +190,17 @@ pub async fn update_alert(
 }
 
 /// DELETE /admin/alerts/:id
+#[utoipa::path(
+    delete,
+    path = "/admin/alerts/{id}",
+    tag = "Alerts",
+    params(("id" = uuid::Uuid, Path, description = "Alert UUID")),
+    responses(
+        (status = 200, description = "Alert deleted", body = serde_json::Value),
+        (status = 404, description = "Alert not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn delete_alert(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
@@ -159,6 +213,18 @@ pub async fn delete_alert(
 }
 
 /// POST /admin/alerts/:id/test  — deliver a test webhook regardless of threshold
+#[utoipa::path(
+    post,
+    path = "/admin/alerts/{id}/test",
+    tag = "Alerts",
+    params(("id" = uuid::Uuid, Path, description = "Alert UUID")),
+    responses(
+        (status = 200, description = "Webhook delivered successfully", body = serde_json::Value),
+        (status = 400, description = "Alert has no webhook URL or delivery failed"),
+        (status = 404, description = "Alert not found"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
 pub async fn test_alert(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
