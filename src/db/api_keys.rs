@@ -71,6 +71,9 @@ struct ApiKeyRowSqlite {
     pub rate_limit_tpm: Option<i32>,
     pub allowed_models: Option<String>, // JSON: '["gpt-4o","claude-3-5-sonnet"]'
     pub routing_strategy: String,
+    pub downgrade_at_percent: Option<i32>,
+    pub downgrade_strategy: Option<String>,
+    pub downgrade_to_model: Option<String>,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -99,6 +102,9 @@ impl From<ApiKeyRowSqlite> for ApiKey {
             rate_limit_tpm: row.rate_limit_tpm,
             allowed_models,
             routing_strategy: row.routing_strategy,
+            downgrade_at_percent: row.downgrade_at_percent,
+            downgrade_strategy: row.downgrade_strategy,
+            downgrade_to_model: row.downgrade_to_model,
             is_active: row.is_active,
             created_at: row.created_at,
             expires_at: row.expires_at,
@@ -133,6 +139,9 @@ pub async fn create(
     allowed_models: Option<Vec<String>>,
     expires_at: Option<DateTime<Utc>>,
     routing_strategy: &str,
+    downgrade_at_percent: Option<i32>,
+    downgrade_strategy: Option<&str>,
+    downgrade_to_model: Option<&str>,
 ) -> AppResult<ApiKey> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
@@ -140,8 +149,10 @@ pub async fn create(
             "INSERT INTO api_keys (
                  id, name, key_hash, key_sha256, key_prefix, workspace_id,
                  budget_limit, budget_used, rate_limit_rpm, rate_limit_tpm,
-                 allowed_models, routing_strategy, is_active, created_at, expires_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,$11,TRUE,$12,$13)
+                 allowed_models, routing_strategy,
+                 downgrade_at_percent, downgrade_strategy, downgrade_to_model,
+                 is_active, created_at, expires_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,$11,$12,$13,$14,TRUE,$15,$16)
              RETURNING *",
         )
         .bind(id)
@@ -155,6 +166,9 @@ pub async fn create(
         .bind(rate_limit_tpm)
         .bind(allowed_models)
         .bind(routing_strategy)
+        .bind(downgrade_at_percent)
+        .bind(downgrade_strategy)
+        .bind(downgrade_to_model)
         .bind(Utc::now())
         .bind(expires_at)
         .fetch_one(pool)
@@ -170,8 +184,10 @@ pub async fn create(
             "INSERT INTO api_keys (
                  id, name, key_hash, key_sha256, key_prefix, workspace_id,
                  budget_limit, budget_used, rate_limit_rpm, rate_limit_tpm,
-                 allowed_models, routing_strategy, is_active, created_at, expires_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,'0',$8,$9,$10,$11,1,$12,$13)
+                 allowed_models, routing_strategy,
+                 downgrade_at_percent, downgrade_strategy, downgrade_to_model,
+                 is_active, created_at, expires_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,'0',$8,$9,$10,$11,$12,$13,$14,1,$15,$16)
              RETURNING *",
         )
         .bind(id)
@@ -185,6 +201,9 @@ pub async fn create(
         .bind(rate_limit_tpm)
         .bind(models_json)
         .bind(routing_strategy)
+        .bind(downgrade_at_percent)
+        .bind(downgrade_strategy)
+        .bind(downgrade_to_model)
         .bind(Utc::now())
         .bind(expires_at)
         .fetch_one(pool)
@@ -348,6 +367,9 @@ pub struct UpdateKeyParams {
     pub expires_at: Option<Option<DateTime<Utc>>>,
     pub is_active: Option<bool>,
     pub routing_strategy: Option<String>,
+    pub downgrade_at_percent: Option<Option<i32>>,
+    pub downgrade_strategy: Option<Option<String>>,
+    pub downgrade_to_model: Option<Option<String>>,
 }
 
 pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResult<Option<ApiKey>> {
@@ -364,14 +386,18 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
     let expires_at = p.expires_at.unwrap_or(existing.expires_at);
     let is_active = p.is_active.unwrap_or(existing.is_active);
     let routing_strategy = p.routing_strategy.unwrap_or(existing.routing_strategy);
+    let downgrade_at_percent = p.downgrade_at_percent.unwrap_or(existing.downgrade_at_percent);
+    let downgrade_strategy = p.downgrade_strategy.unwrap_or(existing.downgrade_strategy);
+    let downgrade_to_model = p.downgrade_to_model.unwrap_or(existing.downgrade_to_model);
 
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
         let key = sqlx::query_as::<_, ApiKey>(
             "UPDATE api_keys SET
                  name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
-                 allowed_models = $5, expires_at = $6, is_active = $7, routing_strategy = $8
-             WHERE id = $9
+                 allowed_models = $5, expires_at = $6, is_active = $7, routing_strategy = $8,
+                 downgrade_at_percent = $9, downgrade_strategy = $10, downgrade_to_model = $11
+             WHERE id = $12
              RETURNING *",
         )
         .bind(name)
@@ -382,6 +408,9 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
         .bind(expires_at)
         .bind(is_active)
         .bind(routing_strategy)
+        .bind(downgrade_at_percent)
+        .bind(downgrade_strategy)
+        .bind(downgrade_to_model)
         .bind(id)
         .fetch_optional(pool)
         .await?;
@@ -395,8 +424,9 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
         let row = sqlx::query_as::<_, ApiKeyRowSqlite>(
             "UPDATE api_keys SET
                  name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
-                 allowed_models = $5, expires_at = $6, is_active = $7, routing_strategy = $8
-             WHERE id = $9
+                 allowed_models = $5, expires_at = $6, is_active = $7, routing_strategy = $8,
+                 downgrade_at_percent = $9, downgrade_strategy = $10, downgrade_to_model = $11
+             WHERE id = $12
              RETURNING *",
         )
         .bind(name)
@@ -407,6 +437,9 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
         .bind(expires_at)
         .bind(is_active as i64)
         .bind(routing_strategy)
+        .bind(downgrade_at_percent)
+        .bind(downgrade_strategy)
+        .bind(downgrade_to_model)
         .bind(id)
         .fetch_optional(pool)
         .await?;

@@ -124,6 +124,7 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
+        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
     });
 
     let app = velox::routes::create_router(state);
@@ -402,6 +403,7 @@ async fn v2_1_sqlite_rate_limit_enforced() {
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
+        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
     });
 
     let app = velox::routes::create_router(state);
@@ -507,6 +509,7 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
+        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
     });
 
     let app = velox::routes::create_router(state);

@@ -87,7 +87,11 @@ async fn main() -> anyhow::Result<()> {
     // single DB UPDATE rather than a code change.
     let db_base_urls = velox::db::providers::load_base_urls(&pool).await;
 
-    fn resolve_base_url(db_urls: &std::collections::HashMap<String, String>, id: &str, default: &str) -> String {
+    fn resolve_base_url(
+        db_urls: &std::collections::HashMap<String, String>,
+        id: &str,
+        default: &str,
+    ) -> String {
         db_urls
             .get(id)
             .filter(|u| !u.is_empty())
@@ -114,7 +118,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         if !config.anthropic_api_key.is_empty() {
-            let base_url = resolve_base_url(&db_base_urls, "anthropic", "https://api.anthropic.com");
+            let base_url =
+                resolve_base_url(&db_base_urls, "anthropic", "https://api.anthropic.com");
             providers.push(Arc::new(AnthropicProvider::with_base_url(
                 config.anthropic_api_key.clone(),
                 base_url.clone(),
@@ -142,7 +147,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         if !config.groq_api_key.is_empty() {
-            let base_url = resolve_base_url(&db_base_urls, "groq", "https://api.groq.com/openai/v1");
+            let base_url =
+                resolve_base_url(&db_base_urls, "groq", "https://api.groq.com/openai/v1");
             providers.push(Arc::new(GroqProvider::with_base_url(
                 config.groq_api_key.clone(),
                 base_url.clone(),
@@ -279,6 +285,14 @@ async fn main() -> anyhow::Result<()> {
         velox::config::RuntimeConfig::from(&config),
     ));
 
+    let time_guard = Arc::new(velox::cache::time_guard::TimeGuard::new(
+        &config.time_sensitive_patterns,
+    ));
+    tracing::info!(
+        patterns = config.time_sensitive_patterns.len(),
+        "Time-sensitive cache guard initialized"
+    );
+
     let state = Arc::new(AppState {
         pool,
         config,
@@ -291,7 +305,36 @@ async fn main() -> anyhow::Result<()> {
         semantic_policy,
         event_tx,
         plugins,
+        dedup: Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard,
     });
+
+    // ── Background: cache TTL prune (V4-3) ───────────────────────────────────
+    // Evicts expired entries from the DB every 5 minutes; also sweeps the hot
+    // in-memory layer so lookups stay fast without iterating on cold misses.
+    {
+        let pool_for_prune = state.pool.clone();
+        let cache_for_prune = state.cache.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+            loop {
+                interval.tick().await;
+                let evicted_hot = cache_for_prune.evict_expired();
+                match velox::db::cache::prune_expired(&pool_for_prune).await {
+                    Ok(n) => {
+                        if n > 0 || evicted_hot > 0 {
+                            tracing::info!(
+                                db_pruned = n,
+                                hot_evicted = evicted_hot,
+                                "Cache TTL prune complete"
+                            );
+                        }
+                    }
+                    Err(e) => tracing::warn!("Cache TTL prune error: {e}"),
+                }
+            }
+        });
+    }
 
     // ── Background: alert evaluation engine ──────────────────────────────────
     {

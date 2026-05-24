@@ -1,9 +1,9 @@
 use crate::db::DbPool;
 use crate::{
-    cache::{policy::SemanticCachePolicy, CacheEngine},
+    cache::{policy::SemanticCachePolicy, time_guard::TimeGuard, CacheEngine},
     cluster::rate_limit::DbRateLimiter,
     config::{Config, RuntimeConfig},
-    gateway::ProviderRegistry,
+    gateway::{dedup::InFlightDeduplicator, ProviderRegistry},
     middleware::rate_limit::RateLimiter,
     models::api_key::ApiKey,
     plugins::RequestPlugin,
@@ -33,4 +33,10 @@ pub struct AppState {
     pub event_tx: broadcast::Sender<Value>,
     /// Ordered plugin chain executed for every gateway request.
     pub plugins: Arc<Vec<Box<dyn RequestPlugin>>>,
+    /// In-flight request deduplicator — prevents N identical concurrent
+    /// non-streaming requests from each making a separate provider call.
+    pub dedup: Arc<InFlightDeduplicator>,
+    /// Time-sensitive query detector — skips cache for prompts matching
+    /// time-bound patterns (e.g. "today", "current price", "الآن").
+    pub time_guard: Arc<TimeGuard>,
 }

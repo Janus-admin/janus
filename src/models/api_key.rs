@@ -38,6 +38,14 @@ pub struct ApiKey {
     /// Routing strategy name as stored in the DB (e.g. "priority", "cost", "latency", "round_robin").
     pub routing_strategy: String,
 
+    // ── Budget-aware auto-downgrade (V4-4) ────────────────────────────────────
+    /// Spend % at which downgrade kicks in (0–100). NULL = use global config.
+    pub downgrade_at_percent: Option<i32>,
+    /// Routing strategy to apply on downgrade. NULL = use global config.
+    pub downgrade_strategy: Option<String>,
+    /// Specific model to route to on downgrade. NULL = use global config.
+    pub downgrade_to_model: Option<String>,
+
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -57,6 +65,9 @@ pub struct CreateApiKeyRequest {
     /// Routing strategy for this key. Defaults to "priority" (original behavior).
     #[serde(default = "default_routing_strategy")]
     pub routing_strategy: String,
+    pub downgrade_at_percent: Option<i32>,
+    pub downgrade_strategy: Option<String>,
+    pub downgrade_to_model: Option<String>,
 }
 
 fn default_routing_strategy() -> String {
@@ -89,6 +100,9 @@ pub struct ApiKeyView {
     pub rate_limit_tpm: Option<i32>,
     pub allowed_models: Option<Vec<String>>,
     pub routing_strategy: String,
+    pub downgrade_at_percent: Option<i32>,
+    pub downgrade_strategy: Option<String>,
+    pub downgrade_to_model: Option<String>,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -108,6 +122,9 @@ impl From<ApiKey> for ApiKeyView {
             rate_limit_tpm: k.rate_limit_tpm,
             allowed_models: k.allowed_models,
             routing_strategy: k.routing_strategy,
+            downgrade_at_percent: k.downgrade_at_percent,
+            downgrade_strategy: k.downgrade_strategy,
+            downgrade_to_model: k.downgrade_to_model,
             is_active: k.is_active,
             created_at: k.created_at,
             expires_at: k.expires_at,

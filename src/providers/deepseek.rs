@@ -28,7 +28,12 @@ impl DeepSeekProvider {
             .timeout(Duration::from_secs(120))
             .build()
             .expect("Failed to build reqwest client");
-        Self { api_key, base_url, priority, client }
+        Self {
+            api_key,
+            base_url,
+            priority,
+            client,
+        }
     }
 }
 
@@ -62,14 +67,20 @@ impl Provider for DeepSeekProvider {
 
         let url = format!("{}/chat/completions", self.base_url);
         let response = crate::telemetry::inject_trace_headers(
-            self.client.post(&url).bearer_auth(&self.api_key).json(&payload),
+            self.client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&payload),
         )
         .send()
         .await?;
 
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(match status {
                 StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
                 StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,
@@ -104,14 +115,20 @@ impl Provider for DeepSeekProvider {
 
         let url = format!("{}/chat/completions", self.base_url);
         let response = crate::telemetry::inject_trace_headers(
-            self.client.post(&url).bearer_auth(&self.api_key).json(&payload),
+            self.client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&payload),
         )
         .send()
         .await?;
 
         let status = response.status();
         if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(match status {
                 StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
                 StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,

@@ -52,10 +52,7 @@ async fn v4_0_load_base_urls_returns_db_values() {
 
     let urls = velox::db::providers::load_base_urls(&pool).await;
     // Seed data in migration 0004 sets openai base_url; must be present.
-    assert!(
-        urls.contains_key("openai"),
-        "openai provider must be in DB"
-    );
+    assert!(urls.contains_key("openai"), "openai provider must be in DB");
     let openai_url = urls.get("openai").unwrap();
     assert!(
         !openai_url.is_empty(),
@@ -90,12 +87,10 @@ async fn v4_0_provider_uses_custom_base_url_when_set() {
     );
 
     // Restore the original URL.
-    sqlx::query(
-        "UPDATE providers SET base_url = 'https://api.openai.com/v1' WHERE id = 'openai'",
-    )
-    .execute(&pool)
-    .await
-    .expect("RESTORE failed");
+    sqlx::query("UPDATE providers SET base_url = 'https://api.openai.com/v1' WHERE id = 'openai'")
+        .execute(&pool)
+        .await
+        .expect("RESTORE failed");
 }
 
 #[tokio::test]
@@ -118,7 +113,10 @@ async fn v4_0_provider_falls_back_to_hardcoded_default_when_base_url_empty() {
         .expect("UPDATE failed");
 
     let urls = velox::db::providers::load_base_urls(&pool).await;
-    let url = urls.get("openai").map(String::as_str).unwrap_or("not_found");
+    let url = urls
+        .get("openai")
+        .map(String::as_str)
+        .unwrap_or("not_found");
     // filter(|u| !u.is_empty()) in resolve_base_url would drop this → use hardcoded default.
     assert!(
         url.is_empty(),
@@ -126,12 +124,10 @@ async fn v4_0_provider_falls_back_to_hardcoded_default_when_base_url_empty() {
     );
 
     // Restore.
-    sqlx::query(
-        "UPDATE providers SET base_url = 'https://api.openai.com/v1' WHERE id = 'openai'",
-    )
-    .execute(&pool)
-    .await
-    .expect("RESTORE failed");
+    sqlx::query("UPDATE providers SET base_url = 'https://api.openai.com/v1' WHERE id = 'openai'")
+        .execute(&pool)
+        .await
+        .expect("RESTORE failed");
 }
 
 #[tokio::test]
@@ -159,6 +155,13 @@ async fn v4_0_update_provider_base_url_via_api() {
         custom_url,
         "PATCH response must reflect updated base_url"
     );
+
+    // Restore so shared-DB tests see the canonical URL.
+    let pool = test_pool().await;
+    sqlx::query("UPDATE providers SET base_url = 'https://api.openai.com/v1' WHERE id = 'openai'")
+        .execute(&pool)
+        .await
+        .expect("RESTORE failed");
 }
 
 #[tokio::test]
@@ -170,9 +173,7 @@ async fn v4_0_provider_request_routed_to_custom_base_url() {
 
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()))
         .mount(&mock_server)
         .await;
 
@@ -256,11 +257,10 @@ async fn v4_0_doctor_fails_when_no_providers_enabled() {
         .await
         .unwrap();
 
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM providers WHERE is_enabled = true")
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM providers WHERE is_enabled = true")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
 
     let status = if count >= 1 {
         CheckStatus::Pass
@@ -305,10 +305,22 @@ async fn v4_0_readiness_endpoint_returns_valid_json() {
     );
 
     let body: serde_json::Value = resp.json().await.expect("Response must be JSON");
-    assert!(body["data"]["checks"].is_array(), "data.checks must be an array");
-    assert!(body["data"]["healthy"].is_boolean(), "data.healthy must be boolean");
-    assert!(body["data"]["errors"].is_number(), "data.errors must be a number");
-    assert!(body["data"]["warnings"].is_number(), "data.warnings must be a number");
+    assert!(
+        body["data"]["checks"].is_array(),
+        "data.checks must be an array"
+    );
+    assert!(
+        body["data"]["healthy"].is_boolean(),
+        "data.healthy must be boolean"
+    );
+    assert!(
+        body["data"]["errors"].is_number(),
+        "data.errors must be a number"
+    );
+    assert!(
+        body["data"]["warnings"].is_number(),
+        "data.warnings must be a number"
+    );
 }
 
 #[tokio::test]
@@ -325,7 +337,10 @@ async fn v4_0_readiness_endpoint_returns_503_when_jwt_secret_short() {
 
     let report = doctor::run_checks(&pool, &config).await;
 
-    assert!(!report.healthy, "Report must not be healthy with short JWT secret");
+    assert!(
+        !report.healthy,
+        "Report must not be healthy with short JWT secret"
+    );
     assert!(report.errors > 0, "Must have at least one error");
 
     let jwt_check = report
@@ -347,7 +362,10 @@ fn v4_0_demo_provider_name_is_demo() {
 #[test]
 fn v4_0_demo_provider_is_always_enabled() {
     let provider = DemoProvider;
-    assert!(provider.is_enabled(), "DemoProvider must always report enabled");
+    assert!(
+        provider.is_enabled(),
+        "DemoProvider must always report enabled"
+    );
 }
 
 #[tokio::test]
@@ -415,9 +433,7 @@ async fn v4_0_regression_existing_provider_adapters_unaffected() {
 
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()))
         .mount(&mock_server)
         .await;
 

@@ -72,6 +72,9 @@ pub async fn create_key(
         body.allowed_models.clone(),
         body.expires_at,
         &body.routing_strategy,
+        body.downgrade_at_percent,
+        body.downgrade_strategy.as_deref(),
+        body.downgrade_to_model.as_deref(),
     )
     .await?;
 
@@ -136,6 +139,10 @@ pub struct UpdateKeyRequest {
     pub expires_at: Option<serde_json::Value>,
     pub is_active: Option<bool>,
     pub routing_strategy: Option<String>,
+    /// Pass `null` to clear downgrade threshold.
+    pub downgrade_at_percent: Option<serde_json::Value>,
+    pub downgrade_strategy: Option<serde_json::Value>,
+    pub downgrade_to_model: Option<serde_json::Value>,
 }
 
 /// PATCH /admin/keys/:id — update mutable key fields.
@@ -205,6 +212,15 @@ pub async fn update_key(
         }
     }
 
+    fn parse_opt_string(v: Option<serde_json::Value>) -> Option<Option<String>> {
+        match v {
+            None => None,
+            Some(serde_json::Value::Null) => Some(None),
+            Some(ref s) if s.is_string() => Some(s.as_str().map(str::to_string)),
+            _ => None,
+        }
+    }
+
     let params = db_api_keys::UpdateKeyParams {
         name: body.name,
         budget_limit: parse_opt_decimal(body.budget_limit),
@@ -214,6 +230,9 @@ pub async fn update_key(
         expires_at: parse_opt_datetime(body.expires_at),
         is_active: body.is_active,
         routing_strategy: body.routing_strategy,
+        downgrade_at_percent: parse_opt_i32(body.downgrade_at_percent),
+        downgrade_strategy: parse_opt_string(body.downgrade_strategy),
+        downgrade_to_model: parse_opt_string(body.downgrade_to_model),
     };
 
     let key = db_api_keys::update_key(&state.pool, id, params)

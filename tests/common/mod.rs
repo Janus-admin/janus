@@ -143,6 +143,16 @@ struct TestAppOpts {
     /// Load all active keys from the DB at startup (in addition to the pre-seeded test key).
     /// Required for tests where a key was created via admin API on another node.
     load_keys_from_db: bool,
+    /// Budget limit for the test key. None = no limit.
+    budget_limit: Option<Decimal>,
+    /// Budget already used. Default: Decimal::ZERO.
+    budget_used: Decimal,
+    /// Per-key downgrade threshold (0–100). None = use global config.
+    downgrade_at_percent: Option<i32>,
+    /// Per-key downgrade strategy. None = use global config.
+    downgrade_strategy: Option<String>,
+    /// Per-key downgrade model. None = use global config.
+    downgrade_to_model: Option<String>,
 }
 
 impl Default for TestAppOpts {
@@ -157,6 +167,11 @@ impl Default for TestAppOpts {
             cluster_enabled: false,
             cluster_node_id: None,
             load_keys_from_db: false,
+            budget_limit: None,
+            budget_used: Decimal::ZERO,
+            downgrade_at_percent: None,
+            downgrade_strategy: None,
+            downgrade_to_model: None,
         }
     }
 }
@@ -241,6 +256,30 @@ pub async fn spawn_app_with_embedding_base(openai_base_url: String) -> String {
     spawn_app_from_opts(TestAppOpts {
         openai_base_url: Some(openai_base_url),
         load_embedding_model: true,
+        ..Default::default()
+    })
+    .await
+}
+
+/// Start app with a budget-limited test key that has downgrade configured.
+///
+/// - `budget_limit`: total budget cap in USD.
+/// - `budget_used`: spend already recorded (set > threshold to trigger downgrade).
+/// - `downgrade_at_percent`: threshold % at which downgrade kicks in.
+/// - `downgrade_strategy`: routing strategy string used when threshold crossed.
+pub async fn spawn_app_with_budget_key(
+    openai_base_url: String,
+    budget_limit: Decimal,
+    budget_used: Decimal,
+    downgrade_at_percent: i32,
+    downgrade_strategy: &str,
+) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(openai_base_url),
+        budget_limit: Some(budget_limit),
+        budget_used,
+        downgrade_at_percent: Some(downgrade_at_percent),
+        downgrade_strategy: Some(downgrade_strategy.to_string()),
         ..Default::default()
     })
     .await
@@ -376,12 +415,15 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         rotation_expires_at: None,
         key_prefix: test_key_str[..12].to_string(),
         workspace_id: None,
-        budget_limit: None,
-        budget_used: Decimal::ZERO,
+        budget_limit: opts.budget_limit,
+        budget_used: opts.budget_used,
         rate_limit_rpm: opts.rate_limit_rpm,
         rate_limit_tpm: None,
         allowed_models: None,
         routing_strategy: "priority".to_string(),
+        downgrade_at_percent: opts.downgrade_at_percent,
+        downgrade_strategy: opts.downgrade_strategy.clone(),
+        downgrade_to_model: opts.downgrade_to_model.clone(),
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -466,6 +508,10 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         velox::config::RuntimeConfig::from(&config),
     ));
 
+    let time_guard = std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+        &config.time_sensitive_patterns,
+    ));
+
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
         config,
@@ -480,6 +526,8 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         event_tx,
         // Tests start with an empty plugin chain so behavior is unchanged.
         plugins: std::sync::Arc::new(vec![]),
+        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard,
     });
 
     let app = velox::routes::create_router(state);

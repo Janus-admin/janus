@@ -35,6 +35,9 @@ fn make_api_key(key_sha256: Option<&str>) -> ApiKey {
         rate_limit_tpm: None,
         allowed_models: None,
         routing_strategy: "priority".to_string(),
+        downgrade_at_percent: None,
+        downgrade_strategy: None,
+        downgrade_to_model: None,
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -278,6 +281,9 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
         rate_limit_tpm: None,
         allowed_models: None,
         routing_strategy: "priority".to_string(),
+        downgrade_at_percent: None,
+        downgrade_strategy: None,
+        downgrade_to_model: None,
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -299,7 +305,7 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
 
     let state = Arc::new(velox::state::AppState {
         pool,
-        config,
+        config: config.clone(),
         runtime_config,
         providers: registry,
         key_cache,
@@ -309,6 +315,10 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: Arc::new(vec![]),
+        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard: std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+            &config.time_sensitive_patterns,
+        )),
     });
 
     let app = velox::routes::create_router(state);

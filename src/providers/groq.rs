@@ -20,7 +20,11 @@ pub struct GroqProvider {
 
 impl GroqProvider {
     pub fn new(api_key: String, priority: u8) -> Self {
-        Self::with_base_url(api_key, "https://api.groq.com/openai/v1".to_string(), priority)
+        Self::with_base_url(
+            api_key,
+            "https://api.groq.com/openai/v1".to_string(),
+            priority,
+        )
     }
 
     pub fn with_base_url(api_key: String, base_url: String, priority: u8) -> Self {
@@ -28,7 +32,12 @@ impl GroqProvider {
             .timeout(Duration::from_secs(120))
             .build()
             .expect("Failed to build reqwest client");
-        Self { api_key, base_url, priority, client }
+        Self {
+            api_key,
+            base_url,
+            priority,
+            client,
+        }
     }
 }
 
@@ -62,14 +71,20 @@ impl Provider for GroqProvider {
 
         let url = format!("{}/chat/completions", self.base_url);
         let response = crate::telemetry::inject_trace_headers(
-            self.client.post(&url).bearer_auth(&self.api_key).json(&payload),
+            self.client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&payload),
         )
         .send()
         .await?;
 
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(match status {
                 StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
                 StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,
@@ -104,14 +119,20 @@ impl Provider for GroqProvider {
 
         let url = format!("{}/chat/completions", self.base_url);
         let response = crate::telemetry::inject_trace_headers(
-            self.client.post(&url).bearer_auth(&self.api_key).json(&payload),
+            self.client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&payload),
         )
         .send()
         .await?;
 
         let status = response.status();
         if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(match status {
                 StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized,
                 StatusCode::TOO_MANY_REQUESTS => ProviderError::RateLimit,

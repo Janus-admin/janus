@@ -1,4 +1,9 @@
-use super::{router, strategies::RoutingStrategy, ProviderRegistry};
+use super::{
+    dedup::{DedupRole, DeduplicatedResult, InFlightDeduplicator},
+    router,
+    strategies::RoutingStrategy,
+    ProviderRegistry,
+};
 use crate::db::DbPool;
 use crate::{
     cache::{self, CacheEngine, CacheHit},
@@ -20,7 +25,11 @@ use futures_util::StreamExt;
 use metrics::{counter, histogram};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
-use std::{convert::Infallible, sync::Arc, time::Instant};
+use std::{
+    convert::Infallible,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::Instrument;
 use uuid::Uuid;
@@ -75,6 +84,11 @@ pub async fn run(
     fallback_models: &[String],
     prompt_version_id: Option<Uuid>,
     plugin_chain: &[Box<dyn RequestPlugin>],
+    dedup: &InFlightDeduplicator,
+    // Cache TTL in seconds. 0 = no expiry.
+    cache_ttl_secs: u64,
+    // Whether a budget downgrade was triggered for this request.
+    downgrade_triggered: bool,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     // Clone request so plugins can mutate it without affecting the caller.
     let mut request = request.clone();
@@ -145,10 +159,71 @@ pub async fn run(
         }
     }
 
+    // ── In-flight deduplication ───────────────────────────────────────────────
+    // Reuses the SHA-256 already computed for exact-cache — no extra hashing.
+    // Streaming requests skip this entirely (SSE cannot be broadcast).
+    let is_dedup_primary = if !bypass_cache {
+        match dedup.register_or_subscribe(&hash) {
+            DedupRole::Primary => true,
+            DedupRole::Waiter(mut rx) => {
+                let timeout = Duration::from_secs(InFlightDeduplicator::waiter_timeout_secs());
+                let dedup_result = tokio::time::timeout(timeout, rx.recv()).await;
+                return match dedup_result {
+                    Ok(Ok(result)) => match result.as_ref() {
+                        DeduplicatedResult::Response(resp) => {
+                            let mut resp = resp.clone();
+                            match plugins::run_after(plugin_chain, request, &mut resp, api_key)
+                                .await
+                            {
+                                Ok(()) | Err(PluginError::Warning(_)) => {}
+                                Err(PluginError::BadRequest(msg)) => {
+                                    return Err(AppError::BadRequest(msg))
+                                }
+                                Err(PluginError::Forbidden(msg)) => {
+                                    return Err(AppError::Forbidden(msg))
+                                }
+                            }
+                            crate::metrics::record_request(false);
+                            Ok((resp, CacheHit::None))
+                        }
+                        DeduplicatedResult::Error(msg) => {
+                            Err(AppError::ProviderUnavailable(msg.clone()))
+                        }
+                    },
+                    Ok(Err(_)) => {
+                        // Sender dropped without broadcasting (primary panicked or
+                        // released early). The cache may already have the result,
+                        // so this request will be retried by the client and hit cache.
+                        Err(AppError::ProviderUnavailable(
+                            "Dedup channel closed — please retry".to_string(),
+                        ))
+                    }
+                    Err(_) => {
+                        // Primary took too long. Surface as a retriable error.
+                        Err(AppError::ProviderUnavailable(
+                            "Dedup wait timed out — please retry".to_string(),
+                        ))
+                    }
+                };
+            }
+        }
+    } else {
+        false
+    };
+
     // ── Provider loop ─────────────────────────────────────────────────────────
     let providers =
         router::select_providers_for_strategy(pool, registry, strategy, &request.model).await;
     if providers.is_empty() {
+        if is_dedup_primary {
+            dedup.broadcast_result(
+                &hash,
+                Arc::new(DeduplicatedResult::Error(
+                    "No enabled providers available".to_string(),
+                )),
+            );
+            dedup.release(&hash);
+        }
         return Err(AppError::ProviderUnavailable(
             "No enabled providers available".to_string(),
         ));
@@ -255,7 +330,11 @@ pub async fn run(
                         // the cache key (hash of original request) remains coherent.
                         if !bypass_cache && is_primary_model {
                             tracing::info_span!("velox.cache.insert").in_scope(|| {
-                                cache.insert(hash.clone(), Arc::new(resp.clone()));
+                                cache.insert_with_ttl(
+                                    hash.clone(),
+                                    Arc::new(resp.clone()),
+                                    cache_ttl_secs,
+                                );
                             });
 
                             let req_body = crate::pii::scrub(
@@ -275,6 +354,7 @@ pub async fn run(
                                 Some(pt),
                                 Some(ct),
                                 cost,
+                                cache_ttl_secs,
                             )
                             .await;
 
@@ -283,6 +363,17 @@ pub async fn run(
                                 let emb_bytes = crate::cache::semantic::f32_vec_to_bytes(emb);
                                 let _ = db::cache::save_embedding(pool, &hash, &emb_bytes).await;
                             }
+                        }
+
+                        // Broadcast result to dedup waiters AFTER cache insert so that
+                        // any new requests arriving after the slot is released will get
+                        // exact cache hits rather than becoming new primaries.
+                        if is_dedup_primary {
+                            dedup.broadcast_result(
+                                &hash,
+                                Arc::new(DeduplicatedResult::Response(resp.clone())),
+                            );
+                            dedup.release(&hash);
                         }
 
                         // Fire-and-forget: log request + update budget + last_used + daily_costs.
@@ -313,6 +404,7 @@ pub async fn run(
                                     false,
                                     None,
                                     prompt_version_id,
+                                    downgrade_triggered,
                                 )
                                 .await;
                                 let _ = db::analytics::upsert_daily_cost(
@@ -395,6 +487,7 @@ pub async fn run(
                                     false,
                                     None,
                                     None,
+                                    downgrade_triggered,
                                 )
                                 .await;
                             });
@@ -435,6 +528,16 @@ pub async fn run(
         // All providers failed for this model; if there are fallback models, try them next.
     } // end for model_attempt
 
+    // Propagate failure to any dedup waiters before returning.
+    if is_dedup_primary {
+        let msg = last_error
+            .as_ref()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "All providers unavailable".to_string());
+        dedup.broadcast_result(&hash, Arc::new(DeduplicatedResult::Error(msg)));
+        dedup.release(&hash);
+    }
+
     Err(last_error
         .unwrap_or_else(|| AppError::ProviderUnavailable("All providers unavailable".to_string())))
 }
@@ -459,6 +562,10 @@ pub async fn run_streaming(
     fallback_models: Vec<String>,
     prompt_version_id: Option<Uuid>,
     plugin_chain: Arc<Vec<Box<dyn RequestPlugin>>>,
+    // Cache TTL in seconds. Streaming responses are not currently cached, so this is
+    // reserved for future use when streaming cache writes are added.
+    _cache_ttl_secs: u64,
+    downgrade_triggered: bool,
 ) -> AppResult<(Response, CacheHit)> {
     // ── Plugin before_request chain ───────────────────────────────────────────
     match plugins::run_before(&plugin_chain, &mut request, &api_key).await {
@@ -746,6 +853,7 @@ pub async fn run_streaming(
                                     true,
                                     ttfb_ms,
                                     prompt_version_id,
+                                    downgrade_triggered,
                                 )
                                 .await;
                                 let _ = db::analytics::upsert_daily_cost(
@@ -803,6 +911,9 @@ pub async fn run_with_workspace(
     bypass_semantic: bool,
     strategy: &RoutingStrategy,
     fallback_models: &[String],
+    dedup: &InFlightDeduplicator,
+    cache_ttl_secs: u64,
+    downgrade_triggered: bool,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     let key_with_workspace = ApiKey {
         workspace_id,
@@ -821,6 +932,9 @@ pub async fn run_with_workspace(
         fallback_models,
         None,
         &[], // no plugins in workspace convenience wrapper
+        dedup,
+        cache_ttl_secs,
+        downgrade_triggered,
     )
     .await
 }

@@ -990,10 +990,10 @@ qdrant-client = "1.9"
 | Phase | Type | Description | Status | Migration |
 |---|---|---|---|---|
 | V4-0 | Backend | Foundation & DX | ✅ Complete | 0019 |
-| V4-1 | Frontend | Dashboard Catch-up (Alerts, Prompts, Settings) | ⬜ Not started | — |
-| V4-2 | Backend | In-flight Request Deduplication | ⬜ Not started | — |
-| V4-3 | Backend | Cache TTL + Time-sensitive Safety | ⬜ Not started | 0020 |
-| V4-4 | Backend | Budget-Aware Auto-Downgrade | ⬜ Not started | 0021 |
+| V4-1 | Frontend | Dashboard Catch-up (Alerts, Prompts, Settings) | ✅ Complete | — |
+| V4-2 | Backend | In-flight Request Deduplication | ✅ Complete | — |
+| V4-3 | Backend | Cache TTL + Time-sensitive Safety | ✅ Complete | 0020 |
+| V4-4 | Backend | Budget-Aware Auto-Downgrade | ✅ Complete | 0021 |
 | V4-5 | Backend | Cost Simulator + Provider Quality Scoring | ⬜ Not started | 0022 |
 | V4-6 | Backend | Request Replay & Debug Console | ⬜ Not started | 0023 |
 | V4-7 | Frontend | Dashboard Overhaul | ⬜ Not started | — |

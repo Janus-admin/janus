@@ -1,6 +1,6 @@
 use crate::db::DbPool;
 use crate::{errors::AppResult, models::cache_entry::CacheStats};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -12,6 +12,29 @@ pub struct CacheEntryRow {
     pub prompt_hash: String,
     pub response_body: String,
     pub embedding: Option<Vec<u8>>,
+    /// Non-null when the entry was inserted with a TTL.
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    pub expires_at: Option<DateTime<Utc>>,
+    #[cfg(feature = "sqlite")]
+    pub expires_at: Option<String>,
+}
+
+impl CacheEntryRow {
+    /// Returns the expiry as `DateTime<Utc>`, normalizing across PG (native type)
+    /// and SQLite (ISO-8601 text).
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    pub fn expires_at_utc(&self) -> Option<DateTime<Utc>> {
+        self.expires_at
+    }
+
+    #[cfg(feature = "sqlite")]
+    pub fn expires_at_utc(&self) -> Option<DateTime<Utc>> {
+        self.expires_at.as_deref().and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        })
+    }
 }
 
 // ── Row types ─────────────────────────────────────────────────────────────────
@@ -41,6 +64,7 @@ struct StatsRow {
 // ── Write operations ──────────────────────────────────────────────────────────
 
 /// Persist a new cache entry. Silently ignores conflicts (same hash already stored).
+/// `ttl_secs = 0` means no expiry.
 #[allow(clippy::too_many_arguments)]
 pub async fn upsert_entry(
     pool: &DbPool,
@@ -52,17 +76,33 @@ pub async fn upsert_entry(
     prompt_tokens: Option<i32>,
     completion_tokens: Option<i32>,
     cost_usd: Option<Decimal>,
+    ttl_secs: u64,
 ) -> AppResult<()> {
+    let now = Utc::now();
+    let expires_at: Option<DateTime<Utc>> = if ttl_secs > 0 {
+        Some(now + chrono::Duration::seconds(ttl_secs as i64))
+    } else {
+        None
+    };
+    let ttl_db: Option<i32> = if ttl_secs > 0 {
+        Some(ttl_secs as i32)
+    } else {
+        None
+    };
+
     #[cfg(feature = "sqlite")]
     let cost_usd = cost_usd.map(|d| d.to_string());
+    #[cfg(feature = "sqlite")]
+    let expires_at = expires_at.map(|dt| dt.to_rfc3339());
 
     sqlx::query(
         "INSERT INTO cache_entries (
              id, prompt_hash, provider, model,
              request_body, response_body,
              prompt_tokens, completion_tokens, cost_usd,
-             hit_count, tokens_saved, cost_saved, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, 0, 0, 0, $10)
+             hit_count, tokens_saved, cost_saved, created_at,
+             ttl_secs, expires_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, 0, 0, 0, $10, $11, $12)
          ON CONFLICT (prompt_hash) DO NOTHING",
     )
     .bind(Uuid::new_v4())
@@ -74,7 +114,9 @@ pub async fn upsert_entry(
     .bind(prompt_tokens)
     .bind(completion_tokens)
     .bind(cost_usd)
-    .bind(Utc::now())
+    .bind(now)
+    .bind(ttl_db)
+    .bind(expires_at)
     .execute(pool)
     .await?;
 
@@ -183,16 +225,30 @@ pub async fn save_embedding(pool: &DbPool, prompt_hash: &str, embedding: &[u8]) 
     Ok(())
 }
 
-/// Load all cache entries for startup warm-up.
-/// Returns prompt_hash, response_body, and optional embedding bytes.
+/// Load all cache entries for startup warm-up, including their expiry timestamps.
+/// Entries that have already expired in the DB are excluded via the WHERE clause.
 pub async fn load_all_entries(pool: &DbPool) -> AppResult<Vec<CacheEntryRow>> {
     let rows = sqlx::query_as::<_, CacheEntryRow>(
-        "SELECT prompt_hash, response_body, embedding FROM cache_entries",
+        "SELECT prompt_hash, response_body, embedding, expires_at
+         FROM cache_entries
+         WHERE expires_at IS NULL OR expires_at > $1",
     )
+    .bind(Utc::now())
     .fetch_all(pool)
     .await?;
 
     Ok(rows)
+}
+
+/// Delete all cache entries whose TTL has elapsed. Returns the number of rows deleted.
+pub async fn prune_expired(pool: &DbPool) -> AppResult<u64> {
+    let result =
+        sqlx::query("DELETE FROM cache_entries WHERE expires_at IS NOT NULL AND expires_at <= $1")
+            .bind(Utc::now())
+            .execute(pool)
+            .await?;
+
+    Ok(result.rows_affected())
 }
 
 // ── Single-entry delete ───────────────────────────────────────────────────────

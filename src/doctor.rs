@@ -78,7 +78,10 @@ pub fn print_report(report: &DoctorReport) {
     if report.errors == 0 && report.warnings == 0 {
         println!("All checks passed.");
     } else {
-        println!("{} error(s), {} warning(s).", report.errors, report.warnings);
+        println!(
+            "{} error(s), {} warning(s).",
+            report.errors, report.warnings
+        );
     }
 }
 
@@ -160,12 +163,10 @@ async fn check_encryption_key(config: &Config, pool: &DbPool) -> ReadinessCheck 
 }
 
 async fn check_providers_enabled(pool: &DbPool) -> ReadinessCheck {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM providers WHERE is_enabled = true",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM providers WHERE is_enabled = true")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
     if count >= 1 {
         ReadinessCheck {
@@ -208,11 +209,7 @@ fn check_disk_space() -> ReadinessCheck {
     // Use `df` on Unix to determine available disk space.
     #[cfg(unix)]
     {
-        if let Ok(output) = std::process::Command::new("df")
-            .arg("-k")
-            .arg(".")
-            .output()
-        {
+        if let Ok(output) = std::process::Command::new("df").arg("-k").arg(".").output() {
             if let Ok(stdout) = std::str::from_utf8(&output.stdout) {
                 // df -k output: Filesystem 1K-blocks Used Available ...
                 // Skip header line, parse second line.

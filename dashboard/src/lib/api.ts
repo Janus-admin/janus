@@ -114,10 +114,12 @@ export interface ApiKey {
   rate_limit_rpm: number | null;
   rate_limit_tpm: number | null;
   allowed_models: string[] | null;
+  routing_strategy: string;
   is_active: boolean;
   created_at: string;
   expires_at: string | null;
   last_used_at: string | null;
+  rotation_expires_at: string | null;
 }
 
 export interface CreateKeyRequest {
@@ -127,6 +129,7 @@ export interface CreateKeyRequest {
   rate_limit_tpm?: number | null;
   allowed_models?: string[] | null;
   expires_at?: string | null;
+  routing_strategy?: string;
 }
 
 export interface UpdateKeyRequest {
@@ -160,6 +163,15 @@ export const keys = {
     apiFetch<{ data: { revoked: boolean } }>(`/admin/keys/${id}`, {
       method: "DELETE",
     }),
+  rotate: (id: string) =>
+    apiFetch<{
+      data: {
+        id: string;
+        key: string;
+        key_prefix: string;
+        rotation_expires_at: string | null;
+      };
+    }>(`/admin/keys/${id}/rotate`, { method: "POST" }),
 };
 
 // ── Requests ──────────────────────────────────────────────────────────────────
@@ -366,6 +378,150 @@ export interface VeloxConfig {
   semantic_cache_available: boolean;
 }
 
+export interface PatchConfigRequest {
+  log_request_bodies?: boolean;
+  log_response_bodies?: boolean;
+  cache_enabled?: boolean;
+  max_retries?: number;
+  semantic_cache_threshold?: number;
+}
+
 export const config = {
   get: () => apiFetch<{ data: VeloxConfig }>("/admin/config"),
+  patch: (body: PatchConfigRequest) =>
+    apiFetch<{ data: Partial<VeloxConfig> }>("/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+};
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+export interface Alert {
+  id: string;
+  name: string;
+  alert_type: string;
+  threshold: number;
+  window_minutes: number;
+  is_active: boolean;
+  webhook_url: string | null;
+  webhook_format: string;
+  webhook_secret_set: boolean;
+  last_triggered: string | null;
+  created_at: string;
+}
+
+export interface AlertHistoryEntry {
+  id: string;
+  alert_id: string;
+  triggered_at: string;
+  value: number | null;
+  message: string | null;
+  delivered: boolean;
+  error: string | null;
+}
+
+export interface CreateAlertRequest {
+  name: string;
+  type: string;
+  threshold: number;
+  window_minutes?: number;
+  webhook_url?: string | null;
+  webhook_format?: string;
+  webhook_secret?: string | null;
+}
+
+export interface UpdateAlertRequest {
+  name?: string;
+  threshold?: number;
+  window_minutes?: number;
+  is_active?: boolean;
+  webhook_url?: string | null;
+  webhook_format?: string;
+  webhook_secret?: string | null;
+}
+
+export const alertsApi = {
+  list: () =>
+    apiFetch<{ data: Alert[]; meta: { total: number } }>("/admin/alerts"),
+  get: (id: string) =>
+    apiFetch<{ data: { alert: Alert; history: AlertHistoryEntry[] } }>(
+      `/admin/alerts/${id}`
+    ),
+  create: (body: CreateAlertRequest) =>
+    apiFetch<{ data: Alert }>("/admin/alerts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  update: (id: string, body: UpdateAlertRequest) =>
+    apiFetch<{ data: Alert }>(`/admin/alerts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  delete: (id: string) =>
+    apiFetch<{ data: { deleted: boolean } }>(`/admin/alerts/${id}`, {
+      method: "DELETE",
+    }),
+  test: (id: string) =>
+    apiFetch<{ data: { delivered: boolean } }>(`/admin/alerts/${id}/test`, {
+      method: "POST",
+    }),
+};
+
+// ── Prompts ───────────────────────────────────────────────────────────────────
+
+export interface Prompt {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PromptVersion {
+  id: string;
+  prompt_id: string;
+  version: number;
+  content: string;
+  system_prompt: string | null;
+  is_active: boolean;
+  ab_weight: number;
+  created_at: string;
+}
+
+export const promptsApi = {
+  list: (page = 1, per_page = 50) =>
+    apiFetch<{ data: Prompt[]; meta: Meta }>(
+      `/admin/prompts?page=${page}&per_page=${per_page}`
+    ),
+  get: (id: string) =>
+    apiFetch<{ data: { prompt: Prompt; versions: PromptVersion[] } }>(
+      `/admin/prompts/${id}`
+    ),
+  create: (body: { name: string; description?: string }) =>
+    apiFetch<{ data: Prompt }>("/admin/prompts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  delete: (id: string) =>
+    apiFetch<{ data: { deleted: boolean } }>(`/admin/prompts/${id}`, {
+      method: "DELETE",
+    }),
+  createVersion: (
+    promptId: string,
+    body: { content: string; system_prompt?: string }
+  ) =>
+    apiFetch<{ data: PromptVersion }>(`/admin/prompts/${promptId}/versions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateVersion: (
+    promptId: string,
+    version: number,
+    body: { is_active?: boolean; ab_weight?: number }
+  ) =>
+    apiFetch<{ data: PromptVersion }>(
+      `/admin/prompts/${promptId}/versions/${version}`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
 };

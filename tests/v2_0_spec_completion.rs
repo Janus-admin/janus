@@ -484,6 +484,9 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         rate_limit_tpm: None,
         allowed_models: None,
         routing_strategy: "priority".into(),
+        downgrade_at_percent: None,
+        downgrade_strategy: None,
+        downgrade_to_model: None,
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -542,7 +545,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
 
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
-        config,
+        config: config.clone(),
         runtime_config,
         providers: registry,
         key_cache,
@@ -552,6 +555,10 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
+        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard: std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+            &config.time_sensitive_patterns,
+        )),
     });
 
     let app = velox::routes::create_router(state);
@@ -612,6 +619,9 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         rate_limit_tpm: Some(1), // 1 token per minute — first request exhausts it
         allowed_models: None,
         routing_strategy: "priority".into(),
+        downgrade_at_percent: None,
+        downgrade_strategy: None,
+        downgrade_to_model: None,
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -655,7 +665,7 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
 
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
-        config,
+        config: config.clone(),
         runtime_config,
         providers: registry,
         key_cache,
@@ -665,6 +675,10 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
+        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard: std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+            &config.time_sensitive_patterns,
+        )),
     });
 
     let app = velox::routes::create_router(state);

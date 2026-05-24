@@ -1,4 +1,5 @@
 pub mod circuit_breaker;
+pub mod dedup;
 pub mod pipeline;
 pub mod router;
 pub mod strategies;

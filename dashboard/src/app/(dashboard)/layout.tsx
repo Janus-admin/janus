@@ -24,6 +24,8 @@ import {
   Moon,
   Zap,
   LogOut,
+  Bell,
+  FileText,
 } from "lucide-react";
 
 const NAV = [
@@ -33,6 +35,8 @@ const NAV = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/keys", label: "API Keys", icon: Key },
   { href: "/providers", label: "Providers", icon: Cpu },
+  { href: "/alerts", label: "Alerts", icon: Bell },
+  { href: "/prompts", label: "Prompts", icon: FileText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

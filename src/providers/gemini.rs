@@ -30,7 +30,12 @@ impl GeminiProvider {
             .timeout(Duration::from_secs(120))
             .build()
             .expect("Failed to build reqwest client");
-        Self { api_key, base_url, priority, client }
+        Self {
+            api_key,
+            base_url,
+            priority,
+            client,
+        }
     }
 
     fn build_gemini_request(&self, request: &ChatCompletionRequest) -> serde_json::Value {
@@ -139,10 +144,7 @@ impl Provider for GeminiProvider {
             return HealthStatus::Down;
         }
 
-        let url = format!(
-            "{}/v1beta/models?key={}",
-            self.base_url, self.api_key
-        );
+        let url = format!("{}/v1beta/models?key={}", self.base_url, self.api_key);
 
         match self
             .client

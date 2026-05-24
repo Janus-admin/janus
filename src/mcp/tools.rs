@@ -182,6 +182,9 @@ async fn proxy_llm_request(state: &Arc<AppState>, args: Value) -> Result<Value, 
         &[],
         None,
         &state.plugins,
+        &state.dedup,
+        0,     // no TTL for MCP calls
+        false, // MCP calls are internal — no budget downgrade
     )
     .await
     {
@@ -274,6 +277,9 @@ async fn create_api_key(state: &Arc<AppState>, args: Value) -> Result<Value, Str
         None,
         None,
         "priority",
+        None,
+        None,
+        None,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -344,6 +350,9 @@ fn internal_service_key() -> ApiKey {
         rate_limit_tpm: None,
         allowed_models: None,
         routing_strategy: "priority".to_string(),
+        downgrade_at_percent: None,
+        downgrade_strategy: None,
+        downgrade_to_model: None,
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,

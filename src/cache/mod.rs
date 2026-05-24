@@ -3,11 +3,13 @@ pub mod exact;
 pub mod index;
 pub mod policy;
 pub mod semantic;
+pub mod time_guard;
 
 use crate::{
     cache::{embedding::EmbeddingModel, index::hnsw::HnswIndex, semantic::SemanticCache},
     providers::{ChatCompletionRequest, ChatCompletionResponse, EmbeddingResponse},
 };
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::sync::Arc;
 
@@ -33,6 +35,8 @@ pub enum CacheHit {
 ///   Backend: `LinearIndex` (O(n), default) or `HnswIndex` (O(log n), via config).
 pub struct CacheEngine {
     hot: DashMap<String, Arc<ChatCompletionResponse>>,
+    /// Per-entry expiry timestamps. Absence = no expiry. Checked on every lookup.
+    hot_expiry: DashMap<String, DateTime<Utc>>,
     embedding_hot: DashMap<String, Arc<EmbeddingResponse>>,
     pub semantic: Option<Arc<SemanticCache>>,
     pub model: Option<Arc<EmbeddingModel>>,
@@ -43,6 +47,7 @@ impl CacheEngine {
     pub fn new() -> Self {
         Self {
             hot: DashMap::new(),
+            hot_expiry: DashMap::new(),
             embedding_hot: DashMap::new(),
             semantic: None,
             model: None,
@@ -56,6 +61,7 @@ impl CacheEngine {
     pub fn new_with_semantic(model: Arc<EmbeddingModel>, threshold: f32) -> Self {
         Self {
             hot: DashMap::new(),
+            hot_expiry: DashMap::new(),
             embedding_hot: DashMap::new(),
             semantic: Some(Arc::new(SemanticCache::new(threshold))),
             model: Some(model),
@@ -77,6 +83,7 @@ impl CacheEngine {
         let sc = SemanticCache::with_index(index, threshold);
         Self {
             hot: DashMap::new(),
+            hot_expiry: DashMap::new(),
             embedding_hot: DashMap::new(),
             semantic: Some(Arc::new(sc)),
             model: Some(model),
@@ -85,12 +92,56 @@ impl CacheEngine {
 
     // ── Exact cache operations ────────────────────────────────────────────────
 
+    /// Look up a cached response. Returns `None` if not found or if the entry has expired.
+    /// Expired entries are evicted from the hot layer on access.
     pub fn lookup(&self, hash: &str) -> Option<Arc<ChatCompletionResponse>> {
+        // Check expiry before returning.
+        if let Some(expires_at) = self.hot_expiry.get(hash) {
+            if Utc::now() >= *expires_at {
+                // Entry has expired — evict it now.
+                drop(expires_at);
+                self.hot.remove(hash);
+                self.hot_expiry.remove(hash);
+                return None;
+            }
+        }
         self.hot.get(hash).map(|v| Arc::clone(&*v))
     }
 
+    /// Insert without TTL (entry never expires).
     pub fn insert(&self, hash: String, response: Arc<ChatCompletionResponse>) {
         self.hot.insert(hash, response);
+    }
+
+    /// Insert with TTL. When `ttl_secs > 0` the entry expires after that many seconds.
+    pub fn insert_with_ttl(
+        &self,
+        hash: String,
+        response: Arc<ChatCompletionResponse>,
+        ttl_secs: u64,
+    ) {
+        if ttl_secs > 0 {
+            let expires_at = Utc::now() + chrono::Duration::seconds(ttl_secs as i64);
+            self.hot_expiry.insert(hash.clone(), expires_at);
+        }
+        self.hot.insert(hash, response);
+    }
+
+    /// Remove all entries whose TTL has elapsed. Returns the number of evictions.
+    pub fn evict_expired(&self) -> usize {
+        let now = Utc::now();
+        let expired_hashes: Vec<String> = self
+            .hot_expiry
+            .iter()
+            .filter(|e| now >= *e.value())
+            .map(|e| e.key().clone())
+            .collect();
+        let count = expired_hashes.len();
+        for hash in &expired_hashes {
+            self.hot.remove(hash);
+            self.hot_expiry.remove(hash);
+        }
+        count
     }
 
     // ── Embedding cache operations ────────────────────────────────────────────
@@ -105,6 +156,7 @@ impl CacheEngine {
 
     pub fn clear(&self) {
         self.hot.clear();
+        self.hot_expiry.clear();
         self.embedding_hot.clear();
         if let Some(ref sc) = self.semantic {
             sc.clear();
@@ -121,6 +173,7 @@ impl CacheEngine {
 
     /// Remove a single entry from the hot layer. Returns `true` if it was present.
     pub fn remove(&self, hash: &str) -> bool {
+        self.hot_expiry.remove(hash);
         self.hot.remove(hash).is_some()
     }
 
@@ -140,13 +193,23 @@ impl CacheEngine {
 
     // ── Warm-up from PostgreSQL ───────────────────────────────────────────────
 
-    /// Load all persisted cache entries from the database into the hot layer and
-    /// (if the semantic index is active) the embedding index.
+    /// Load all non-expired persisted cache entries from the database into the hot
+    /// layer and (if the semantic index is active) the embedding index.
     pub async fn warm_from_db(&self, pool: &crate::db::DbPool) -> usize {
         match crate::db::cache::load_all_entries(pool).await {
             Ok(entries) => {
+                let now = Utc::now();
                 let mut loaded = 0usize;
                 for entry in &entries {
+                    // Skip entries that have already expired.
+                    if let Some(exp) = entry.expires_at_utc() {
+                        if now >= exp {
+                            continue;
+                        }
+                        // Store the expiry in the hot_expiry map.
+                        self.hot_expiry.insert(entry.prompt_hash.clone(), exp);
+                    }
+
                     if let Ok(resp) =
                         serde_json::from_str::<ChatCompletionResponse>(&entry.response_body)
                     {

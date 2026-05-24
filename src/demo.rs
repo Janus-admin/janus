@@ -12,8 +12,8 @@ use crate::{
     db::DbPool,
     models::provider::HealthStatus,
     providers::{
-        ChatCompletionRequest, ChatCompletionResponse, ChatChoice, ChatMessage, ChunkChoice,
-        ChunkDelta, ChatCompletionChunk, EmbeddingRequest, EmbeddingResponse, Provider,
+        ChatChoice, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
+        ChatMessage, ChunkChoice, ChunkDelta, EmbeddingRequest, EmbeddingResponse, Provider,
         ProviderError, ProviderStream, UsageData,
     },
 };
@@ -103,7 +103,14 @@ impl Provider for DemoProvider {
         let model = request.model.clone();
 
         let words = vec![
-            "[Demo", " mode]", " Streaming", " response", " from", " the", " Velox", " demo",
+            "[Demo",
+            " mode]",
+            " Streaming",
+            " response",
+            " from",
+            " the",
+            " Velox",
+            " demo",
             " provider.",
         ];
 
@@ -212,8 +219,14 @@ async fn seed_demo_user(pool: &DbPool) -> anyhow::Result<()> {
 
 async fn seed_demo_api_keys(pool: &DbPool) -> anyhow::Result<()> {
     let keys = [
-        ("vx-sk-DemoKey1111111111111111111111111111111111111111", "Demo Key 1 (production)"),
-        ("vx-sk-DemoKey2222222222222222222222222222222222222222", "Demo Key 2 (staging)"),
+        (
+            "vx-sk-DemoKey1111111111111111111111111111111111111111",
+            "Demo Key 1 (production)",
+        ),
+        (
+            "vx-sk-DemoKey2222222222222222222222222222222222222222",
+            "Demo Key 2 (staging)",
+        ),
     ];
 
     for (key_str, name) in &keys {

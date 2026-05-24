@@ -59,6 +59,28 @@ pub struct Config {
     #[allow(dead_code)] // used in Phase 5 semantic cache similarity gate
     pub semantic_cache_threshold: f64,
 
+    // ── Cache TTL (V4-3) ──────────────────────────────────────────────────────
+    /// Global cache TTL in seconds. 0 = no expiry (backward-compatible default).
+    #[serde(default)]
+    pub cache_ttl_secs: u64,
+    /// Per-model TTL overrides. Key = model name, value = TTL in seconds.
+    /// When set, takes precedence over `cache_ttl_secs` for that model.
+    ///
+    /// Example in velox.toml:
+    /// ```toml
+    /// [cache_ttl_overrides]
+    /// "gpt-4o-mini" = 3600
+    /// ```
+    #[serde(default)]
+    pub cache_ttl_overrides: HashMap<String, u64>,
+
+    // ── Time-sensitive cache bypass (V4-3) ────────────────────────────────────
+    /// Regex patterns checked against all message content before cache lookup.
+    /// If any pattern matches, the request bypasses both cache lookup and write.
+    /// Supports English, Persian, and Arabic time-related phrases by default.
+    #[serde(default = "default_time_sensitive_patterns")]
+    pub time_sensitive_patterns: Vec<String>,
+
     // ── Semantic cache (Phase 5 + V3-1) ──────────────────────────────────────
     #[serde(default = "default_embedding_model_path")]
     pub embedding_model_path: String,
@@ -133,6 +155,12 @@ pub struct Config {
     /// Seconds the old key remains valid after a rotation. Default: 300 (5 min).
     #[serde(default = "default_rotation_grace_period_secs")]
     pub rotation_grace_period_secs: u64,
+
+    // ── Budget-aware auto-downgrade (V4-4) ────────────────────────────────────
+    /// When enabled, requests from keys nearing their budget limit are
+    /// automatically routed to cheaper models/strategies instead of blocking.
+    #[serde(default)]
+    pub budget_downgrade: BudgetDowngradeConfig,
 
     // ── Clustering (V2-6) ─────────────────────────────────────────────────────
     /// Multi-node clustering configuration.
@@ -209,6 +237,53 @@ impl ProviderTlsConfig {
         }
         Ok(())
     }
+}
+
+/// Global defaults for budget-aware auto-downgrade (V4-4).
+///
+/// Per-key `downgrade_at_percent` / `downgrade_strategy` / `downgrade_to_model`
+/// columns take precedence over these global defaults when set.
+///
+/// Example in velox.toml:
+/// ```toml
+/// [budget_downgrade]
+/// enabled           = true
+/// threshold_percent = 80
+/// strategy          = "cost_optimized"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct BudgetDowngradeConfig {
+    /// Enable budget downgrade globally. Default: false.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Spend percentage at which downgrade kicks in (0–100). Default: 80.
+    #[serde(default = "default_downgrade_threshold")]
+    pub threshold_percent: u8,
+    /// Routing strategy to apply when downgrade triggers: "cost_optimized",
+    /// "latency_optimized", "round_robin". Default: "cost_optimized".
+    #[serde(default = "default_downgrade_strategy")]
+    pub strategy: String,
+    /// Specific model to switch to when `strategy = "specific_model"`.
+    #[serde(default)]
+    pub fallback_model: String,
+}
+
+impl Default for BudgetDowngradeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold_percent: default_downgrade_threshold(),
+            strategy: default_downgrade_strategy(),
+            fallback_model: String::new(),
+        }
+    }
+}
+
+fn default_downgrade_threshold() -> u8 {
+    80
+}
+fn default_downgrade_strategy() -> String {
+    "cost_optimized".to_string()
 }
 
 /// Multi-node clustering configuration (V2-6).
@@ -291,6 +366,29 @@ fn default_rate_limit_window_secs() -> u64 {
 }
 fn default_max_retries() -> u32 {
     1
+}
+fn default_time_sensitive_patterns() -> Vec<String> {
+    vec![
+        // English
+        r"\btoday\b".into(),
+        r"\bright now\b".into(),
+        r"\bcurrently\b".into(),
+        r"\blatest\b".into(),
+        r"\bcurrent price\b".into(),
+        r"\bthis week\b".into(),
+        r"\bat this moment\b".into(),
+        // Persian
+        "امروز".into(),
+        "الان".into(),
+        "هم‌اکنون".into(),
+        "قیمت فعلی".into(),
+        "این هفته".into(),
+        "اخبار".into(),
+        // Arabic
+        "اليوم".into(),
+        "الآن".into(),
+        "السعر الحالي".into(),
+    ]
 }
 fn default_otlp_endpoint() -> String {
     "http://localhost:4317".to_string()

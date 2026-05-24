@@ -4,7 +4,7 @@ use crate::{
     errors::AppError,
     gateway::{pipeline, strategies::RoutingStrategy},
     middleware::api_key_auth::GatewayAuth,
-    middleware::budget::check_budget,
+    middleware::budget::{check_budget, DowngradeDecision},
     pii,
     pricing::calculate_cost,
     prompts::template,
@@ -95,14 +95,16 @@ async fn chat_completions_inner(
     headers: HeaderMap,
     request: ChatCompletionRequest,
 ) -> impl IntoResponse {
-    // Budget gate.
-    {
-        let budget_err =
-            tracing::info_span!("velox.budget.check").in_scope(|| check_budget(&api_key));
-        if let Err(e) = budget_err {
-            return e.into_response();
+    // Budget gate — also returns a DowngradeDecision when spend nears the limit.
+    let downgrade = {
+        let result = tracing::info_span!("velox.budget.check")
+            .in_scope(|| check_budget(&api_key, &state.config.budget_downgrade));
+        match result {
+            Ok(d) => d,
+            Err(e) => return e.into_response(),
         }
-    }
+    };
+    let downgrade_triggered = !matches!(downgrade, DowngradeDecision::None);
 
     // Rate limit gate (RPM).
     // Cluster mode: use DB-backed sliding window shared across all nodes.
@@ -194,12 +196,16 @@ async fn chat_completions_inner(
     let rc = state.runtime_config.read().await;
 
     // Bypass cache when disabled globally or when the client sends X-Velox-Cache: false.
-    let bypass_cache = !rc.cache_enabled
+    let explicit_bypass = !rc.cache_enabled
         || headers
             .get("x-velox-cache")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.eq_ignore_ascii_case("false"))
             .unwrap_or(false);
+
+    // Time-sensitive detection: skip cache for time-bound prompts.
+    let time_sensitive = !explicit_bypass && state.time_guard.is_time_sensitive(&request);
+    let bypass_cache = explicit_bypass || time_sensitive;
 
     // Bypass semantic cache when the policy excludes this model/route/key combination.
     // Exact cache is unaffected by this flag.
@@ -210,6 +216,14 @@ async fn chat_completions_inner(
 
     let max_retries = rc.max_retries;
 
+    // Compute effective cache TTL: per-model override takes precedence over global.
+    let cache_ttl_secs = state
+        .config
+        .cache_ttl_overrides
+        .get(&request.model)
+        .copied()
+        .unwrap_or(state.config.cache_ttl_secs);
+
     if rc.log_request_bodies {
         if let Ok(raw) = serde_json::to_string(&request) {
             tracing::debug!(body = %pii::scrub(&raw), "gateway request body");
@@ -219,8 +233,15 @@ async fn chat_completions_inner(
     let log_response_bodies = rc.log_response_bodies;
     drop(rc); // release read lock before the potentially-long provider call
 
-    // Parse routing strategy from API key and look up fallback models from config.
-    let strategy = RoutingStrategy::from_db_str(&api_key.routing_strategy);
+    // Parse routing strategy — downgrade may override the key's default strategy.
+    let strategy = match &downgrade {
+        DowngradeDecision::UseStrategy(s) => RoutingStrategy::from_db_str(s),
+        _ => RoutingStrategy::from_db_str(&api_key.routing_strategy),
+    };
+    // Model override: apply before fallback lookup so fallbacks are model-aware.
+    if let DowngradeDecision::UseModel(ref m) = downgrade {
+        request.model = m.clone();
+    }
     let fallback_models: Vec<String> = state
         .config
         .routing
@@ -244,11 +265,24 @@ async fn chat_completions_inner(
             fallback_models,
             prompt_version_id,
             state.plugins.clone(),
+            cache_ttl_secs,
+            downgrade_triggered,
         )
         .await
         {
             Ok((mut response, cache_hit)) => {
                 attach_cache_headers(response.headers_mut(), &cache_hit);
+                if time_sensitive {
+                    response.headers_mut().insert(
+                        "x-velox-cache-skip",
+                        HeaderValue::from_static("time_sensitive"),
+                    );
+                }
+                if downgrade_triggered {
+                    if let Ok(v) = HeaderValue::from_str(downgrade.header_value()) {
+                        response.headers_mut().insert("x-velox-downgraded", v);
+                    }
+                }
                 broadcast_event(
                     &state,
                     &request.model,
@@ -292,6 +326,9 @@ async fn chat_completions_inner(
             &fallback_models,
             prompt_version_id,
             &state.plugins,
+            &state.dedup,
+            cache_ttl_secs,
+            downgrade_triggered,
         )
         .await
         {
@@ -317,6 +354,17 @@ async fn chat_completions_inner(
                     Ok(v) => {
                         let mut response = Json::<Value>(v).into_response();
                         attach_cache_headers(response.headers_mut(), &cache_hit);
+                        if time_sensitive {
+                            response.headers_mut().insert(
+                                "x-velox-cache-skip",
+                                HeaderValue::from_static("time_sensitive"),
+                            );
+                        }
+                        if downgrade_triggered {
+                            if let Ok(v) = HeaderValue::from_str(downgrade.header_value()) {
+                                response.headers_mut().insert("x-velox-downgraded", v);
+                            }
+                        }
                         response
                     }
                     Err(e) => {
@@ -511,7 +559,7 @@ pub async fn embeddings(
     GatewayAuth(api_key): GatewayAuth,
     ValidatedJson(request): ValidatedJson<EmbeddingRequest>,
 ) -> impl IntoResponse {
-    if let Err(e) = check_budget(&api_key) {
+    if let Err(e) = check_budget(&api_key, &state.config.budget_downgrade) {
         return e.into_response();
     }
 
@@ -616,7 +664,7 @@ pub async fn legacy_completions(
     GatewayAuth(api_key): GatewayAuth,
     ValidatedJson(request): ValidatedJson<LegacyCompletionRequest>,
 ) -> impl IntoResponse {
-    if let Err(e) = check_budget(&api_key) {
+    if let Err(e) = check_budget(&api_key, &state.config.budget_downgrade) {
         return e.into_response();
     }
 
@@ -687,6 +735,9 @@ pub async fn legacy_completions(
         &fallback_models,
         None, // legacy completions don't support prompt management
         &state.plugins,
+        &state.dedup,
+        0, // no TTL for legacy completions endpoint
+        false, // legacy completions bypass downgrade — budget check above uses simple path
     )
     .await
     {
