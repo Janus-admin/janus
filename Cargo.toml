@@ -81,6 +81,9 @@ metrics = "0.22"
 metrics-exporter-prometheus = "0.14"
 regex = "1"
 
+# ─── V4-9: External Vector Stores (Qdrant) ────────────────────────────────────
+qdrant-client = "1.9"
+
 # ─── V2-2: Webhook Alerts ─────────────────────────────────────────────────────
 hmac = "0.12"
 

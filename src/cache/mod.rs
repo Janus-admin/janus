@@ -6,7 +6,11 @@ pub mod semantic;
 pub mod time_guard;
 
 use crate::{
-    cache::{embedding::EmbeddingModel, index::hnsw::HnswIndex, semantic::SemanticCache},
+    cache::{
+        embedding::EmbeddingModel,
+        index::{hnsw::HnswIndex, qdrant::QdrantIndex},
+        semantic::SemanticCache,
+    },
     providers::{ChatCompletionRequest, ChatCompletionResponse, EmbeddingResponse},
 };
 use chrono::{DateTime, Utc};
@@ -80,6 +84,27 @@ impl CacheEngine {
         max_nb_connection: usize,
     ) -> Self {
         let index = Box::new(HnswIndex::new(max_nb_connection, ef_construction));
+        let sc = SemanticCache::with_index(index, threshold);
+        Self {
+            hot: DashMap::new(),
+            hot_expiry: DashMap::new(),
+            embedding_hot: DashMap::new(),
+            semantic: Some(Arc::new(sc)),
+            model: Some(model),
+        }
+    }
+
+    /// Exact + semantic cache backed by a remote Qdrant vector store (V4-9).
+    ///
+    /// The `QdrantIndex` is pre-connected and the collection already exists at
+    /// this point — call `QdrantIndex::new()` first and handle any connection
+    /// errors before passing it here.
+    pub fn new_with_qdrant_semantic(
+        model: Arc<EmbeddingModel>,
+        threshold: f32,
+        qdrant_index: QdrantIndex,
+    ) -> Self {
+        let index = Box::new(qdrant_index);
         let sc = SemanticCache::with_index(index, threshold);
         Self {
             hot: DashMap::new(),

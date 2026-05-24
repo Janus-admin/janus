@@ -86,7 +86,8 @@ pub struct Config {
     pub embedding_model_path: String,
     #[serde(default = "default_embedding_tokenizer_path")]
     pub embedding_tokenizer_path: String,
-    /// Index backend: "linear" (default, O(n)) or "hnsw" (O(log n), V3-1).
+    /// Index backend: "linear" (default, O(n)), "hnsw" (O(log n), V3-1),
+    /// or "qdrant" (external vector store, V4-9).
     #[serde(default = "default_semantic_backend")]
     pub semantic_cache_backend: String,
     /// HNSW ef parameter for both construction and search. Default: 200.
@@ -101,6 +102,17 @@ pub struct Config {
     /// Route prefixes excluded from semantic cache.
     #[serde(default)]
     pub semantic_cache_exclude_routes: Vec<String>,
+
+    // ── Qdrant external vector store (V4-9) ───────────────────────────────────
+    /// gRPC URL for the Qdrant instance. Used when `semantic_cache_backend = "qdrant"`.
+    #[serde(default = "default_qdrant_url")]
+    pub qdrant_url: String,
+    /// Qdrant collection name for the semantic cache index.
+    #[serde(default = "default_qdrant_collection")]
+    pub qdrant_collection: String,
+    /// Embedding dimensionality for Qdrant collection creation. Default: 384 (all-MiniLM-L6-v2).
+    #[serde(default = "default_qdrant_vector_size")]
+    pub qdrant_vector_size: u64,
 
     // ── Provider API keys (Phase 1+) ──────────────────────────────────────────
     #[serde(default)]
@@ -360,6 +372,15 @@ fn default_hnsw_ef() -> usize {
 }
 fn default_hnsw_connections() -> usize {
     16
+}
+fn default_qdrant_url() -> String {
+    "http://localhost:6334".to_string()
+}
+fn default_qdrant_collection() -> String {
+    "velox_cache".to_string()
+}
+fn default_qdrant_vector_size() -> u64 {
+    384
 }
 fn default_rate_limit_window_secs() -> u64 {
     60

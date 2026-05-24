@@ -3,7 +3,10 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use velox::{
-    cache::{embedding::EmbeddingModel, policy::SemanticCachePolicy, CacheEngine},
+    cache::{
+        embedding::EmbeddingModel, index::qdrant::QdrantIndex, policy::SemanticCachePolicy,
+        CacheEngine,
+    },
     cluster::rate_limit::DbRateLimiter,
     config::Config,
     db::{self, api_keys as db_api_keys},
@@ -202,7 +205,35 @@ async fn main() -> anyhow::Result<()> {
             Ok(model) => {
                 let arc_model = Arc::new(model);
                 let threshold = config.semantic_cache_threshold as f32;
-                let engine = if config.semantic_cache_backend == "hnsw" {
+                let engine = if config.semantic_cache_backend == "qdrant" {
+                    match QdrantIndex::new(
+                        &config.qdrant_url,
+                        &config.qdrant_collection,
+                        config.qdrant_vector_size,
+                    )
+                    .await
+                    {
+                        Ok(qdrant_index) => {
+                            tracing::info!(
+                                url = %config.qdrant_url,
+                                collection = %config.qdrant_collection,
+                                "Embedding model loaded; semantic cache enabled (Qdrant backend)"
+                            );
+                            CacheEngine::new_with_qdrant_semantic(
+                                arc_model,
+                                threshold,
+                                qdrant_index,
+                            )
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to connect to Qdrant at {}: {e}; falling back to linear backend",
+                                config.qdrant_url
+                            );
+                            CacheEngine::new_with_semantic(arc_model, threshold)
+                        }
+                    }
+                } else if config.semantic_cache_backend == "hnsw" {
                     tracing::info!(
                         path = %config.embedding_model_path,
                         "Embedding model loaded; semantic cache enabled (HNSW backend)"

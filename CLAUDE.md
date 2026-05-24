@@ -36,7 +36,7 @@ cargo test 2>&1 | tail -20
 | Web framework | axum 0.7 |
 | Database | PostgreSQL (docker-compose) + SQLite (`--no-default-features --features sqlite`) |
 | Repository | /Users/wallex/rust-backend |
-| Roadmap | VELOX_ROADMAP.md (v1), VELOX_V2_ROADMAP.md (v2), VELOX_V3_ROADMAP.md (v3) |
+| Roadmap | VELOX_ROADMAP.md (v1), VELOX_V2_ROADMAP.md (v2), VELOX_V3_ROADMAP.md (v3), VELOX_V4_ROADMAP.md (v4), **VELOX_V5_ROADMAP.md (v5 — current)** |
 | Decisions | DECISIONS.md |
 
 ---
@@ -58,10 +58,12 @@ Phase 9: Mobile App          → [SKIPPED] — out of scope for v1
 
 **VELOX v0.1.0 IS FEATURE-COMPLETE. V2 is also complete (all 8 phases, 2026-05-23).**
 
-Current work is V4 — enterprise features (RBAC, analytics, replay, quality scoring).
-See **VELOX_V4_ROADMAP.md** for the full v4 plan.
-V4-0 through V4-8 are complete (2026-05-24). Only V4-9 (external vector stores) remains.
-Always start a v4 session by reading VELOX_V4_ROADMAP.md §16 (Phase Status Tracker).
+**V4 is fully complete — all 10 phases done (2026-05-24). No remaining V4 work.**
+See **VELOX_V4_ROADMAP.md §16** for the full phase history.
+
+**V5 — Market-Readiness — is IN PROGRESS. See VELOX_V5_ROADMAP.md.**
+Read that file's §16 (phase status), §17 (locked decisions), and §18 (session start ritual)
+before touching any code on a V5 phase.
 
 ---
 
@@ -184,6 +186,15 @@ Always start a v4 session by reading VELOX_V4_ROADMAP.md §16 (Phase Status Trac
 - [x] `dashboard/src/app/(dashboard)/workspaces/page.tsx` — Workspace management page with expandable workspace cards, member table, add/edit/remove member dialogs
 - [x] RBAC enforcement added to all admin handlers: `analytics.*` (BillingViewer+), `keys.*` (ApiManager+), `cache.*` (Admin), `providers.test_provider` (Admin), `velox_config.patch_config` (Admin), `requests.*` (BillingViewer+)
 - [x] `tests/v4_8_rbac.rs` — 14 acceptance tests covering role enforcement, bootstrap rule, cross-workspace isolation, migration seeding
+
+### Velox-Specific Rust Modules (V4-9 — External Vector Stores)
+- [x] `src/cache/index/qdrant.rs` — `QdrantIndex`: implements `EmbeddingIndex` trait via gRPC calls to Qdrant; `new()` is async (connects + ensures collection exists); sync trait methods bridge via `block_in_place`; point IDs derived from hash prefix; hash stored in payload for retrieval
+- [x] `src/cache/index/mod.rs` — Added `pub mod qdrant;` to expose `QdrantIndex`
+- [x] `src/cache/mod.rs` — Added `CacheEngine::new_with_qdrant_semantic()` constructor
+- [x] `src/config.rs` — Added `qdrant_url` (default `http://localhost:6334`), `qdrant_collection` (default `velox_cache`), `qdrant_vector_size` (default 384)
+- [x] `src/main.rs` — Wired `semantic_cache_backend = "qdrant"` branch; graceful fallback to linear on connection error
+- [x] `Cargo.toml` — Added `qdrant-client = "1.9"`
+- [x] `tests/v4_9_vector_store.rs` — 6 acceptance tests; Qdrant-dependent tests skip gracefully when instance not running (CI-safe); full suite runs with `docker run -p 6334:6334 qdrant/qdrant`
 
 ---
 

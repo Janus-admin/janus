@@ -1,5 +1,6 @@
 pub mod hnsw;
 pub mod linear;
+pub mod qdrant;
 
 /// Pluggable vector index backend for the semantic cache.
 ///
