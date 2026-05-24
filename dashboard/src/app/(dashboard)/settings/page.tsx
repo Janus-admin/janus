@@ -334,6 +334,22 @@ export default function SettingsPage() {
                 }
               />
               <Row
+                label="Embedding model"
+                value={
+                  <span className="font-mono text-xs truncate max-w-48" title={cfg?.embedding_model_path}>
+                    {cfg?.embedding_model_path ?? "—"}
+                  </span>
+                }
+              />
+              <Row
+                label="Tokenizer"
+                value={
+                  <span className="font-mono text-xs truncate max-w-48" title={cfg?.embedding_tokenizer_path}>
+                    {cfg?.embedding_tokenizer_path ?? "—"}
+                  </span>
+                }
+              />
+              <Row
                 label="Log level"
                 value={cfg?.log_level ?? "—"}
               />

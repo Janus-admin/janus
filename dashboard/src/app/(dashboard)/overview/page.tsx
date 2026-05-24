@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { analytics, requests, cache, providers } from "@/lib/api";
+import { analytics, requests, cache, providers, system } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -36,6 +36,10 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
+  TrendingDown,
+  TrendingUp,
+  Minus,
+  HeartPulse,
 } from "lucide-react";
 import {
   Table,
@@ -140,12 +144,38 @@ export default function OverviewPage() {
     refetchInterval: 15_000,
   });
 
+  const costs7Q = useQuery({
+    queryKey: ["analytics", "costs", 7],
+    queryFn: () => analytics.costs(7),
+    refetchInterval: 60_000,
+  });
+
+  const readinessQ = useQuery({
+    queryKey: ["system", "readiness"],
+    queryFn: () => system.readiness(),
+    refetchInterval: 30_000,
+  });
+
   const ov = overviewQ.data;
 
   const chartData = (costsQ.data?.by_day ?? []).map((row) => ({
     day: format(parseISO(row.day), "MMM d"),
     cost: row.cost_usd ?? 0,
   }));
+
+  // Derive yesterday's cost from the 7-day cost breakdown (second-to-last entry).
+  const days7 = costs7Q.data?.by_day ?? [];
+  const todayCost = ov?.today.cost_usd ?? null;
+  const yesterdayCost =
+    days7.length >= 2
+      ? (days7[days7.length - 2]?.cost_usd ?? null)
+      : null;
+  const spendDelta =
+    todayCost != null && yesterdayCost != null && yesterdayCost > 0
+      ? ((todayCost - yesterdayCost) / yesterdayCost) * 100
+      : null;
+
+  const readinessReport = readinessQ.data?.data;
 
   return (
     <div className="space-y-6">
@@ -293,6 +323,104 @@ export default function OverviewPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Operational panels */}
+      <div className="grid md:grid-cols-3 gap-4">
+        {/* Today vs yesterday spend */}
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2 pb-2 space-y-0">
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Today vs yesterday</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {overviewQ.isLoading || costs7Q.isLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold tabular-nums">{fmtCost(todayCost)}</div>
+                <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
+                  {spendDelta === null ? (
+                    <span>Yesterday: {fmtCost(yesterdayCost)}</span>
+                  ) : spendDelta === 0 ? (
+                    <>
+                      <Minus className="h-3 w-3" />
+                      <span>Same as yesterday</span>
+                    </>
+                  ) : spendDelta < 0 ? (
+                    <>
+                      <TrendingDown className="h-3 w-3 text-green-500" />
+                      <span className="text-green-600">{Math.abs(spendDelta).toFixed(1)}% vs yesterday</span>
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp className="h-3 w-3 text-red-500" />
+                      <span className="text-red-600">+{spendDelta.toFixed(1)}% vs yesterday</span>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Cache savings */}
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2 pb-2 space-y-0">
+            <Database className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Cache savings (all-time)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {cacheQ.isLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold tabular-nums text-green-600">
+                  {cacheQ.data ? fmtCost(cacheQ.data.data.total_cost_saved) : "—"}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {cacheQ.data
+                    ? `${cacheQ.data.data.total_tokens_saved.toLocaleString()} tokens saved`
+                    : "—"}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* System health summary */}
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2 pb-2 space-y-0">
+            <HeartPulse className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">System health</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {readinessQ.isLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  {readinessReport?.healthy ? (
+                    <CheckCircle2 className="h-6 w-6 text-green-500" />
+                  ) : (
+                    <XCircle className="h-6 w-6 text-red-500" />
+                  )}
+                  <span className="text-xl font-semibold">
+                    {readinessReport?.healthy ? "Healthy" : "Degraded"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {readinessReport
+                    ? `${readinessReport.checks.filter((c) => c.status === "pass").length}/${readinessReport.checks.length} checks passing`
+                    : "—"}
+                  {readinessReport && readinessReport.warnings > 0
+                    ? ` · ${readinessReport.warnings} warning${readinessReport.warnings !== 1 ? "s" : ""}`
+                    : ""}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {cacheQ.data && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

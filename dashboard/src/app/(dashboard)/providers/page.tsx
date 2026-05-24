@@ -38,10 +38,18 @@ import {
   HelpCircle,
   Pencil,
   RefreshCw,
+  Star,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const editSchema = z.object({
   api_key: z.string().optional(),
+  base_url: z.string().optional(),
   priority: z.string().optional(),
   timeout_ms: z.string().optional(),
   max_retries: z.string().optional(),
@@ -65,6 +73,47 @@ function healthBadge(status: string) {
     );
   if (status === "unhealthy") return <Badge variant="destructive">unhealthy</Badge>;
   return <Badge variant="secondary">unknown</Badge>;
+}
+
+function QualityBadge({
+  score,
+  updatedAt,
+}: {
+  score: number | null;
+  updatedAt: string | null;
+}) {
+  if (score == null) return null;
+
+  const pct = Math.round(score * 100);
+  const color =
+    score >= 0.9
+      ? "text-green-600 border-green-600/30"
+      : score >= 0.7
+      ? "text-yellow-600 border-yellow-600/30"
+      : "text-red-600 border-red-600/30";
+
+  const label = updatedAt
+    ? `Quality: ${pct}/100 · Updated ${format(parseISO(updatedAt), "MMM d HH:mm")}`
+    : `Quality score: ${pct}/100`;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant="outline"
+            className={`${color} gap-1 text-xs cursor-default`}
+          >
+            <Star className="h-2.5 w-2.5 fill-current" />
+            {pct}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 function providerLabel(name: string): string {
@@ -122,6 +171,7 @@ export default function ProvidersPage() {
     setEditTarget(provider);
     form.reset({
       api_key: "",
+      base_url: provider.base_url ?? "",
       priority: String(provider.priority),
       timeout_ms: String(provider.timeout_ms),
       max_retries: String(provider.max_retries),
@@ -132,6 +182,7 @@ export default function ProvidersPage() {
     if (!editTarget) return;
     const body: UpdateProviderRequest = {};
     if (values.api_key) body.api_key = values.api_key;
+    if (values.base_url !== undefined) body.base_url = values.base_url || undefined;
     if (values.priority) body.priority = parseInt(values.priority);
     if (values.timeout_ms) body.timeout_ms = parseInt(values.timeout_ms);
     if (values.max_retries) body.max_retries = parseInt(values.max_retries);
@@ -187,8 +238,12 @@ export default function ProvidersPage() {
                     disabled={toggleMut.isPending}
                   />
                 </div>
-                <CardDescription className="flex items-center gap-2">
+                <CardDescription className="flex items-center gap-2 flex-wrap">
                   {healthBadge(p.health_status)}
+                  <QualityBadge
+                    score={p.quality_score}
+                    updatedAt={p.quality_updated_at}
+                  />
                   {p.last_health_check && (
                     <span className="text-xs text-muted-foreground">
                       {format(parseISO(p.last_health_check), "HH:mm")}
@@ -215,6 +270,14 @@ export default function ProvidersPage() {
                     {p.max_retries}
                   </span>
                 </div>
+                {p.base_url && (
+                  <div className="flex justify-between text-muted-foreground gap-2">
+                    <span className="shrink-0">Base URL</span>
+                    <span className="font-mono text-xs text-foreground truncate text-right" title={p.base_url}>
+                      {p.base_url}
+                    </span>
+                  </div>
+                )}
                 <div className="flex gap-2 pt-2">
                   <Button
                     variant="outline"
@@ -268,6 +331,18 @@ export default function ProvidersPage() {
                 placeholder="sk-… (leave blank to keep existing)"
                 {...form.register("api_key")}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="base_url">Base URL</Label>
+              <Input
+                id="base_url"
+                type="url"
+                placeholder="https://api.openai.com/v1"
+                {...form.register("base_url")}
+              />
+              <p className="text-xs text-muted-foreground">
+                Override for custom endpoints (Ollama, vLLM, proxies…)
+              </p>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">

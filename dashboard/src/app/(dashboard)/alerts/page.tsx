@@ -61,7 +61,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format, parseISO } from "date-fns";
-import { Plus, Trash2, SendHorizontal, History } from "lucide-react";
+import { Plus, Trash2, SendHorizontal, History, Pencil } from "lucide-react";
 
 const ALERT_TYPES = [
   { value: "spend", label: "Spend (USD)" },
@@ -85,6 +85,16 @@ const createSchema = z.object({
   webhook_secret: z.string().optional(),
 });
 type CreateForm = z.infer<typeof createSchema>;
+
+const editAlertSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  threshold: z.string().min(1, "Threshold is required"),
+  window_minutes: z.string().optional(),
+  webhook_url: z.string().optional(),
+  webhook_format: z.string().optional(),
+  webhook_secret: z.string().optional(),
+});
+type EditAlertForm = z.infer<typeof editAlertSchema>;
 
 function TypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
@@ -180,6 +190,7 @@ export default function AlertsPage() {
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Alert | null>(null);
+  const [editTarget, setEditTarget] = useState<Alert | null>(null);
   const [historyTarget, setHistoryTarget] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
@@ -216,6 +227,15 @@ export default function AlertsPage() {
     onSettled: () => setTestingId(null),
   });
 
+  const editMut = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Parameters<typeof alertsApi.update>[1] }) =>
+      alertsApi.update(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alerts"] });
+      setEditTarget(null);
+    },
+  });
+
   const form = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
     defaultValues: {
@@ -226,6 +246,37 @@ export default function AlertsPage() {
       webhook_format: "generic",
     },
   });
+
+  const editForm = useForm<EditAlertForm>({
+    resolver: zodResolver(editAlertSchema),
+  });
+
+  function openEdit(alert: Alert) {
+    setEditTarget(alert);
+    editForm.reset({
+      name: alert.name,
+      threshold: String(alert.threshold),
+      window_minutes: String(alert.window_minutes),
+      webhook_url: alert.webhook_url ?? "",
+      webhook_format: alert.webhook_format ?? "generic",
+      webhook_secret: "",
+    });
+  }
+
+  function onEditSubmit(values: EditAlertForm) {
+    if (!editTarget) return;
+    editMut.mutate({
+      id: editTarget.id,
+      body: {
+        name: values.name,
+        threshold: parseFloat(values.threshold),
+        window_minutes: values.window_minutes ? parseInt(values.window_minutes) : undefined,
+        webhook_url: values.webhook_url || null,
+        webhook_format: values.webhook_format || "generic",
+        webhook_secret: values.webhook_secret || null,
+      },
+    });
+  }
 
   function onSubmit(values: CreateForm) {
     createMut.mutate({
@@ -344,6 +395,15 @@ export default function AlertsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground"
+                            title="Edit alert"
+                            onClick={() => openEdit(alert)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -548,6 +608,70 @@ export default function AlertsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => !o && setEditTarget(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit alert — {editTarget?.name}</DialogTitle>
+            <DialogDescription>
+              Changes take effect on the next evaluation window.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input id="edit-name" {...editForm.register("name")} />
+              {editForm.formState.errors.name && (
+                <p className="text-xs text-destructive">{editForm.formState.errors.name.message}</p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-threshold">Threshold</Label>
+                <Input id="edit-threshold" type="number" step="any" {...editForm.register("threshold")} />
+                {editForm.formState.errors.threshold && (
+                  <p className="text-xs text-destructive">{editForm.formState.errors.threshold.message}</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-window">Window (minutes)</Label>
+                <Input id="edit-window" type="number" {...editForm.register("window_minutes")} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-webhook-url">Webhook URL</Label>
+              <Input id="edit-webhook-url" type="url" placeholder="https://…" {...editForm.register("webhook_url")} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Webhook format</Label>
+                <Select
+                  defaultValue={editTarget?.webhook_format ?? "generic"}
+                  onValueChange={(v) => editForm.setValue("webhook_format", v)}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {WEBHOOK_FORMATS.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-secret">New webhook secret</Label>
+                <Input id="edit-secret" type="password" placeholder="leave blank to keep" {...editForm.register("webhook_secret")} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="submit" disabled={editMut.isPending}>
+                {editMut.isPending ? "Saving…" : "Save changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* History drawer */}
       <HistoryDrawer

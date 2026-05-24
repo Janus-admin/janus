@@ -50,7 +50,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format, parseISO } from "date-fns";
-import { Plus, Trash2, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ChevronRight, Minus } from "lucide-react";
 
 // ── Create prompt form ────────────────────────────────────────────────────────
 
@@ -107,6 +107,15 @@ function PromptDetail({
       promptsApi.updateVersion(promptId!, version, { is_active: true }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prompt", promptId] });
+    },
+  });
+
+  const deleteVersionMut = useMutation({
+    mutationFn: (version: number) =>
+      promptsApi.deleteVersion(promptId!, version),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prompt", promptId] });
+      qc.invalidateQueries({ queryKey: ["prompts"] });
     },
   });
 
@@ -216,6 +225,18 @@ function PromptDetail({
                         disabled={activateMut.isPending}
                       >
                         Activate
+                      </Button>
+                    )}
+                    {!v.is_active && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        title="Delete version"
+                        onClick={() => deleteVersionMut.mutate(v.version)}
+                        disabled={deleteVersionMut.isPending}
+                      >
+                        <Minus className="h-3 w-3" />
                       </Button>
                     )}
                   </div>

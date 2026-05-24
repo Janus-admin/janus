@@ -202,6 +202,8 @@ export interface RequestFilter {
   model?: string;
   status?: string;
   api_key_id?: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 export const requests = {
@@ -213,6 +215,8 @@ export const requests = {
     if (filter.model) p.set("model", filter.model);
     if (filter.status) p.set("status", filter.status);
     if (filter.api_key_id) p.set("api_key_id", filter.api_key_id);
+    if (filter.start_time) p.set("start_time", filter.start_time);
+    if (filter.end_time) p.set("end_time", filter.end_time);
     return apiFetch<{ data: GatewayRequest[]; meta: Meta }>(
       `/admin/requests?${p}`
     );
@@ -312,6 +316,7 @@ export interface UpdateProviderRequest {
   is_enabled?: boolean;
   priority?: number;
   api_key?: string;
+  base_url?: string;
   timeout_ms?: number;
   max_retries?: number;
 }
@@ -543,6 +548,33 @@ export const simulate = {
   },
 };
 
+// ── Available Models ──────────────────────────────────────────────────────────
+
+export interface ModelOption {
+  id: string;
+  owned_by: string;
+}
+
+export const modelsApi = {
+  list: () =>
+    apiFetch<{ object: string; data: ModelOption[] }>("/v1/models"),
+};
+
+export interface ModelWithPricing {
+  model_id: string;
+  provider: string;
+  model_display_name: string | null;
+  input_per_1m_tokens: number;
+  output_per_1m_tokens: number;
+  context_window: number | null;
+  supports_functions: boolean;
+}
+
+export const adminModelsApi = {
+  list: () =>
+    apiFetch<{ data: ModelWithPricing[] }>("/admin/models"),
+};
+
 export const promptsApi = {
   list: (page = 1, per_page = 50) =>
     apiFetch<{ data: Prompt[]; meta: Meta }>(
@@ -578,6 +610,10 @@ export const promptsApi = {
       `/admin/prompts/${promptId}/versions/${version}`,
       { method: "PATCH", body: JSON.stringify(body) }
     ),
+  deleteVersion: (promptId: string, version: number) =>
+    apiFetch<void>(`/admin/prompts/${promptId}/versions/${version}`, {
+      method: "DELETE",
+    }),
 };
 
 // ── Workspaces / Members (V4-8) ───────────────────────────────────────────────
