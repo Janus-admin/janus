@@ -45,7 +45,10 @@ fn v3p1_linear_insert_then_lookup_finds_entry() {
     assert!(result.is_some());
     let (hash, score) = result.unwrap();
     assert_eq!(hash, "linear-hash");
-    assert!(score >= 0.99, "identical vectors should score ≈ 1.0, got {score}");
+    assert!(
+        score >= 0.99,
+        "identical vectors should score ≈ 1.0, got {score}"
+    );
 }
 
 #[test]
@@ -54,7 +57,10 @@ fn v3p1_linear_lookup_returns_none_below_threshold() {
     idx.insert(unit_embedding(64), "h".to_string());
     // Orthogonal vector has cosine similarity 0 with the unit embedding.
     let result = idx.lookup(&orthogonal_embedding(64), 0.90);
-    assert!(result.is_none(), "orthogonal vector must not hit above 0.90");
+    assert!(
+        result.is_none(),
+        "orthogonal vector must not hit above 0.90"
+    );
 }
 
 #[test]
@@ -141,7 +147,10 @@ fn v3p1_hnsw_backend_hits_on_similar_prompt() {
     sc.insert(emb.clone(), "prompt-hash".to_string());
     // Same embedding — must return a hit.
     let result = sc.lookup(&emb);
-    assert!(result.is_some(), "HNSW-backed SemanticCache must return a hit");
+    assert!(
+        result.is_some(),
+        "HNSW-backed SemanticCache must return a hit"
+    );
 }
 
 #[test]
@@ -178,11 +187,7 @@ fn v3p1_policy_allows_all_when_models_list_empty() {
 
 #[test]
 fn v3p1_policy_denies_unlisted_model() {
-    let policy = SemanticCachePolicy::new(
-        vec!["gpt-4o-mini".to_string()],
-        vec![],
-        vec![],
-    );
+    let policy = SemanticCachePolicy::new(vec!["gpt-4o-mini".to_string()], vec![], vec![]);
     assert!(policy.allows("gpt-4o-mini", "/v1/chat/completions", "k"));
     assert!(!policy.allows("gpt-4o", "/v1/chat/completions", "k"));
     assert!(!policy.allows("claude-3-5-haiku-20241022", "/v1/chat/completions", "k"));
@@ -190,11 +195,7 @@ fn v3p1_policy_denies_unlisted_model() {
 
 #[test]
 fn v3p1_policy_denies_excluded_route_prefix() {
-    let policy = SemanticCachePolicy::new(
-        vec![],
-        vec!["/v1/embeddings".to_string()],
-        vec![],
-    );
+    let policy = SemanticCachePolicy::new(vec![], vec!["/v1/embeddings".to_string()], vec![]);
     assert!(!policy.allows("any-model", "/v1/embeddings", "k"));
     assert!(!policy.allows("any-model", "/v1/embeddings/batch", "k"));
     assert!(policy.allows("any-model", "/v1/chat/completions", "k"));
@@ -202,11 +203,7 @@ fn v3p1_policy_denies_excluded_route_prefix() {
 
 #[test]
 fn v3p1_policy_denies_excluded_key() {
-    let policy = SemanticCachePolicy::new(
-        vec![],
-        vec![],
-        vec!["no-cache-key".to_string()],
-    );
+    let policy = SemanticCachePolicy::new(vec![], vec![], vec!["no-cache-key".to_string()]);
     assert!(!policy.allows("gpt-4o", "/v1/chat/completions", "no-cache-key"));
     assert!(policy.allows("gpt-4o", "/v1/chat/completions", "other-key"));
 }
@@ -214,11 +211,7 @@ fn v3p1_policy_denies_excluded_key() {
 #[test]
 fn v3p1_policy_blocks_semantic_cache_for_excluded_model() {
     // When a model is excluded, the cache engine's semantic lookup should be skipped.
-    let policy = SemanticCachePolicy::new(
-        vec!["gpt-4o-mini".to_string()],
-        vec![],
-        vec![],
-    );
+    let policy = SemanticCachePolicy::new(vec!["gpt-4o-mini".to_string()], vec![], vec![]);
 
     let engine = CacheEngine::new();
     let emb = unit_embedding(64);
@@ -295,10 +288,12 @@ fn v3p1_hnsw_lookup_faster_than_linear_at_1000_entries() {
 
 #[test]
 fn v3p1_regression_exact_cache_unaffected() {
-    use velox::cache::exact::compute_hash;
-    use velox::providers::{ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData};
     use serde_json::json;
     use std::sync::Arc;
+    use velox::cache::exact::compute_hash;
+    use velox::providers::{
+        ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData,
+    };
 
     let engine = CacheEngine::new();
     let req: ChatCompletionRequest = serde_json::from_value(json!({

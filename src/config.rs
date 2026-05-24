@@ -117,6 +117,10 @@ pub struct Config {
     #[serde(default)]
     pub routing: RoutingConfig,
 
+    // ── Distributed tracing (V3-2) ───────────────────────────────────────────
+    #[serde(default)]
+    pub tracing: TracingConfig,
+
     // ── Clustering (V2-6) ─────────────────────────────────────────────────────
     /// Multi-node clustering configuration.
     /// When enabled, rate limits use the shared `rate_limit_windows` DB table
@@ -216,6 +220,43 @@ fn default_rate_limit_window_secs() -> u64 {
 }
 fn default_max_retries() -> u32 {
     1
+}
+fn default_otlp_endpoint() -> String {
+    "http://localhost:4317".to_string()
+}
+fn default_service_name() -> String {
+    "velox".to_string()
+}
+fn default_sample_rate() -> f64 {
+    1.0
+}
+
+/// Distributed tracing configuration (V3-2).
+#[derive(Debug, Clone, Deserialize)]
+pub struct TracingConfig {
+    /// Enable OTLP tracing export. Default: false (zero overhead when disabled).
+    #[serde(default)]
+    pub enabled: bool,
+    /// gRPC OTLP collector endpoint. Default: "http://localhost:4317"
+    #[serde(default = "default_otlp_endpoint")]
+    pub otlp_endpoint: String,
+    /// Service name embedded in trace metadata. Default: "velox"
+    #[serde(default = "default_service_name")]
+    pub service_name: String,
+    /// Sampling rate [0.0, 1.0]. 1.0 = 100%, 0.1 = 10%. Default: 1.0
+    #[serde(default = "default_sample_rate")]
+    pub sample_rate: f64,
+}
+
+impl Default for TracingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            otlp_endpoint: default_otlp_endpoint(),
+            service_name: default_service_name(),
+            sample_rate: default_sample_rate(),
+        }
+    }
 }
 
 /// Runtime-mutable subset of Config.

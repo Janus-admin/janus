@@ -10,6 +10,7 @@ use crate::{
     prompts::template,
     providers::{ChatCompletionRequest, ChatMessage, EmbeddingRequest},
     state::AppState,
+    telemetry,
 };
 use axum::{
     extract::{rejection::JsonRejection, FromRequest, State},
@@ -22,6 +23,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
+use tracing::Instrument;
 use uuid::Uuid;
 
 // ── ValidatedJson extractor ───────────────────────────────────────────────────
@@ -67,22 +69,60 @@ pub async fn chat_completions(
     headers: HeaderMap,
     ValidatedJson(request): ValidatedJson<ChatCompletionRequest>,
 ) -> impl IntoResponse {
+    // Root span for this gateway request.
+    // W3C `traceparent` from the incoming request becomes the parent context so
+    // end-to-end traces are linked when Velox sits behind an instrumented caller.
+    let span = tracing::info_span!(
+        "velox.request",
+        otel.kind = "server",
+        velox.model = %request.model,
+        velox.api_key_id = %api_key.id,
+        velox.cache_hit = tracing::field::Empty,
+        http.status_code = tracing::field::Empty,
+    );
+    {
+        use tracing_opentelemetry::OpenTelemetrySpanExt;
+        span.set_parent(telemetry::extract_context(&headers));
+    }
+    chat_completions_inner(state, api_key, headers, request)
+        .instrument(span)
+        .await
+}
+
+async fn chat_completions_inner(
+    state: Arc<AppState>,
+    api_key: crate::models::api_key::ApiKey,
+    headers: HeaderMap,
+    request: ChatCompletionRequest,
+) -> impl IntoResponse {
     // Budget gate.
-    if let Err(e) = check_budget(&api_key) {
-        return e.into_response();
+    {
+        let budget_err =
+            tracing::info_span!("velox.budget.check").in_scope(|| check_budget(&api_key));
+        if let Err(e) = budget_err {
+            return e.into_response();
+        }
     }
 
     // Rate limit gate (RPM).
     // Cluster mode: use DB-backed sliding window shared across all nodes.
     // Single-node mode: use fast in-memory DashMap.
-    if let Some(rpm) = api_key.rate_limit_rpm {
-        if let Some(ref cluster_rl) = state.cluster_rate_limiter {
-            if let Err(retry_after) = cluster_rl.check_and_record(api_key.id, rpm).await {
-                return AppError::RateLimitExceeded(Some(retry_after)).into_response();
+    let rate_limit_result = async {
+        if let Some(rpm) = api_key.rate_limit_rpm {
+            if let Some(ref cluster_rl) = state.cluster_rate_limiter {
+                if let Err(retry_after) = cluster_rl.check_and_record(api_key.id, rpm).await {
+                    return Err(AppError::RateLimitExceeded(Some(retry_after)));
+                }
+            } else if let Err(retry_after) = state.rate_limiter.check_and_record(api_key.id, rpm) {
+                return Err(AppError::RateLimitExceeded(Some(retry_after)));
             }
-        } else if let Err(retry_after) = state.rate_limiter.check_and_record(api_key.id, rpm) {
-            return AppError::RateLimitExceeded(Some(retry_after)).into_response();
         }
+        Ok::<(), AppError>(())
+    }
+    .instrument(tracing::info_span!("velox.rate_limit.check"))
+    .await;
+    if let Err(e) = rate_limit_result {
+        return e.into_response();
     }
 
     // Token-per-minute gate (TPM) — rough pre-flight estimate.
@@ -164,11 +204,9 @@ pub async fn chat_completions(
     // Bypass semantic cache when the policy excludes this model/route/key combination.
     // Exact cache is unaffected by this flag.
     let bypass_semantic = bypass_cache
-        || !state.semantic_policy.allows(
-            &request.model,
-            "/v1/chat/completions",
-            &api_key.name,
-        );
+        || !state
+            .semantic_policy
+            .allows(&request.model, "/v1/chat/completions", &api_key.name);
 
     let max_retries = rc.max_retries;
 
@@ -630,11 +668,9 @@ pub async fn legacy_completions(
         .unwrap_or_default();
 
     let bypass_semantic_legacy = bypass_cache
-        || !state.semantic_policy.allows(
-            &chat_request.model,
-            "/v1/completions",
-            &api_key.name,
-        );
+        || !state
+            .semantic_policy
+            .allows(&chat_request.model, "/v1/completions", &api_key.name);
 
     match pipeline::run(
         &state.pool,

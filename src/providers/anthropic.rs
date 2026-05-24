@@ -290,14 +290,15 @@ impl Provider for AnthropicProvider {
 
         let url = format!("{}/messages", self.base_url);
 
-        let resp = self
-            .client
-            .post(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&anthropic_req)
-            .send()
-            .await?;
+        let resp = crate::telemetry::inject_trace_headers(
+            self.client
+                .post(&url)
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .json(&anthropic_req),
+        )
+        .send()
+        .await?;
 
         let status = resp.status();
 
@@ -354,14 +355,15 @@ impl Provider for AnthropicProvider {
 
         let url = format!("{}/messages", self.base_url);
 
-        let resp = self
-            .client
-            .post(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&anthropic_req)
-            .send()
-            .await?;
+        let resp = crate::telemetry::inject_trace_headers(
+            self.client
+                .post(&url)
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .json(&anthropic_req),
+        )
+        .send()
+        .await?;
 
         let status = resp.status();
         if !status.is_success() {

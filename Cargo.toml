@@ -63,6 +63,12 @@ tokenizers = "0.19"
 # ─── V3-1: HNSW Semantic Cache ────────────────────────────────────────────────
 hnsw_rs = "0.3"
 
+# ─── V3-2: OpenTelemetry ──────────────────────────────────────────────────────
+opentelemetry         = { version = "0.23", features = ["trace"] }
+opentelemetry_sdk     = { version = "0.23", features = ["rt-tokio"] }
+opentelemetry-otlp    = { version = "0.16", default-features = false, features = ["grpc-tonic", "trace"] }
+tracing-opentelemetry = "0.24"
+
 # ─── Phase 6: Dashboard ───────────────────────────────────────────────────────
 include_dir = "0.7"
 
@@ -83,6 +89,8 @@ serial_test = "3"
 # reqwest is needed in test files even before Phase 1 (test code imports it)
 reqwest = { version = "0.12", features = ["json"] }
 criterion = { version = "0.5", features = ["html_reports"] }
+# V3-2: enable in-memory span exporter for tests
+opentelemetry_sdk = { version = "0.23", features = ["rt-tokio", "testing"] }
 
 [[bench]]
 name = "cache_bench"

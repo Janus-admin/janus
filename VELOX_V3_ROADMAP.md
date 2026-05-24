@@ -831,7 +831,7 @@ async-trait = "0.1"   # if not already present
 |---|---|---|---|
 | V3-0 | Foundation Fixes | ✅ Complete (2026-05-24) | CLAUDE.md + semantic flush + benches |
 | V3-1 | Semantic Cache Redesign | ✅ Complete (2026-05-24) | O(n) → HNSW, EmbeddingIndex trait, SemanticCachePolicy |
-| V3-2 | OpenTelemetry | ⬜ Not started | Traces + OTLP export |
+| V3-2 | OpenTelemetry | ✅ Complete (2026-05-24) | `src/telemetry.rs`, span tree, OTLP gRPC, W3C propagation, 16 tests |
 | V3-3 | Streaming Hardening | ⬜ Not started | Disconnect propagation, backpressure |
 | V3-4 | Plugin Middleware | ⬜ Not started | RequestPlugin trait, plugin chain |
 | V3-5 | Security Hardening | ⬜ Not started | mTLS, key rotation, audit API |

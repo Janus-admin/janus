@@ -89,7 +89,10 @@ impl Provider for GeminiProvider {
             request.model, self.api_key
         );
 
-        let response = self.client.post(&url).json(&gemini_request).send().await?;
+        let response =
+            crate::telemetry::inject_trace_headers(self.client.post(&url).json(&gemini_request))
+                .send()
+                .await?;
 
         let status = response.status();
 

@@ -21,6 +21,7 @@ use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use std::{convert::Infallible, sync::Arc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
+use tracing::Instrument;
 use uuid::Uuid;
 
 // ── Prompt text extraction ────────────────────────────────────────────────────
@@ -77,7 +78,9 @@ pub async fn run(
     let hash = cache::exact::compute_hash(request);
 
     if !bypass_cache {
-        if let Some(cached) = cache.lookup(&hash) {
+        let cached =
+            tracing::info_span!("velox.cache.exact_lookup").in_scope(|| cache.lookup(&hash));
+        if let Some(cached) = cached {
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
             counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
@@ -90,7 +93,8 @@ pub async fn run(
     // ── Semantic cache lookup ─────────────────────────────────────────────────
     // Compute embedding once; reuse it after provider call to populate the index.
     // Skip when bypass_semantic is set (policy exclusion or cache fully bypassed).
-    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic && cache.model.is_some() {
+    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic && cache.model.is_some()
+    {
         let text = prompt_text(request);
         cache.model.as_ref().and_then(|m| m.embed(&text).ok())
     } else {
@@ -99,7 +103,9 @@ pub async fn run(
 
     if !bypass_cache && !bypass_semantic {
         if let Some(ref emb) = embedding {
-            if let Some((hit_hash, score)) = cache.semantic_lookup(emb) {
+            let semantic_hit = tracing::info_span!("velox.cache.semantic_lookup")
+                .in_scope(|| cache.semantic_lookup(emb));
+            if let Some((hit_hash, score)) = semantic_hit {
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
@@ -159,7 +165,21 @@ pub async fn run(
 
             loop {
                 let start = Instant::now();
-                let result = provider.chat_completion(effective_request).await;
+                let provider_span = tracing::info_span!(
+                    "velox.provider.call",
+                    velox.provider = provider.name(),
+                    velox.model = %effective_request.model,
+                    velox.prompt_tokens = tracing::field::Empty,
+                    velox.completion_tokens = tracing::field::Empty,
+                    velox.cost_usd = tracing::field::Empty,
+                );
+                // Clone before move into .instrument() so we can record attributes
+                // on the span after the future completes (Span is cheaply Clone).
+                let provider_span_ref = provider_span.clone();
+                let result = provider
+                    .chat_completion(effective_request)
+                    .instrument(provider_span)
+                    .await;
                 let latency_ms = start.elapsed().as_millis() as i32;
 
                 match result {
@@ -183,6 +203,11 @@ pub async fn run(
                                 )
                             });
 
+                        // Record token and cost attributes on the provider call span.
+                        provider_span_ref
+                            .record("velox.prompt_tokens", usage.prompt_tokens)
+                            .record("velox.completion_tokens", usage.completion_tokens);
+
                         // Record metrics
                         counter!("velox_requests_total", "provider" => provider.name(), "model" => resp.model.clone(), "status" => "success", "cache_type" => "none").increment(1);
                         histogram!("velox_request_duration_seconds", "provider" => provider.name(), "model" => resp.model.clone()).record(elapsed_secs);
@@ -194,13 +219,17 @@ pub async fn run(
                                 let cost_microdollars =
                                     (cost_value.to_f64().unwrap_or(0.0) * 1_000_000.0) as u64;
                                 counter!("velox_cost_usd_total", "provider" => provider.name(), "model" => resp.model.clone()).increment(cost_microdollars);
+                                provider_span_ref
+                                    .record("velox.cost_usd", cost_value.to_f64().unwrap_or(0.0));
                             }
                         }
 
                         // Only cache responses for the primary (non-fallback) model so
                         // the cache key (hash of original request) remains coherent.
                         if !bypass_cache && is_primary_model {
-                            cache.insert(hash.clone(), Arc::new(resp.clone()));
+                            tracing::info_span!("velox.cache.insert").in_scope(|| {
+                                cache.insert(hash.clone(), Arc::new(resp.clone()));
+                            });
 
                             let req_body = crate::pii::scrub(
                                 &serde_json::to_string(request).unwrap_or_default(),
@@ -398,7 +427,9 @@ pub async fn run_streaming(
     let hash = cache::exact::compute_hash(&request);
 
     if !bypass_cache {
-        if let Some(cached) = cache.lookup(&hash) {
+        let cached =
+            tracing::info_span!("velox.cache.exact_lookup").in_scope(|| cache.lookup(&hash));
+        if let Some(cached) = cached {
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
             counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
@@ -410,7 +441,8 @@ pub async fn run_streaming(
     }
 
     // ── Semantic cache lookup ─────────────────────────────────────────────────
-    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic && cache.model.is_some() {
+    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic && cache.model.is_some()
+    {
         let text = prompt_text(&request);
         cache.model.as_ref().and_then(|m| m.embed(&text).ok())
     } else {
@@ -419,7 +451,9 @@ pub async fn run_streaming(
 
     if !bypass_cache && !bypass_semantic {
         if let Some(ref emb) = embedding {
-            if let Some((hit_hash, score)) = cache.semantic_lookup(emb) {
+            let semantic_hit = tracing::info_span!("velox.cache.semantic_lookup")
+                .in_scope(|| cache.semantic_lookup(emb));
+            if let Some((hit_hash, score)) = semantic_hit {
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;

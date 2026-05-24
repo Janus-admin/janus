@@ -55,13 +55,14 @@ impl Provider for OpenAIProvider {
     ) -> Result<ChatCompletionResponse, ProviderError> {
         let url = format!("{}/chat/completions", self.base_url);
 
-        let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .json(request)
-            .send()
-            .await?;
+        let resp = crate::telemetry::inject_trace_headers(
+            self.client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(request),
+        )
+        .send()
+        .await?;
 
         let status = resp.status();
 
@@ -98,13 +99,14 @@ impl Provider for OpenAIProvider {
         body["stream"] = serde_json::Value::Bool(true);
         body["stream_options"] = serde_json::json!({ "include_usage": true });
 
-        let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await?;
+        let resp = crate::telemetry::inject_trace_headers(
+            self.client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&body),
+        )
+        .send()
+        .await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -149,14 +151,15 @@ impl Provider for OpenAIProvider {
         request: &EmbeddingRequest,
     ) -> Result<EmbeddingResponse, ProviderError> {
         let url = format!("{}/embeddings", self.base_url);
-        let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .json(request)
-            .send()
-            .await
-            .map_err(ProviderError::Http)?;
+        let resp = crate::telemetry::inject_trace_headers(
+            self.client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(request),
+        )
+        .send()
+        .await
+        .map_err(ProviderError::Http)?;
 
         if !resp.status().is_success() {
             let status = resp.status();

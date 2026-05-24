@@ -61,13 +61,14 @@ impl Provider for DeepSeekProvider {
 
         payload["stream"] = serde_json::json!(false);
 
-        let response = self
-            .client
-            .post("https://api.deepseek.com/v1/chat/completions")
-            .bearer_auth(&self.api_key)
-            .json(&payload)
-            .send()
-            .await?;
+        let response = crate::telemetry::inject_trace_headers(
+            self.client
+                .post("https://api.deepseek.com/v1/chat/completions")
+                .bearer_auth(&self.api_key)
+                .json(&payload),
+        )
+        .send()
+        .await?;
 
         let status = response.status();
 
@@ -112,13 +113,14 @@ impl Provider for DeepSeekProvider {
         payload["stream"] = serde_json::json!(true);
         payload["stream_options"] = serde_json::json!({"include_usage": true});
 
-        let response = self
-            .client
-            .post("https://api.deepseek.com/v1/chat/completions")
-            .bearer_auth(&self.api_key)
-            .json(&payload)
-            .send()
-            .await?;
+        let response = crate::telemetry::inject_trace_headers(
+            self.client
+                .post("https://api.deepseek.com/v1/chat/completions")
+                .bearer_auth(&self.api_key)
+                .json(&payload),
+        )
+        .send()
+        .await?;
 
         let status = response.status();
         if !status.is_success() {

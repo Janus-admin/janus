@@ -34,18 +34,33 @@ async fn main() -> anyhow::Result<()> {
 
     dotenvy::dotenv().ok();
 
+    // Config must be loaded before the tracing subscriber so we can add the
+    // OTel layer (which needs tracing.otlp_endpoint / service_name) to the
+    // registry before calling .init().
+    let config = Config::load()?;
+
+    // Initialise OTel tracer. Returns Some(provider) when tracing.enabled = true.
+    // The layer is built inline below so the compiler infers the correct S type
+    // (after other layers have already been composed onto the registry).
+    let otel_provider = velox::telemetry::init_tracer(&config.tracing)?;
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG").unwrap_or_else(|_| "info,tower_http=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
+        .with(otel_provider.as_ref().map(|p| {
+            // Build the OTel layer at the exact subscriber composition site so
+            // the S type parameter is inferred from the layered registry type.
+            use opentelemetry::trace::TracerProvider as _;
+            let tracer = p.tracer("velox");
+            tracing_opentelemetry::layer().with_tracer(tracer)
+        }))
         .init();
 
     // Initialize Prometheus metrics exporter
     metrics::init_prometheus()?;
     tracing::info!("Prometheus metrics initialized");
-
-    let config = Config::load()?;
     let addr = format!("{}:{}", config.host, config.port);
 
     let pool = db::pool::connect(&config.database_url).await?;
@@ -314,6 +329,11 @@ async fn main() -> anyhow::Result<()> {
     // Cleanup on shutdown
     tracing::info!("Server shutting down, flushing metrics and cache");
     drop(state); // Ensure AppState (including cache and pool) is dropped gracefully
+
+    // Flush any pending OTel spans before exiting.
+    if let Some(provider) = otel_provider {
+        velox::telemetry::shutdown(provider);
+    }
 
     tracing::info!("Server shutdown complete");
     Ok(())
