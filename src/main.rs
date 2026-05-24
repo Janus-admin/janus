@@ -10,6 +10,7 @@ use velox::{
     gateway::ProviderRegistry,
     metrics,
     middleware::rate_limit::RateLimiter,
+    plugins::{self as plugin_mod, content_length::ContentLengthPlugin, pii::PiiRedactionPlugin},
     providers::{
         anthropic::AnthropicProvider, bedrock::BedrockProvider, deepseek::DeepSeekProvider,
         gemini::GeminiProvider, groq::GroqProvider, openai::OpenAIProvider,
@@ -26,6 +27,17 @@ struct Args {
     /// Requires the admin JWT to be passed in the `initialize` message params.token.
     #[arg(long)]
     mcp_stdio: bool,
+
+    /// Run system readiness checks and exit.
+    /// Checks database, JWT secret, encryption key, providers, embedding model, and disk space.
+    #[arg(long)]
+    doctor: bool,
+
+    /// Start in demo mode: use a mock provider, seed demo data, no real API keys needed.
+    /// Login: admin@velox.local / demo-password
+    /// Requires DATABASE_URL to point to a SQLite database (or sqlite::memory:).
+    #[arg(long)]
+    demo: bool,
 }
 
 #[tokio::main]
@@ -34,14 +46,14 @@ async fn main() -> anyhow::Result<()> {
 
     dotenvy::dotenv().ok();
 
-    // Config must be loaded before the tracing subscriber so we can add the
-    // OTel layer (which needs tracing.otlp_endpoint / service_name) to the
-    // registry before calling .init().
     let config = Config::load()?;
 
-    // Initialise OTel tracer. Returns Some(provider) when tracing.enabled = true.
-    // The layer is built inline below so the compiler infers the correct S type
-    // (after other layers have already been composed onto the registry).
+    // Validate provider TLS config early; fail loudly before binding a port.
+    if let Err(e) = config.provider_tls.validate() {
+        return Err(anyhow::anyhow!("TLS config error: {}", e));
+    }
+
+    // Initialise OTel tracer.
     let otel_provider = velox::telemetry::init_tracer(&config.tracing)?;
 
     tracing_subscriber::registry()
@@ -50,15 +62,12 @@ async fn main() -> anyhow::Result<()> {
         ))
         .with(tracing_subscriber::fmt::layer())
         .with(otel_provider.as_ref().map(|p| {
-            // Build the OTel layer at the exact subscriber composition site so
-            // the S type parameter is inferred from the layered registry type.
             use opentelemetry::trace::TracerProvider as _;
             let tracer = p.tracer("velox");
             tracing_opentelemetry::layer().with_tracer(tracer)
         }))
         .init();
 
-    // Initialize Prometheus metrics exporter
     metrics::init_prometheus()?;
     tracing::info!("Prometheus metrics initialized");
     let addr = format!("{}:{}", config.host, config.port);
@@ -66,49 +75,92 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::pool::connect(&config.database_url).await?;
     tracing::info!("Database connected and migrations applied");
 
+    // ── Doctor mode ───────────────────────────────────────────────────────────
+    if args.doctor {
+        let report = velox::doctor::run_checks(&pool, &config).await;
+        velox::doctor::print_report(&report);
+        std::process::exit(if report.healthy { 0 } else { 1 });
+    }
+
+    // ── Read provider base_urls from DB (V4-0) ────────────────────────────────
+    // This makes custom endpoints (Ollama, vLLM, LM Studio) configurable via a
+    // single DB UPDATE rather than a code change.
+    let db_base_urls = velox::db::providers::load_base_urls(&pool).await;
+
+    fn resolve_base_url(db_urls: &std::collections::HashMap<String, String>, id: &str, default: &str) -> String {
+        db_urls
+            .get(id)
+            .filter(|u| !u.is_empty())
+            .cloned()
+            .unwrap_or_else(|| default.to_string())
+    }
+
     // ── Build providers ───────────────────────────────────────────────────────
     let mut providers: Vec<Arc<dyn velox::providers::Provider>> = Vec::new();
 
-    if !config.openai_api_key.is_empty() {
-        providers.push(Arc::new(OpenAIProvider::new(
-            config.openai_api_key.clone(),
-            10,
-        )));
-        tracing::info!("OpenAI provider enabled");
-    }
+    if args.demo {
+        // Demo mode: use the canned DemoProvider, skip all real LLM adapters.
+        providers.push(Arc::new(velox::demo::DemoProvider));
+        tracing::info!("Demo mode: using DemoProvider (no real API keys required)");
+    } else {
+        if !config.openai_api_key.is_empty() {
+            let base_url = resolve_base_url(&db_base_urls, "openai", "https://api.openai.com/v1");
+            providers.push(Arc::new(OpenAIProvider::with_base_url(
+                config.openai_api_key.clone(),
+                base_url.clone(),
+                10,
+            )));
+            tracing::info!(base_url = %base_url, "OpenAI provider enabled");
+        }
 
-    if !config.anthropic_api_key.is_empty() {
-        providers.push(Arc::new(AnthropicProvider::new(
-            config.anthropic_api_key.clone(),
-            20,
-        )));
-        tracing::info!("Anthropic provider enabled");
-    }
+        if !config.anthropic_api_key.is_empty() {
+            let base_url = resolve_base_url(&db_base_urls, "anthropic", "https://api.anthropic.com");
+            providers.push(Arc::new(AnthropicProvider::with_base_url(
+                config.anthropic_api_key.clone(),
+                base_url.clone(),
+                20,
+            )));
+            tracing::info!(base_url = %base_url, "Anthropic provider enabled");
+        }
 
-    // Bedrock is always attempted; it reads credentials from the environment
-    let bedrock = BedrockProvider::new(30).await;
-    providers.push(Arc::new(bedrock));
-    tracing::info!("Bedrock provider enabled");
+        let bedrock = BedrockProvider::new(30).await;
+        providers.push(Arc::new(bedrock));
+        tracing::info!("Bedrock provider enabled");
 
-    if !config.gemini_api_key.is_empty() {
-        providers.push(Arc::new(GeminiProvider::new(
-            config.gemini_api_key.clone(),
-            40,
-        )));
-        tracing::info!("Gemini provider enabled");
-    }
+        if !config.gemini_api_key.is_empty() {
+            let base_url = resolve_base_url(
+                &db_base_urls,
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+            );
+            providers.push(Arc::new(GeminiProvider::with_base_url(
+                config.gemini_api_key.clone(),
+                base_url.clone(),
+                40,
+            )));
+            tracing::info!(base_url = %base_url, "Gemini provider enabled");
+        }
 
-    if !config.groq_api_key.is_empty() {
-        providers.push(Arc::new(GroqProvider::new(config.groq_api_key.clone(), 50)));
-        tracing::info!("Groq provider enabled");
-    }
+        if !config.groq_api_key.is_empty() {
+            let base_url = resolve_base_url(&db_base_urls, "groq", "https://api.groq.com/openai/v1");
+            providers.push(Arc::new(GroqProvider::with_base_url(
+                config.groq_api_key.clone(),
+                base_url.clone(),
+                50,
+            )));
+            tracing::info!(base_url = %base_url, "Groq provider enabled");
+        }
 
-    if !config.deepseek_api_key.is_empty() {
-        providers.push(Arc::new(DeepSeekProvider::new(
-            config.deepseek_api_key.clone(),
-            60,
-        )));
-        tracing::info!("DeepSeek provider enabled");
+        if !config.deepseek_api_key.is_empty() {
+            let base_url =
+                resolve_base_url(&db_base_urls, "deepseek", "https://api.deepseek.com/v1");
+            providers.push(Arc::new(DeepSeekProvider::with_base_url(
+                config.deepseek_api_key.clone(),
+                base_url.clone(),
+                60,
+            )));
+            tracing::info!(base_url = %base_url, "DeepSeek provider enabled");
+        }
     }
 
     // ── Build in-memory API key cache ─────────────────────────────────────────
@@ -123,6 +175,15 @@ async fn main() -> anyhow::Result<()> {
         }
         Err(e) => {
             tracing::warn!("Failed to pre-load API key cache: {e}");
+        }
+    }
+
+    // ── Demo mode: seed data ──────────────────────────────────────────────────
+    if args.demo {
+        if let Err(e) = velox::demo::seed_demo_data(&pool).await {
+            tracing::warn!("Demo seed failed (non-fatal): {e}");
+        } else {
+            tracing::info!("Demo data seeded — login: admin@velox.local / demo-password");
         }
     }
 
@@ -168,14 +229,12 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(CacheEngine::new())
     };
 
-    // ── Build semantic cache policy ───────────────────────────────────────────
     let semantic_policy = SemanticCachePolicy::new(
         config.semantic_cache_models.clone(),
         config.semantic_cache_exclude_routes.clone(),
         vec![],
     );
 
-    // Warm hot cache + semantic index from DB (enables restart survival).
     let warmed = cache.warm_from_db(&pool).await;
     if warmed > 0 {
         tracing::info!("Warmed cache with {} entries from database", warmed);
@@ -184,7 +243,6 @@ async fn main() -> anyhow::Result<()> {
     let registry = Arc::new(ProviderRegistry::new(providers, key_cache.clone()));
     let rate_limiter = RateLimiter::new(config.rate_limit_window_secs);
 
-    // Cluster mode: DB-backed rate limiter (None in single-node mode).
     let cluster_rate_limiter = if config.cluster.enabled {
         tracing::info!(
             node_id = %config.cluster.node_id,
@@ -198,8 +256,23 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    // Broadcast channel for the live WebSocket feed. Buffer 1 000 events.
-    // Receivers are created per WebSocket connection in the stream handler.
+    // ── Build plugin chain ────────────────────────────────────────────────────
+    let mut plugin_list: Vec<Box<dyn plugin_mod::RequestPlugin>> = Vec::new();
+    if config.plugins.pii_redaction {
+        plugin_list.push(Box::new(PiiRedactionPlugin));
+        tracing::info!("Plugin enabled: pii_redaction");
+    }
+    if config.plugins.max_prompt_chars > 0 {
+        plugin_list.push(Box::new(ContentLengthPlugin {
+            max_chars: config.plugins.max_prompt_chars,
+        }));
+        tracing::info!(
+            limit = config.plugins.max_prompt_chars,
+            "Plugin enabled: content_length"
+        );
+    }
+    let plugins = Arc::new(plugin_list);
+
     let (event_tx, _) = tokio::sync::broadcast::channel(1_000);
 
     let runtime_config = Arc::new(tokio::sync::RwLock::new(
@@ -217,6 +290,7 @@ async fn main() -> anyhow::Result<()> {
         cache,
         semantic_policy,
         event_tx,
+        plugins,
     });
 
     // ── Background: alert evaluation engine ──────────────────────────────────
@@ -234,7 +308,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Background: provider health checks ───────────────────────────────────
-    {
+    if !args.demo {
         let pool = state.pool.clone();
         let providers_for_hc = state.providers.providers().to_vec();
         tokio::spawn(async move {
@@ -259,17 +333,14 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // ── Background: cluster tasks (only when cluster.enabled = true) ─────────
-    // In non-sqlite builds DbPool = PgPool so key_sync and pg_notify are available.
+    // ── Background: cluster tasks ─────────────────────────────────────────────
     #[cfg(not(feature = "sqlite"))]
     if state.config.cluster.enabled {
-        // Key-revocation propagation via PostgreSQL LISTEN/NOTIFY.
         match velox::cluster::key_sync::start(state.pool.clone(), state.key_cache.clone()).await {
             Ok(()) => tracing::info!("Cluster key-sync listener started"),
             Err(e) => tracing::warn!("Failed to start cluster key-sync listener: {e}"),
         }
 
-        // Rate-limit window cleanup: delete rows older than 2× the window.
         if let Some(ref cluster_rl) = state.cluster_rate_limiter {
             let rl = cluster_rl.clone();
             tokio::spawn(async move {
@@ -284,7 +355,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // ── MCP stdio mode (velox --mcp-stdio) ───────────────────────────────────
+    // ── MCP stdio mode ────────────────────────────────────────────────────────
     if args.mcp_stdio {
         tracing::info!("Starting MCP stdio transport");
         return velox::mcp::transport::stdio::run(state).await;
@@ -293,9 +364,13 @@ async fn main() -> anyhow::Result<()> {
     let app = create_router(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("Server listening on {}", addr);
+    if args.demo {
+        tracing::info!("🎮 Velox demo mode at http://{}", addr);
+        tracing::info!("   Login: admin@velox.local / demo-password");
+    } else {
+        tracing::info!("Server listening on {}", addr);
+    }
 
-    // Graceful shutdown on SIGINT (Ctrl-C) or SIGTERM (systemd / Kubernetes).
     let shutdown_signal = async {
         let ctrl_c = async {
             tokio::signal::ctrl_c()
@@ -311,7 +386,6 @@ async fn main() -> anyhow::Result<()> {
                 .await;
         };
 
-        // On non-Unix platforms SIGTERM does not exist; just wait on Ctrl-C.
         #[cfg(not(unix))]
         let sigterm = std::future::pending::<()>();
 
@@ -321,16 +395,13 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Run server with graceful shutdown
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal)
         .await?;
 
-    // Cleanup on shutdown
     tracing::info!("Server shutting down, flushing metrics and cache");
-    drop(state); // Ensure AppState (including cache and pool) is dropped gracefully
+    drop(state);
 
-    // Flush any pending OTel spans before exiting.
     if let Some(provider) = otel_provider {
         velox::telemetry::shutdown(provider);
     }

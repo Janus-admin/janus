@@ -38,6 +38,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/admin/keys/:id", get(handlers::admin::keys::get_key))
         .route("/admin/keys/:id", patch(handlers::admin::keys::update_key))
         .route("/admin/keys/:id", delete(handlers::admin::keys::revoke_key))
+        .route(
+            "/admin/keys/:id/rotate",
+            post(handlers::admin::keys::rotate_key),
+        )
         // ── Admin — Requests ─────────────────────────────────────────────────
         .route(
             "/admin/requests",
@@ -128,6 +132,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/config",
             get(handlers::admin::velox_config::get_config)
                 .patch(handlers::admin::velox_config::patch_config),
+        )
+        // ── Admin — System Readiness (V4-0) ──────────────────────────────────
+        .route(
+            "/admin/system/readiness",
+            get(handlers::admin::system::readiness),
         )
         // ── Admin — Live Stream (WebSocket) ──────────────────────────────────
         .route(

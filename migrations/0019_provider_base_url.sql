@@ -1,0 +1,16 @@
+-- Migration 0019: V4-0 — Custom provider base_url
+--
+-- providers.base_url (NOT NULL TEXT) was added in migration 0004 and is seeded
+-- with the standard endpoint for each provider.
+--
+-- V4-0 makes this column authoritative at startup: Velox reads it when
+-- constructing provider adapters instead of using a hardcoded URL.
+-- Setting base_url to an Ollama, vLLM, or other OpenAI-compatible endpoint
+-- requires only a single UPDATE — no code change, no restart of other services.
+--
+-- An empty string ('') means "use the adapter's compiled-in default".
+-- To route OpenAI traffic through a local Ollama instance:
+--   UPDATE providers SET base_url = 'http://localhost:11434/v1' WHERE id = 'openai';
+--
+-- No schema change is required — the column already exists.
+COMMENT ON COLUMN providers.base_url IS 'Custom endpoint URL; empty = use adapter default (V4-0)';

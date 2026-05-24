@@ -87,6 +87,7 @@ pub struct UpdateProviderRequest {
     pub is_enabled: Option<bool>,
     pub priority: Option<i32>,
     pub api_key: Option<String>,
+    pub base_url: Option<String>,
     pub timeout_ms: Option<i32>,
     pub max_retries: Option<i32>,
 }

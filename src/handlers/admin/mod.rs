@@ -6,4 +6,5 @@ pub mod prompts;
 pub mod providers;
 pub mod requests;
 pub mod stream;
+pub mod system;
 pub mod velox_config;

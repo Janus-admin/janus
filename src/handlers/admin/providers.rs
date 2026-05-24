@@ -54,6 +54,7 @@ pub async fn update_provider(
         is_enabled: body.is_enabled,
         priority: body.priority,
         api_key_encrypted,
+        base_url: body.base_url,
         timeout_ms: body.timeout_ms,
         max_retries: body.max_retries,
         health_status: None,
@@ -109,17 +110,29 @@ pub async fn test_provider(
         }
     };
 
+    // Resolve effective base_url (empty string means "use adapter default").
+    let effective_base = if provider.base_url.is_empty() {
+        match id.as_str() {
+            "openai" | "groq" | "deepseek" => "https://api.openai.com/v1".to_string(),
+            "anthropic" => "https://api.anthropic.com".to_string(),
+            "gemini" => "https://generativelanguage.googleapis.com".to_string(),
+            _ => provider.base_url.clone(),
+        }
+    } else {
+        provider.base_url.clone()
+    };
+
     // Build the per-provider check URL. Gemini takes its key as a query param;
     // all others authenticate via header and hit a `/models` listing endpoint.
     let check_url = match id.as_str() {
-        "openai" => format!("{}/models", provider.base_url),
-        "anthropic" => format!("{}/v1/models", provider.base_url),
+        "openai" => format!("{}/models", effective_base),
+        "anthropic" => format!("{}/v1/models", effective_base),
         "gemini" => {
             let key = api_key.as_deref().unwrap_or("");
-            format!("{}/v1beta/models?key={}", provider.base_url, key)
+            format!("{}/v1beta/models?key={}", effective_base, key)
         }
-        "groq" | "deepseek" => format!("{}/models", provider.base_url),
-        _ => provider.base_url.clone(),
+        "groq" | "deepseek" => format!("{}/models", effective_base),
+        _ => effective_base.clone(),
     };
 
     let client = reqwest::Client::builder()

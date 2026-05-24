@@ -11,22 +11,26 @@ use std::time::Duration;
 /// Converts OpenAI format requests to Gemini API format and responses back.
 pub struct GeminiProvider {
     api_key: String,
+    base_url: String,
     priority: u8,
     client: Client,
 }
 
 impl GeminiProvider {
     pub fn new(api_key: String, priority: u8) -> Self {
+        Self::with_base_url(
+            api_key,
+            "https://generativelanguage.googleapis.com".to_string(),
+            priority,
+        )
+    }
+
+    pub fn with_base_url(api_key: String, base_url: String, priority: u8) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
             .expect("Failed to build reqwest client");
-
-        Self {
-            api_key,
-            priority,
-            client,
-        }
+        Self { api_key, base_url, priority, client }
     }
 
     fn build_gemini_request(&self, request: &ChatCompletionRequest) -> serde_json::Value {
@@ -85,8 +89,8 @@ impl Provider for GeminiProvider {
         let gemini_request = self.build_gemini_request(request);
 
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            request.model, self.api_key
+            "{}/v1beta/models/{}:generateContent?key={}",
+            self.base_url, request.model, self.api_key
         );
 
         let response =
@@ -136,8 +140,8 @@ impl Provider for GeminiProvider {
         }
 
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models?key={}",
-            self.api_key
+            "{}/v1beta/models?key={}",
+            self.base_url, self.api_key
         );
 
         match self
