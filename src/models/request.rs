@@ -85,6 +85,10 @@ pub struct Request {
 
     pub stream: bool,
     pub prompt_version_id: Option<Uuid>,
+    /// Set when this record was created by replaying an earlier request (V4-6).
+    pub replay_of_request_id: Option<Uuid>,
+    /// True for requests made via `POST /admin/playground` (V4-6).
+    pub is_playground: bool,
     pub created_at: DateTime<Utc>,
 }
 

@@ -60,11 +60,26 @@ async fn v4_5_simulate_empty_period_returns_zero() {
 
     assert_eq!(data["strategy"], "cost_optimized");
     assert_eq!(data["period"], "7d");
-    assert!(data["original_cost_usd"].is_number(), "original_cost_usd must be a number");
-    assert!(data["simulated_cost_usd"].is_number(), "simulated_cost_usd must be a number");
-    assert!(data["savings_usd"].is_number(), "savings_usd must be a number");
-    assert!(data["savings_percent"].is_number(), "savings_percent must be a number");
-    assert!(data["request_count"].is_number(), "request_count must be a number");
+    assert!(
+        data["original_cost_usd"].is_number(),
+        "original_cost_usd must be a number"
+    );
+    assert!(
+        data["simulated_cost_usd"].is_number(),
+        "simulated_cost_usd must be a number"
+    );
+    assert!(
+        data["savings_usd"].is_number(),
+        "savings_usd must be a number"
+    );
+    assert!(
+        data["savings_percent"].is_number(),
+        "savings_percent must be a number"
+    );
+    assert!(
+        data["request_count"].is_number(),
+        "request_count must be a number"
+    );
     assert!(data["by_model"].is_array(), "by_model must be an array");
 
     // Costs must be non-negative.
@@ -183,10 +198,12 @@ async fn v4_5_simulate_cost_optimized_returns_lower_cost() {
     let data = &body["data"];
 
     let savings = data["savings_usd"].as_f64().unwrap();
-    assert!(savings > 0.0, "savings_usd must be > 0 when replacing gpt-4o with gpt-4o-mini");
     assert!(
-        data["simulated_cost_usd"].as_f64().unwrap()
-            < data["original_cost_usd"].as_f64().unwrap(),
+        savings > 0.0,
+        "savings_usd must be > 0 when replacing gpt-4o with gpt-4o-mini"
+    );
+    assert!(
+        data["simulated_cost_usd"].as_f64().unwrap() < data["original_cost_usd"].as_f64().unwrap(),
         "simulated cost must be less than original when downgrading model"
     );
 }
@@ -290,7 +307,10 @@ async fn v4_5_simulate_includes_per_model_breakdown() {
 
     // Find the gpt-4o entry.
     let gpt4o_entry = by_model.iter().find(|e| e["model"] == "gpt-4o");
-    assert!(gpt4o_entry.is_some(), "by_model must contain a gpt-4o entry");
+    assert!(
+        gpt4o_entry.is_some(),
+        "by_model must contain a gpt-4o entry"
+    );
 
     let entry = gpt4o_entry.unwrap();
     assert!(entry["request_count"].as_i64().unwrap() > 0);
@@ -376,6 +396,12 @@ async fn v4_5_regression_analytics_overview_unaffected() {
     let body: serde_json::Value = resp.json().await.unwrap();
 
     assert!(body["today"].is_object(), "overview must have today field");
-    assert!(body["last_7d"].is_object(), "overview must have last_7d field");
-    assert!(body["last_30d"].is_object(), "overview must have last_30d field");
+    assert!(
+        body["last_7d"].is_object(),
+        "overview must have last_7d field"
+    );
+    assert!(
+        body["last_30d"].is_object(),
+        "overview must have last_30d field"
+    );
 }

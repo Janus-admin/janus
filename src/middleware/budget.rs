@@ -1,8 +1,4 @@
-use crate::{
-    config::BudgetDowngradeConfig,
-    errors::AppError,
-    models::api_key::ApiKey,
-};
+use crate::{config::BudgetDowngradeConfig, errors::AppError, models::api_key::ApiKey};
 use rust_decimal::prelude::ToPrimitive;
 
 /// Decision returned alongside a passing budget check.
@@ -93,10 +89,7 @@ pub fn check_budget(
             if !s.is_empty() {
                 // Only use global fallback_model when per-key strategy is "specific_model"
                 // or global strategy is "specific_model".
-                let strategy = key
-                    .downgrade_strategy
-                    .as_deref()
-                    .unwrap_or(&cfg.strategy);
+                let strategy = key.downgrade_strategy.as_deref().unwrap_or(&cfg.strategy);
                 if strategy == "specific_model" {
                     Some(s)
                 } else {

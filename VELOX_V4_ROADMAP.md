@@ -995,7 +995,7 @@ qdrant-client = "1.9"
 | V4-3 | Backend | Cache TTL + Time-sensitive Safety | ✅ Complete | 0020 |
 | V4-4 | Backend | Budget-Aware Auto-Downgrade | ✅ Complete | 0021 |
 | V4-5 | Backend | Cost Simulator + Provider Quality Scoring | ✅ Complete | 0022 |
-| V4-6 | Backend | Request Replay & Debug Console | ⬜ Not started | 0023 |
+| V4-6 | Backend | Request Replay & Debug Console | ✅ Complete (2026-05-24) | 0023 |
 | V4-7 | Frontend | Dashboard Overhaul | ⬜ Not started | — |
 | V4-8 | Both | RBAC / True Multi-tenancy | ⬜ Not started | 0024 |
 | V4-9 | Backend | External Vector Stores (demand-driven) | ⬜ Not started | — |

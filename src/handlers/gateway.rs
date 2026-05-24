@@ -329,6 +329,7 @@ async fn chat_completions_inner(
             &state.dedup,
             cache_ttl_secs,
             downgrade_triggered,
+            None,
         )
         .await
         {
@@ -736,8 +737,9 @@ pub async fn legacy_completions(
         None, // legacy completions don't support prompt management
         &state.plugins,
         &state.dedup,
-        0, // no TTL for legacy completions endpoint
+        0,     // no TTL for legacy completions endpoint
         false, // legacy completions bypass downgrade — budget check above uses simple path
+        None,
     )
     .await
     {

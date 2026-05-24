@@ -5,7 +5,7 @@
 //!   0.35 × latency       = 1 - clamp(p95_ms / 10_000, 0, 1)
 //!   0.25 × reliability   = 1 - error_rate
 
-use crate::{db::DbPool, db::providers as db_providers};
+use crate::{db::providers as db_providers, db::DbPool};
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 
@@ -14,8 +14,7 @@ const INTERVAL_SECS: u64 = 900; // 15 minutes
 /// Spawn the quality-score refresh loop as a background Tokio task.
 pub fn start(pool: DbPool) {
     tokio::spawn(async move {
-        let mut interval =
-            tokio::time::interval(std::time::Duration::from_secs(INTERVAL_SECS));
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(INTERVAL_SECS));
         loop {
             interval.tick().await;
             if let Err(e) = refresh_all(&pool).await {
@@ -130,7 +129,10 @@ pub async fn compute_scores(pool: &DbPool) -> anyhow::Result<Vec<(String, Decima
             .await
             .unwrap_or_default();
 
-            let vals: Vec<f64> = latencies.iter().filter_map(|(v,)| v.map(|x| x as f64)).collect();
+            let vals: Vec<f64> = latencies
+                .iter()
+                .filter_map(|(v,)| v.map(|x| x as f64))
+                .collect();
             let p95 = percentile_95(&vals);
 
             let stats = ProviderStats {

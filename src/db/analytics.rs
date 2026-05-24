@@ -664,10 +664,7 @@ pub struct SimulateParams {
 
 /// Recalculate costs for all requests in the period under a different strategy
 /// and/or with model substitutions. Returns the original vs simulated breakdown.
-pub async fn simulate_cost(
-    pool: &DbPool,
-    params: &SimulateParams,
-) -> AppResult<serde_json::Value> {
+pub async fn simulate_cost(pool: &DbPool, params: &SimulateParams) -> AppResult<serde_json::Value> {
     let rows = fetch_model_aggregates(pool, params.period_days).await?;
     let pricing = fetch_pricing_map(pool).await?;
 
@@ -697,7 +694,9 @@ pub async fn simulate_cost(
                     .min_by(|a, b| {
                         let cost_a = a.input_per_1m + a.output_per_1m;
                         let cost_b = b.input_per_1m + b.output_per_1m;
-                        cost_a.partial_cmp(&cost_b).unwrap_or(std::cmp::Ordering::Equal)
+                        cost_a
+                            .partial_cmp(&cost_b)
+                            .unwrap_or(std::cmp::Ordering::Equal)
                     });
                 best.map(|p| {
                     crate::pricing::calculate_cost(
@@ -783,10 +782,7 @@ struct PricingEntry {
     output_per_1m: Decimal,
 }
 
-async fn fetch_model_aggregates(
-    pool: &DbPool,
-    days: i32,
-) -> AppResult<Vec<ModelAggregate>> {
+async fn fetch_model_aggregates(pool: &DbPool, days: i32) -> AppResult<Vec<ModelAggregate>> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
         let interval = format!("{} days", days);

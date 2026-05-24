@@ -89,6 +89,8 @@ pub async fn run(
     cache_ttl_secs: u64,
     // Whether a budget downgrade was triggered for this request.
     downgrade_triggered: bool,
+    // When Some, only the provider with this string ID is tried (replay override).
+    only_provider: Option<&str>,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     // Clone request so plugins can mutate it without affecting the caller.
     let mut request = request.clone();
@@ -212,8 +214,11 @@ pub async fn run(
     };
 
     // ── Provider loop ─────────────────────────────────────────────────────────
-    let providers =
+    let mut providers =
         router::select_providers_for_strategy(pool, registry, strategy, &request.model).await;
+    if let Some(name) = only_provider {
+        providers.retain(|p| p.name() == name);
+    }
     if providers.is_empty() {
         if is_dedup_primary {
             dedup.broadcast_result(
@@ -935,6 +940,7 @@ pub async fn run_with_workspace(
         dedup,
         cache_ttl_secs,
         downgrade_triggered,
+        None,
     )
     .await
 }

@@ -47,6 +47,8 @@ struct RequestSqliteRow {
     response_body: Option<String>,
     stream: bool,
     prompt_version_id: Option<Uuid>,
+    replay_of_request_id: Option<String>,
+    is_playground: bool,
     created_at: chrono::DateTime<Utc>,
 }
 
@@ -76,6 +78,11 @@ impl From<RequestSqliteRow> for crate::models::request::Request {
             response_body: r.response_body,
             stream: r.stream,
             prompt_version_id: r.prompt_version_id,
+            replay_of_request_id: r
+                .replay_of_request_id
+                .as_deref()
+                .and_then(|s| s.parse().ok()),
+            is_playground: r.is_playground,
             created_at: r.created_at,
         }
     }
@@ -324,6 +331,93 @@ pub async fn insert_embedding_request(
     .await?;
 
     Ok(())
+}
+
+/// Insert a replay or playground request and return its new UUID (V4-6).
+///
+/// Differs from `insert_request` in two ways:
+/// - `replay_of_request_id`: links back to the original when replaying.
+/// - `is_playground`: flags requests made via `POST /admin/playground`.
+/// - Returns the new request's UUID so callers can include it in the response.
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_request_for_replay(
+    pool: &DbPool,
+    provider: &str,
+    model: &str,
+    prompt_tokens: Option<i32>,
+    completion_tokens: Option<i32>,
+    total_tokens: Option<i32>,
+    cost_usd: Option<Decimal>,
+    latency_ms: i64,
+    status: &str,
+    is_stream: bool,
+    request_body: Option<&str>,
+    replay_of_request_id: Option<Uuid>,
+    is_playground: bool,
+) -> AppResult<Uuid> {
+    let id = Uuid::new_v4();
+
+    #[cfg(feature = "sqlite")]
+    let cost_usd_bind = cost_usd.map(|d| d.to_string());
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let cost_usd_bind = cost_usd;
+
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    sqlx::query(
+        "INSERT INTO requests (
+             id, provider, model,
+             prompt_tokens, completion_tokens, total_tokens, cost_usd,
+             latency_ms, status, stream,
+             request_body, replay_of_request_id, is_playground, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+    )
+    .bind(id)
+    .bind(provider)
+    .bind(model)
+    .bind(prompt_tokens)
+    .bind(completion_tokens)
+    .bind(total_tokens)
+    .bind(cost_usd_bind)
+    .bind(latency_ms as i32)
+    .bind(status)
+    .bind(is_stream)
+    .bind(request_body)
+    .bind(replay_of_request_id)
+    .bind(is_playground)
+    .bind(Utc::now())
+    .execute(pool)
+    .await?;
+
+    #[cfg(feature = "sqlite")]
+    {
+        let replay_id_str = replay_of_request_id.map(|u| u.to_string());
+        sqlx::query(
+            "INSERT INTO requests (
+                 id, provider, model,
+                 prompt_tokens, completion_tokens, total_tokens, cost_usd,
+                 latency_ms, status, stream,
+                 request_body, replay_of_request_id, is_playground, created_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+        )
+        .bind(id)
+        .bind(provider)
+        .bind(model)
+        .bind(prompt_tokens)
+        .bind(completion_tokens)
+        .bind(total_tokens)
+        .bind(cost_usd_bind)
+        .bind(latency_ms as i32)
+        .bind(status)
+        .bind(is_stream)
+        .bind(request_body)
+        .bind(replay_id_str)
+        .bind(is_playground)
+        .bind(Utc::now())
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(id)
 }
 
 /// Look up per-token prices for a provider+model pair.

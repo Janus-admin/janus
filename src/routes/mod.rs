@@ -55,6 +55,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/requests/:id",
             get(handlers::admin::requests::get_request),
         )
+        .route(
+            "/admin/requests/:id/replay",
+            post(handlers::admin::replay::replay_request),
+        )
+        // ── Admin — Playground (V4-6) ────────────────────────────────────────
+        .route(
+            "/admin/playground",
+            post(handlers::admin::replay::playground),
+        )
         // ── Admin — Analytics ────────────────────────────────────────────────
         .route(
             "/admin/analytics/overview",

@@ -100,14 +100,12 @@ pub async fn set_health_status(pool: &DbPool, id: &str, status: &str) -> AppResu
 
 pub async fn update_quality_score(pool: &DbPool, id: &str, score: Decimal) -> AppResult<()> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-    sqlx::query(
-        "UPDATE providers SET quality_score = $1, quality_updated_at = $2 WHERE id = $3",
-    )
-    .bind(score)
-    .bind(Utc::now())
-    .bind(id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE providers SET quality_score = $1, quality_updated_at = $2 WHERE id = $3")
+        .bind(score)
+        .bind(Utc::now())
+        .bind(id)
+        .execute(pool)
+        .await?;
 
     #[cfg(feature = "sqlite")]
     {

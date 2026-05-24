@@ -386,7 +386,9 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
     let expires_at = p.expires_at.unwrap_or(existing.expires_at);
     let is_active = p.is_active.unwrap_or(existing.is_active);
     let routing_strategy = p.routing_strategy.unwrap_or(existing.routing_strategy);
-    let downgrade_at_percent = p.downgrade_at_percent.unwrap_or(existing.downgrade_at_percent);
+    let downgrade_at_percent = p
+        .downgrade_at_percent
+        .unwrap_or(existing.downgrade_at_percent);
     let downgrade_strategy = p.downgrade_strategy.unwrap_or(existing.downgrade_strategy);
     let downgrade_to_model = p.downgrade_to_model.unwrap_or(existing.downgrade_to_model);
 
