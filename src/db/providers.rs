@@ -1,6 +1,6 @@
+use crate::db::DbPool;
 use crate::{errors::AppResult, models::provider::Provider};
 use chrono::Utc;
-use crate::db::DbPool;
 
 pub async fn list_providers(pool: &DbPool) -> AppResult<Vec<Provider>> {
     let rows = sqlx::query_as::<_, Provider>("SELECT * FROM providers ORDER BY priority ASC")

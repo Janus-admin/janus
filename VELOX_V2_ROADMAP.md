@@ -1211,11 +1211,11 @@ hmac = "0.12"     # HMAC-SHA256 webhook signature
 | V2-0 | Spec Completion | ✅ Complete (2026-05-23) | 0012 |
 | V2-1 | SQLite Support | ✅ Complete (2026-05-23) | (sqlite dir) |
 | V2-2 | Webhook Alerts | ✅ Complete (2026-05-23) | 0013 |
-| V2-3 | Extended API Compat | ⬜ Not started | 0014 |
-| V2-4 | Intelligent Routing | ⬜ Not started | 0015 |
-| V2-5 | Prompt Management | ⬜ Not started | 0016 |
-| V2-6 | Multi-Node Clustering | ⬜ Not started | 0017 |
-| V2-7 | MCP Server | ⬜ Not started | — |
+| V2-3 | Extended API Compat | ✅ Complete (2026-05-23) | 0014 |
+| V2-4 | Intelligent Routing | ✅ Complete (2026-05-23) | 0015 |
+| V2-5 | Prompt Management | ✅ Complete (2026-05-23) | 0016 |
+| V2-6 | Multi-Node Clustering | ✅ Complete (2026-05-23) | 0017 |
+| V2-7 | MCP Server | ✅ Complete (2026-05-23) | — |
 
 ---
 

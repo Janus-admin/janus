@@ -69,6 +69,7 @@ pub async fn create_key(
         body.rate_limit_tpm,
         body.allowed_models.clone(),
         body.expires_at,
+        &body.routing_strategy,
     )
     .await?;
 
@@ -81,6 +82,7 @@ pub async fn create_key(
         name: key.name,
         key: raw_key,
         key_prefix: key.key_prefix,
+        routing_strategy: key.routing_strategy.clone(),
         created_at: key.created_at,
     };
 
@@ -131,6 +133,7 @@ pub struct UpdateKeyRequest {
     pub allowed_models: Option<serde_json::Value>,
     pub expires_at: Option<serde_json::Value>,
     pub is_active: Option<bool>,
+    pub routing_strategy: Option<String>,
 }
 
 /// PATCH /admin/keys/:id — update mutable key fields.
@@ -208,6 +211,7 @@ pub async fn update_key(
         allowed_models: parse_opt_strings(body.allowed_models),
         expires_at: parse_opt_datetime(body.expires_at),
         is_active: body.is_active,
+        routing_strategy: body.routing_strategy,
     };
 
     let key = db_api_keys::update_key(&state.pool, id, params)
@@ -221,6 +225,7 @@ pub async fn update_key(
 ///
 /// Soft-delete: sets `is_active = false` without removing the record.
 /// The key is removed from the in-memory dashmap so it stops working immediately.
+/// In cluster mode a `pg_notify` is issued so other nodes also evict the key.
 pub async fn revoke_key(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
@@ -231,12 +236,25 @@ pub async fn revoke_key(
         return Err(crate::errors::AppError::NotFound(format!("API key {id}")));
     }
 
-    // Evict from dashmap so the key stops working immediately without restart.
+    // Evict from local dashmap so the key stops working immediately.
+    let mut sha256_hex_opt: Option<String> = None;
     if let Some(key) = db_api_keys::get_by_id(&state.pool, id).await? {
-        if let Some(sha256_hex) = &key.key_sha256 {
+        if let Some(ref sha256_hex) = key.key_sha256 {
             if let Some(hash) = db_api_keys::parse_sha256_hex(sha256_hex) {
                 state.key_cache.remove(&hash);
             }
+            sha256_hex_opt = Some(sha256_hex.clone());
+        }
+    }
+
+    // In cluster mode: broadcast the revocation to other nodes via pg_notify.
+    #[cfg(not(feature = "sqlite"))]
+    if state.config.cluster.enabled {
+        if let Some(ref sha256_hex) = sha256_hex_opt {
+            let _ = sqlx::query("SELECT pg_notify('api_key_invalidated', $1)")
+                .bind(sha256_hex.as_str())
+                .execute(&state.pool)
+                .await;
         }
     }
 

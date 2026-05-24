@@ -51,6 +51,15 @@ pub struct ChatCompletionRequest {
     pub user: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logit_bias: Option<serde_json::Value>,
+    // ── Tool use / function calling (V2-3) ───────────────────────────────────
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,6 +122,40 @@ pub struct ChatCompletionChunk {
 pub type ProviderStream =
     Pin<Box<dyn Stream<Item = Result<ChatCompletionChunk, ProviderError>> + Send>>;
 
+// ── Embeddings types (V2-3) ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingRequest {
+    pub model: String,
+    /// String or array of strings (OpenAI-compatible).
+    pub input: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoding_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingData {
+    pub object: String,
+    pub embedding: Vec<f64>,
+    pub index: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingUsage {
+    pub prompt_tokens: u32,
+    pub total_tokens: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingResponse {
+    pub object: String,
+    pub data: Vec<EmbeddingData>,
+    pub model: String,
+    pub usage: EmbeddingUsage,
+}
+
 // ── Provider error type ───────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -152,6 +195,17 @@ pub trait Provider: Send + Sync {
         &self,
         request: &ChatCompletionRequest,
     ) -> Result<ProviderStream, ProviderError>;
+
+    /// Generate embeddings. Default returns an error; providers override as needed.
+    async fn embeddings(
+        &self,
+        _request: &EmbeddingRequest,
+    ) -> Result<EmbeddingResponse, ProviderError> {
+        Err(ProviderError::BadRequest(format!(
+            "Provider '{}' does not support embeddings",
+            self.name()
+        )))
+    }
 
     async fn health_check(&self) -> HealthStatus;
 }

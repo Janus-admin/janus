@@ -51,7 +51,10 @@ impl CacheType {
 ///
 /// Every LLM request proxied through Velox is logged here.
 /// `request_body` and `response_body` are NULL unless logging is enabled in config.
-#[cfg_attr(all(feature = "postgres", not(feature = "sqlite")), derive(sqlx::FromRow))]
+#[cfg_attr(
+    all(feature = "postgres", not(feature = "sqlite")),
+    derive(sqlx::FromRow)
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub id: Uuid,
@@ -81,6 +84,7 @@ pub struct Request {
     pub response_body: Option<String>,
 
     pub stream: bool,
+    pub prompt_version_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 

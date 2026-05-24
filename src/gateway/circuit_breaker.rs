@@ -55,7 +55,9 @@ impl CircuitBreaker {
         let mut failures = self.consecutive_failures.lock().unwrap();
         *failures += 1;
         if *failures >= self.failure_threshold {
-            *self.state.lock().unwrap() = State::Open { since: Instant::now() };
+            *self.state.lock().unwrap() = State::Open {
+                since: Instant::now(),
+            };
             *failures = 0;
         }
     }

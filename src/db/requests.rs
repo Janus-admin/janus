@@ -1,7 +1,7 @@
+use crate::db::DbPool;
 use crate::errors::AppResult;
 use chrono::Utc;
 use rust_decimal::Decimal;
-use crate::db::DbPool;
 use uuid::Uuid;
 
 // ── Internal row type for pricing lookup ─────────────────────────────────────
@@ -46,6 +46,7 @@ struct RequestSqliteRow {
     request_body: Option<String>,
     response_body: Option<String>,
     stream: bool,
+    prompt_version_id: Option<Uuid>,
     created_at: chrono::DateTime<Utc>,
 }
 
@@ -74,6 +75,7 @@ impl From<RequestSqliteRow> for crate::models::request::Request {
             request_body: r.request_body,
             response_body: r.response_body,
             stream: r.stream,
+            prompt_version_id: r.prompt_version_id,
             created_at: r.created_at,
         }
     }
@@ -98,6 +100,7 @@ pub async fn insert_request(
     status: &str,
     is_stream: bool,
     ttfb_ms: Option<i32>,
+    prompt_version_id: Option<Uuid>,
 ) -> AppResult<()> {
     // SQLite stores cost_usd as TEXT; rebind as string in sqlite builds.
     #[cfg(feature = "sqlite")]
@@ -107,8 +110,8 @@ pub async fn insert_request(
         "INSERT INTO requests (
              id, api_key_id, workspace_id, provider, model,
              prompt_tokens, completion_tokens, total_tokens, cost_usd,
-             latency_ms, status, stream, ttfb_ms, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+             latency_ms, status, stream, ttfb_ms, prompt_version_id, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
     )
     .bind(Uuid::new_v4())
     .bind(api_key_id)
@@ -123,6 +126,7 @@ pub async fn insert_request(
     .bind(status)
     .bind(is_stream)
     .bind(ttfb_ms)
+    .bind(prompt_version_id)
     .bind(Utc::now())
     .execute(pool)
     .await?;
@@ -195,18 +199,19 @@ pub async fn list_requests(
         .await?;
 
     #[cfg(feature = "sqlite")]
-    let rows: Vec<crate::models::request::Request> = sqlx::query_as::<_, RequestSqliteRow>(list_sql)
-        .bind(provider)
-        .bind(model)
-        .bind(status)
-        .bind(api_key_id)
-        .bind(per_page)
-        .bind((page - 1) * per_page)
-        .fetch_all(pool)
-        .await?
-        .into_iter()
-        .map(Into::into)
-        .collect();
+    let rows: Vec<crate::models::request::Request> =
+        sqlx::query_as::<_, RequestSqliteRow>(list_sql)
+            .bind(provider)
+            .bind(model)
+            .bind(status)
+            .bind(api_key_id)
+            .bind(per_page)
+            .bind((page - 1) * per_page)
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect();
 
     Ok((rows, total.0))
 }
@@ -232,6 +237,49 @@ pub async fn get_by_id(
             .map(Into::into);
 
     Ok(row)
+}
+
+/// Insert an embedding request into the audit log (`request_type = 'embedding'`).
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_embedding_request(
+    pool: &DbPool,
+    api_key_id: Option<Uuid>,
+    workspace_id: Option<Uuid>,
+    provider: &str,
+    model: &str,
+    prompt_tokens: Option<i32>,
+    total_tokens: Option<i32>,
+    cost_usd: Option<Decimal>,
+    latency_ms: i32,
+    status: &str,
+) -> AppResult<()> {
+    #[cfg(feature = "sqlite")]
+    let cost_usd = cost_usd.map(|d| d.to_string());
+
+    sqlx::query(
+        "INSERT INTO requests (
+             id, api_key_id, workspace_id, provider, model,
+             prompt_tokens, total_tokens, cost_usd,
+             latency_ms, status, stream, request_type, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(api_key_id)
+    .bind(workspace_id)
+    .bind(provider)
+    .bind(model)
+    .bind(prompt_tokens)
+    .bind(total_tokens)
+    .bind(cost_usd)
+    .bind(latency_ms)
+    .bind(status)
+    .bind(false)
+    .bind("embedding")
+    .bind(Utc::now())
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 /// Look up per-token prices for a provider+model pair.

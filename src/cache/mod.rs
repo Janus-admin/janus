@@ -1,10 +1,16 @@
 pub mod embedding;
 pub mod exact;
+pub mod index;
+pub mod policy;
 pub mod semantic;
 
 use crate::{
-    cache::{embedding::EmbeddingModel, semantic::SemanticCache},
-    providers::{ChatCompletionRequest, ChatCompletionResponse},
+    cache::{
+        embedding::EmbeddingModel,
+        index::hnsw::HnswIndex,
+        semantic::SemanticCache,
+    },
+    providers::{ChatCompletionRequest, ChatCompletionResponse, EmbeddingResponse},
 };
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -27,28 +33,56 @@ pub enum CacheHit {
 /// Two-layer cache: DashMap hot layer (sub-millisecond) + optional semantic layer.
 ///
 /// Exact cache: SHA-256 of normalized request → DashMap + PostgreSQL.
-/// Semantic cache: cosine similarity over sentence embeddings → linear scan.
+/// Semantic cache: cosine similarity over sentence embeddings.
+///   Backend: `LinearIndex` (O(n), default) or `HnswIndex` (O(log n), via config).
 pub struct CacheEngine {
     hot: DashMap<String, Arc<ChatCompletionResponse>>,
+    embedding_hot: DashMap<String, Arc<EmbeddingResponse>>,
     pub semantic: Option<Arc<SemanticCache>>,
     pub model: Option<Arc<EmbeddingModel>>,
 }
 
 impl CacheEngine {
-    /// Exact-only cache (Phase 4 mode).
+    /// Exact-only cache (no embedding model loaded).
     pub fn new() -> Self {
         Self {
             hot: DashMap::new(),
+            embedding_hot: DashMap::new(),
             semantic: None,
             model: None,
         }
     }
 
-    /// Exact + semantic cache (Phase 5 mode).
+    /// Exact + semantic cache using the default LinearIndex (O(n) scan).
+    ///
+    /// Backwards-compatible constructor — used by `tests/common/mod.rs` and the
+    /// main binary when `semantic_cache_backend = "linear"` (or not set).
     pub fn new_with_semantic(model: Arc<EmbeddingModel>, threshold: f32) -> Self {
         Self {
             hot: DashMap::new(),
+            embedding_hot: DashMap::new(),
             semantic: Some(Arc::new(SemanticCache::new(threshold))),
+            model: Some(model),
+        }
+    }
+
+    /// Exact + semantic cache using the HNSW approximate nearest-neighbor index.
+    ///
+    /// Parameters:
+    /// - `ef_construction`: build-time precision (higher = better recall, slower inserts).
+    /// - `max_nb_connection`: graph connectivity (M parameter, typical: 16).
+    pub fn new_with_hnsw_semantic(
+        model: Arc<EmbeddingModel>,
+        threshold: f32,
+        ef_construction: usize,
+        max_nb_connection: usize,
+    ) -> Self {
+        let index = Box::new(HnswIndex::new(max_nb_connection, ef_construction));
+        let sc = SemanticCache::with_index(index, threshold);
+        Self {
+            hot: DashMap::new(),
+            embedding_hot: DashMap::new(),
+            semantic: Some(Arc::new(sc)),
             model: Some(model),
         }
     }
@@ -63,12 +97,21 @@ impl CacheEngine {
         self.hot.insert(hash, response);
     }
 
+    // ── Embedding cache operations ────────────────────────────────────────────
+
+    pub fn lookup_embedding(&self, hash: &str) -> Option<Arc<EmbeddingResponse>> {
+        self.embedding_hot.get(hash).map(|v| Arc::clone(&*v))
+    }
+
+    pub fn insert_embedding(&self, hash: String, response: Arc<EmbeddingResponse>) {
+        self.embedding_hot.insert(hash, response);
+    }
+
     pub fn clear(&self) {
         self.hot.clear();
+        self.embedding_hot.clear();
         if let Some(ref sc) = self.semantic {
-            // Rebuild empty — drop and recreate via Arc swap isn't possible here,
-            // so we rely on the caller to recreate the engine for a full semantic flush.
-            let _ = sc; // semantic entries are not cleared; flushing exact cache only
+            sc.clear();
         }
     }
 
@@ -80,8 +123,7 @@ impl CacheEngine {
         self.hot.is_empty()
     }
 
-    /// Remove a single entry from the hot layer by its hash.
-    /// Returns `true` if the entry was present and removed.
+    /// Remove a single entry from the hot layer. Returns `true` if it was present.
     pub fn remove(&self, hash: &str) -> bool {
         self.hot.remove(hash).is_some()
     }
@@ -93,7 +135,7 @@ impl CacheEngine {
         self.semantic.as_ref()?.lookup(embedding)
     }
 
-    /// Insert a new embedding mapping into the in-memory semantic index.
+    /// Insert a new embedding into the in-memory semantic index.
     pub fn semantic_insert(&self, embedding: Vec<f32>, hash: String) {
         if let Some(ref sc) = self.semantic {
             sc.insert(embedding, hash);
@@ -104,8 +146,6 @@ impl CacheEngine {
 
     /// Load all persisted cache entries from the database into the hot layer and
     /// (if the semantic index is active) the embedding index.
-    ///
-    /// Called once at startup so restarts inherit the full in-memory state.
     pub async fn warm_from_db(&self, pool: &crate::db::DbPool) -> usize {
         match crate::db::cache::load_all_entries(pool).await {
             Ok(entries) => {

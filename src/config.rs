@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// Velox runtime configuration.
 ///
@@ -58,11 +59,26 @@ pub struct Config {
     #[allow(dead_code)] // used in Phase 5 semantic cache similarity gate
     pub semantic_cache_threshold: f64,
 
-    // ── Semantic cache (Phase 5) ──────────────────────────────────────────────
+    // ── Semantic cache (Phase 5 + V3-1) ──────────────────────────────────────
     #[serde(default = "default_embedding_model_path")]
     pub embedding_model_path: String,
     #[serde(default = "default_embedding_tokenizer_path")]
     pub embedding_tokenizer_path: String,
+    /// Index backend: "linear" (default, O(n)) or "hnsw" (O(log n), V3-1).
+    #[serde(default = "default_semantic_backend")]
+    pub semantic_cache_backend: String,
+    /// HNSW ef parameter for both construction and search. Default: 200.
+    #[serde(default = "default_hnsw_ef")]
+    pub semantic_cache_hnsw_ef: usize,
+    /// HNSW M parameter (connections per node). Default: 16.
+    #[serde(default = "default_hnsw_connections")]
+    pub semantic_cache_hnsw_connections: usize,
+    /// If non-empty, only requests for these model IDs use semantic cache.
+    #[serde(default)]
+    pub semantic_cache_models: Vec<String>,
+    /// Route prefixes excluded from semantic cache.
+    #[serde(default)]
+    pub semantic_cache_exclude_routes: Vec<String>,
 
     // ── Provider API keys (Phase 1+) ──────────────────────────────────────────
     #[serde(default)]
@@ -88,6 +104,66 @@ pub struct Config {
     #[serde(default = "default_true")]
     #[allow(dead_code)] // used in Phase 7 Prometheus endpoint
     pub prometheus_enabled: bool,
+
+    // ── Routing (V2-4) ────────────────────────────────────────────────────────
+    /// Model fallback chains for intelligent routing.
+    /// When a request fails for a model, fallback models are tried in order.
+    ///
+    /// Example in velox.toml:
+    /// ```toml
+    /// [routing.fallbacks]
+    /// "gpt-4o" = ["claude-3-5-sonnet-20241022", "gpt-4o-mini"]
+    /// ```
+    #[serde(default)]
+    pub routing: RoutingConfig,
+
+    // ── Clustering (V2-6) ─────────────────────────────────────────────────────
+    /// Multi-node clustering configuration.
+    /// When enabled, rate limits use the shared `rate_limit_windows` DB table
+    /// and key revocations propagate via PostgreSQL LISTEN/NOTIFY.
+    ///
+    /// Example in velox.toml:
+    /// ```toml
+    /// [cluster]
+    /// enabled = true
+    /// node_id = "node-1"
+    /// ```
+    #[serde(default)]
+    pub cluster: ClusterConfig,
+}
+
+/// Routing configuration for intelligent provider selection.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RoutingConfig {
+    /// Per-model fallback chains: model → ordered list of fallback model IDs.
+    #[serde(default)]
+    pub fallbacks: HashMap<String, Vec<String>>,
+}
+
+/// Multi-node clustering configuration (V2-6).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClusterConfig {
+    /// When true, rate limits use the shared DB table and key revocations
+    /// propagate via PostgreSQL LISTEN/NOTIFY.
+    /// Default: false (single-node in-memory mode).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Identifier for this node, used in log correlation.
+    #[serde(default = "default_node_id")]
+    pub node_id: String,
+}
+
+impl Default for ClusterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            node_id: default_node_id(),
+        }
+    }
+}
+
+fn default_node_id() -> String {
+    "node-1".to_string()
 }
 
 fn default_host() -> String {
@@ -125,6 +201,15 @@ fn default_embedding_model_path() -> String {
 }
 fn default_embedding_tokenizer_path() -> String {
     "models/tokenizer.json".to_string()
+}
+fn default_semantic_backend() -> String {
+    "linear".to_string()
+}
+fn default_hnsw_ef() -> usize {
+    200
+}
+fn default_hnsw_connections() -> usize {
+    16
 }
 fn default_rate_limit_window_secs() -> u64 {
     60

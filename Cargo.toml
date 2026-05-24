@@ -60,6 +60,9 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
 tokenizers = "0.19"
 
+# ─── V3-1: HNSW Semantic Cache ────────────────────────────────────────────────
+hnsw_rs = "0.3"
+
 # ─── Phase 6: Dashboard ───────────────────────────────────────────────────────
 include_dir = "0.7"
 
@@ -83,4 +86,16 @@ criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
 name = "cache_bench"
+harness = false
+
+[[bench]]
+name = "request_pipeline"
+harness = false
+
+[[bench]]
+name = "streaming"
+harness = false
+
+[[bench]]
+name = "concurrent"
 harness = false

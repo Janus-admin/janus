@@ -64,8 +64,12 @@ pub async fn upsert_daily_cost(
     #[cfg(feature = "sqlite")]
     {
         let nil = "00000000-0000-0000-0000-000000000000";
-        let ak = api_key_id.map(|u| u.to_string()).unwrap_or_else(|| nil.to_string());
-        let ws = workspace_id.map(|u| u.to_string()).unwrap_or_else(|| nil.to_string());
+        let ak = api_key_id
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| nil.to_string());
+        let ws = workspace_id
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| nil.to_string());
         let cost_f64 = f64::try_from(cost).unwrap_or(0.0);
         sqlx::query(
             "INSERT INTO daily_costs (
@@ -505,7 +509,11 @@ pub async fn latency_percentiles(pool: &DbPool, hours: i32) -> AppResult<Vec<Lat
         }
 
         // Sort descending by avg_ms to match PG output order.
-        result.sort_by(|a, b| b.avg_ms.partial_cmp(&a.avg_ms).unwrap_or(std::cmp::Ordering::Equal));
+        result.sort_by(|a, b| {
+            b.avg_ms
+                .partial_cmp(&a.avg_ms)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Ok(result)
     }
 }
@@ -592,11 +600,10 @@ pub async fn cache_analytics(pool: &DbPool, hours: i32) -> AppResult<serde_json:
             cost_saved: Option<f64>,
         }
 
-        let total: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM requests WHERE created_at >= $1")
-                .bind(cutoff)
-                .fetch_one(pool)
-                .await?;
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM requests WHERE created_at >= $1")
+            .bind(cutoff)
+            .fetch_one(pool)
+            .await?;
 
         let by_type = sqlx::query_as::<_, CacheTypeRowSqlite>(
             "SELECT

@@ -68,6 +68,7 @@ struct ApiKeyRowSqlite {
     pub rate_limit_rpm: Option<i32>,
     pub rate_limit_tpm: Option<i32>,
     pub allowed_models: Option<String>, // JSON: '["gpt-4o","claude-3-5-sonnet"]'
+    pub routing_strategy: String,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -93,6 +94,7 @@ impl From<ApiKeyRowSqlite> for ApiKey {
             rate_limit_rpm: row.rate_limit_rpm,
             rate_limit_tpm: row.rate_limit_tpm,
             allowed_models,
+            routing_strategy: row.routing_strategy,
             is_active: row.is_active,
             created_at: row.created_at,
             expires_at: row.expires_at,
@@ -126,6 +128,7 @@ pub async fn create(
     rate_limit_tpm: Option<i32>,
     allowed_models: Option<Vec<String>>,
     expires_at: Option<DateTime<Utc>>,
+    routing_strategy: &str,
 ) -> AppResult<ApiKey> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
@@ -133,8 +136,8 @@ pub async fn create(
             "INSERT INTO api_keys (
                  id, name, key_hash, key_sha256, key_prefix, workspace_id,
                  budget_limit, budget_used, rate_limit_rpm, rate_limit_tpm,
-                 allowed_models, is_active, created_at, expires_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,TRUE,$11,$12)
+                 allowed_models, routing_strategy, is_active, created_at, expires_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,$11,TRUE,$12,$13)
              RETURNING *",
         )
         .bind(id)
@@ -147,6 +150,7 @@ pub async fn create(
         .bind(rate_limit_rpm)
         .bind(rate_limit_tpm)
         .bind(allowed_models)
+        .bind(routing_strategy)
         .bind(Utc::now())
         .bind(expires_at)
         .fetch_one(pool)
@@ -162,8 +166,8 @@ pub async fn create(
             "INSERT INTO api_keys (
                  id, name, key_hash, key_sha256, key_prefix, workspace_id,
                  budget_limit, budget_used, rate_limit_rpm, rate_limit_tpm,
-                 allowed_models, is_active, created_at, expires_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,'0',$8,$9,$10,1,$11,$12)
+                 allowed_models, routing_strategy, is_active, created_at, expires_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,'0',$8,$9,$10,$11,1,$12,$13)
              RETURNING *",
         )
         .bind(id)
@@ -176,6 +180,7 @@ pub async fn create(
         .bind(rate_limit_rpm)
         .bind(rate_limit_tpm)
         .bind(models_json)
+        .bind(routing_strategy)
         .bind(Utc::now())
         .bind(expires_at)
         .fetch_one(pool)
@@ -314,6 +319,7 @@ pub struct UpdateKeyParams {
     pub allowed_models: Option<Option<Vec<String>>>,
     pub expires_at: Option<Option<DateTime<Utc>>>,
     pub is_active: Option<bool>,
+    pub routing_strategy: Option<String>,
 }
 
 pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResult<Option<ApiKey>> {
@@ -329,14 +335,15 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
     let allowed_models = p.allowed_models.unwrap_or(existing.allowed_models);
     let expires_at = p.expires_at.unwrap_or(existing.expires_at);
     let is_active = p.is_active.unwrap_or(existing.is_active);
+    let routing_strategy = p.routing_strategy.unwrap_or(existing.routing_strategy);
 
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
         let key = sqlx::query_as::<_, ApiKey>(
             "UPDATE api_keys SET
                  name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
-                 allowed_models = $5, expires_at = $6, is_active = $7
-             WHERE id = $8
+                 allowed_models = $5, expires_at = $6, is_active = $7, routing_strategy = $8
+             WHERE id = $9
              RETURNING *",
         )
         .bind(name)
@@ -346,6 +353,7 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
         .bind(allowed_models)
         .bind(expires_at)
         .bind(is_active)
+        .bind(routing_strategy)
         .bind(id)
         .fetch_optional(pool)
         .await?;
@@ -359,8 +367,8 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
         let row = sqlx::query_as::<_, ApiKeyRowSqlite>(
             "UPDATE api_keys SET
                  name = $1, budget_limit = $2, rate_limit_rpm = $3, rate_limit_tpm = $4,
-                 allowed_models = $5, expires_at = $6, is_active = $7
-             WHERE id = $8
+                 allowed_models = $5, expires_at = $6, is_active = $7, routing_strategy = $8
+             WHERE id = $9
              RETURNING *",
         )
         .bind(name)
@@ -370,6 +378,7 @@ pub async fn update_key(pool: &DbPool, id: Uuid, p: UpdateKeyParams) -> AppResul
         .bind(models_json)
         .bind(expires_at)
         .bind(is_active as i64)
+        .bind(routing_strategy)
         .bind(id)
         .fetch_optional(pool)
         .await?;

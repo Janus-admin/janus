@@ -2,6 +2,7 @@ pub mod alerts;
 pub mod analytics;
 pub mod cache;
 pub mod keys;
+pub mod prompts;
 pub mod providers;
 pub mod requests;
 pub mod stream;

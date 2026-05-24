@@ -311,6 +311,10 @@ mod tests {
             seed: None,
             user: None,
             logit_bias: None,
+            tools: None,
+            tool_choice: None,
+            parallel_tool_calls: None,
+            response_format: None,
         };
 
         let payload = provider.build_gemini_request(&request);

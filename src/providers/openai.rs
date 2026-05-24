@@ -1,6 +1,6 @@
 use super::{
-    ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Provider, ProviderError,
-    ProviderStream,
+    ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, EmbeddingRequest,
+    EmbeddingResponse, Provider, ProviderError, ProviderStream,
 };
 use crate::models::provider::HealthStatus;
 use async_trait::async_trait;
@@ -142,6 +142,33 @@ impl Provider for OpenAIProvider {
         });
 
         Ok(Box::pin(stream))
+    }
+
+    async fn embeddings(
+        &self,
+        request: &EmbeddingRequest,
+    ) -> Result<EmbeddingResponse, ProviderError> {
+        let url = format!("{}/embeddings", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(request)
+            .send()
+            .await
+            .map_err(ProviderError::Http)?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::BadRequest(format!(
+                "embeddings HTTP {status}: {text}"
+            )));
+        }
+
+        resp.json::<EmbeddingResponse>()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     async fn health_check(&self) -> HealthStatus {

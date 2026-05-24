@@ -95,18 +95,16 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
     } else {
         config.openai_api_key.clone()
     };
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> =
-        vec![std::sync::Arc::new(
-            velox::providers::openai::OpenAIProvider::with_base_url(
-                api_key,
-                mock_server.uri(),
-                1,
-            ),
-        )];
+    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
+        velox::providers::openai::OpenAIProvider::with_base_url(api_key, mock_server.uri(), 1),
+    )];
 
-    let registry =
-        std::sync::Arc::new(velox::gateway::ProviderRegistry::new(providers, key_cache.clone()));
-    let rate_limiter = velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+        providers,
+        key_cache.clone(),
+    ));
+    let rate_limiter =
+        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
     let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
@@ -121,6 +119,7 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
         key_cache,
         rate_limiter,
         cache,
+        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
     });
 
@@ -131,7 +130,9 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
     let port = listener.local_addr().unwrap().port();
 
     tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("test server failed");
+        axum::serve(listener, app)
+            .await
+            .expect("test server failed");
     });
 
     (format!("http://127.0.0.1:{}", port), mock_server, pool)
@@ -142,9 +143,7 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
 async fn mount_openai_stub(server: &MockServer) {
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(common::fake_openai_response_json()))
         .mount(server)
         .await;
 }
@@ -264,7 +263,10 @@ async fn v2_1_sqlite_api_key_created_and_validated() {
         .await
         .unwrap();
 
-    let new_key = key_resp["data"]["key"].as_str().expect("key field missing").to_string();
+    let new_key = key_resp["data"]["key"]
+        .as_str()
+        .expect("key field missing")
+        .to_string();
     assert!(new_key.starts_with("vx-sk-"), "key has wrong format");
 
     // Use the newly created key to call the gateway.
@@ -297,7 +299,10 @@ async fn v2_1_sqlite_exact_cache_hit_and_miss() {
         .await
         .unwrap();
     assert_eq!(r1.status(), 200);
-    let hit_header_1 = r1.headers().get("x-velox-cache-hit").map(|v| v.to_str().unwrap().to_string());
+    let hit_header_1 = r1
+        .headers()
+        .get("x-velox-cache-hit")
+        .map(|v| v.to_str().unwrap().to_string());
     assert!(hit_header_1.is_none(), "first request must be a cache miss");
 
     // Second identical request: should be an exact cache hit.
@@ -309,8 +314,15 @@ async fn v2_1_sqlite_exact_cache_hit_and_miss() {
         .await
         .unwrap();
     assert_eq!(r2.status(), 200);
-    let hit_header_2 = r2.headers().get("x-velox-cache-hit").map(|v| v.to_str().unwrap().to_string());
-    assert_eq!(hit_header_2.as_deref(), Some("exact"), "second request must be exact cache hit");
+    let hit_header_2 = r2
+        .headers()
+        .get("x-velox-cache-hit")
+        .map(|v| v.to_str().unwrap().to_string());
+    assert_eq!(
+        hit_header_2.as_deref(),
+        Some("exact"),
+        "second request must be exact cache hit"
+    );
 }
 
 #[cfg(feature = "sqlite")]
@@ -328,7 +340,9 @@ async fn v2_1_sqlite_rate_limit_enforced() {
     config.database_url = db_url.clone();
     config.rate_limit_window_secs = 60;
 
-    let pool = velox::db::pool::connect(&db_url).await.expect("connect failed");
+    let pool = velox::db::pool::connect(&db_url)
+        .await
+        .expect("connect failed");
     let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
@@ -343,7 +357,7 @@ async fn v2_1_sqlite_rate_limit_enforced() {
         workspace_id: None,
         budget_limit: None,
         budget_used: Decimal::ZERO,
-        rate_limit_rpm: Some(1),  // allow only 1 request per window
+        rate_limit_rpm: Some(1), // allow only 1 request per window
         rate_limit_tpm: None,
         allowed_models: None,
         is_active: true,
@@ -353,16 +367,24 @@ async fn v2_1_sqlite_rate_limit_enforced() {
     };
     key_cache.insert(test_key_bytes, rate_limited_key);
 
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![
-        std::sync::Arc::new(velox::providers::openai::OpenAIProvider::with_base_url(
-            "test-key".to_string(), mock_server.uri(), 1,
-        )),
-    ];
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(providers, key_cache.clone()));
-    let rate_limiter = velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
+        velox::providers::openai::OpenAIProvider::with_base_url(
+            "test-key".to_string(),
+            mock_server.uri(),
+            1,
+        ),
+    )];
+    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+        providers,
+        key_cache.clone(),
+    ));
+    let rate_limiter =
+        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
     let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(velox::config::RuntimeConfig::from(&config)));
+    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+        velox::config::RuntimeConfig::from(&config),
+    ));
 
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
@@ -372,26 +394,37 @@ async fn v2_1_sqlite_rate_limit_enforced() {
         key_cache,
         rate_limiter,
         cache,
+        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
     });
 
     let app = velox::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
     let base_url = format!("http://127.0.0.1:{}", port);
 
     let client = reqwest::Client::new();
     let req = common::minimal_chat_request();
 
-    let r1 = client.post(format!("{}/v1/chat/completions", base_url))
+    let r1 = client
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .json(&req).send().await.unwrap();
+        .json(&req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(r1.status(), 200, "first request should succeed");
 
-    let r2 = client.post(format!("{}/v1/chat/completions", base_url))
+    let r2 = client
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .json(&req).send().await.unwrap();
+        .json(&req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(r2.status(), 429, "second request should be rate-limited");
 }
 
@@ -409,7 +442,9 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
     let mut config = velox::config::Config::load().expect("config load failed");
     config.database_url = db_url.clone();
 
-    let pool = velox::db::pool::connect(&db_url).await.expect("connect failed");
+    let pool = velox::db::pool::connect(&db_url)
+        .await
+        .expect("connect failed");
     let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
@@ -435,16 +470,23 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
     };
     key_cache.insert(test_key_bytes, budget_key);
 
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![
-        std::sync::Arc::new(velox::providers::openai::OpenAIProvider::with_base_url(
-            "test-key".to_string(), mock_server.uri(), 1,
-        )),
-    ];
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(providers, key_cache.clone()));
+    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
+        velox::providers::openai::OpenAIProvider::with_base_url(
+            "test-key".to_string(),
+            mock_server.uri(),
+            1,
+        ),
+    )];
+    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+        providers,
+        key_cache.clone(),
+    ));
     let rate_limiter = velox::middleware::rate_limit::RateLimiter::new(60);
     let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(velox::config::RuntimeConfig::from(&config)));
+    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+        velox::config::RuntimeConfig::from(&config),
+    ));
 
     let state = std::sync::Arc::new(velox::state::AppState {
         pool,
@@ -454,13 +496,16 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
         key_cache,
         rate_limiter,
         cache,
+        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
     });
 
     let app = velox::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
     let base_url = format!("http://127.0.0.1:{}", port);
 
     let resp = reqwest::Client::new()
@@ -471,7 +516,11 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), 402, "over-budget key should be rejected with 402");
+    assert_eq!(
+        resp.status(),
+        402,
+        "over-budget key should be rejected with 402"
+    );
 }
 
 #[cfg(feature = "sqlite")]
@@ -498,7 +547,10 @@ async fn v2_1_sqlite_daily_costs_written() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert!(count >= 1, "daily_costs should have at least one row after a request");
+    assert!(
+        count >= 1,
+        "daily_costs should have at least one row after a request"
+    );
 }
 
 #[cfg(feature = "sqlite")]
@@ -531,7 +583,12 @@ async fn v2_1_sqlite_analytics_overview_returns_correct_counts() {
     let login: serde_json::Value = client
         .post(format!("{}/api/v1/auth/login", base_url))
         .json(&serde_json::json!({"email": "admin2@test.com", "password": "pass123!"}))
-        .send().await.unwrap().json().await.unwrap();
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     let jwt = login["token"].as_str().unwrap();
 
     let overview: serde_json::Value = client
@@ -568,14 +625,16 @@ async fn v2_1_sqlite_uuids_round_trip_correctly() {
     .await
     .unwrap();
 
-    let (returned_id,): (Uuid,) =
-        sqlx::query_as("SELECT id FROM requests WHERE id = $1")
-            .bind(id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let (returned_id,): (Uuid,) = sqlx::query_as("SELECT id FROM requests WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
-    assert_eq!(returned_id, id, "UUID must round-trip through SQLite TEXT without loss");
+    assert_eq!(
+        returned_id, id,
+        "UUID must round-trip through SQLite TEXT without loss"
+    );
 }
 
 #[cfg(feature = "sqlite")]
@@ -601,15 +660,17 @@ async fn v2_1_sqlite_cost_decimal_precision_preserved() {
     .await
     .unwrap();
 
-    let (cost_str,): (String,) =
-        sqlx::query_as("SELECT cost_usd FROM requests WHERE id = $1")
-            .bind(id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let (cost_str,): (String,) = sqlx::query_as("SELECT cost_usd FROM requests WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     let returned_cost: Decimal = cost_str.parse().unwrap();
 
-    assert_eq!(returned_cost, cost, "Decimal precision must be preserved through SQLite TEXT storage");
+    assert_eq!(
+        returned_cost, cost,
+        "Decimal precision must be preserved through SQLite TEXT storage"
+    );
 }
 
 #[cfg(feature = "sqlite")]
@@ -672,8 +733,14 @@ async fn v2_1_regression_postgres_tests_still_pass_unchanged() {
     let body: serde_json::Value = resp.json().await.unwrap();
 
     // Verify OpenAI-compatible response structure is preserved on SQLite.
-    assert!(body["id"].as_str().is_some(), "response must have an id field");
+    assert!(
+        body["id"].as_str().is_some(),
+        "response must have an id field"
+    );
     assert_eq!(body["object"], "chat.completion");
-    assert!(body["choices"].as_array().is_some(), "choices array required");
+    assert!(
+        body["choices"].as_array().is_some(),
+        "choices array required"
+    );
     assert!(body["usage"]["total_tokens"].as_i64().unwrap_or(0) > 0);
 }

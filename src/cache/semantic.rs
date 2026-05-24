@@ -1,67 +1,50 @@
-use std::sync::RwLock;
+use crate::cache::index::{linear::LinearIndex, EmbeddingIndex};
 
-struct SemanticEntry {
-    embedding: Vec<f32>,
-    prompt_hash: String,
-}
-
-/// In-memory semantic cache backed by a linear scan over L2-normalized embeddings.
+/// In-memory semantic cache backed by a pluggable `EmbeddingIndex`.
 ///
-/// Cosine similarity between two unit vectors equals their dot product, so no
-/// explicit normalization step is needed at lookup time.
+/// `SemanticCache::new(threshold)` uses the O(n) `LinearIndex` (backwards compatible).
+/// `SemanticCache::with_index(index, threshold)` accepts any index backend.
 pub struct SemanticCache {
-    entries: RwLock<Vec<SemanticEntry>>,
+    index: Box<dyn EmbeddingIndex>,
     threshold: f32,
 }
 
 impl SemanticCache {
+    /// Create with `LinearIndex` (default; O(n) linear scan). Backwards compatible.
     pub fn new(threshold: f32) -> Self {
         Self {
-            entries: RwLock::new(Vec::new()),
+            index: Box::new(LinearIndex::new()),
             threshold,
         }
     }
 
-    /// Linear scan: return the hash of the most similar entry if it exceeds threshold.
-    /// Returns `(prompt_hash, similarity_score)`.
+    /// Create with a pre-built index backend (e.g. `HnswIndex`).
+    pub fn with_index(index: Box<dyn EmbeddingIndex>, threshold: f32) -> Self {
+        Self { index, threshold }
+    }
+
+    /// Return the hash and similarity score of the most similar cached entry,
+    /// or `None` if no entry exceeds the configured threshold.
     pub fn lookup(&self, query: &[f32]) -> Option<(String, f32)> {
-        let entries = self.entries.read().ok()?;
-        let mut best_score = self.threshold;
-        let mut best_hash: Option<String> = None;
-
-        for entry in entries.iter() {
-            let score = dot_product(query, &entry.embedding);
-            if score > best_score {
-                best_score = score;
-                best_hash = Some(entry.prompt_hash.clone());
-            }
-        }
-
-        best_hash.map(|h| (h, best_score))
+        self.index.lookup(query, self.threshold)
     }
 
     /// Add a new entry. Does not deduplicate — exact-cache hash uniqueness is assumed.
     pub fn insert(&self, embedding: Vec<f32>, prompt_hash: String) {
-        if let Ok(mut entries) = self.entries.write() {
-            entries.push(SemanticEntry {
-                embedding,
-                prompt_hash,
-            });
-        }
+        self.index.insert(embedding, prompt_hash);
     }
 
     pub fn len(&self) -> usize {
-        self.entries.read().map(|e| e.len()).unwrap_or(0)
+        self.index.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.index.is_empty()
     }
-}
 
-/// Dot product of two slices. For L2-normalized vectors this equals cosine similarity.
-fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+    pub fn clear(&self) {
+        self.index.clear();
+    }
 }
 
 // ── Byte serialization helpers (used for PostgreSQL BYTEA storage) ────────────

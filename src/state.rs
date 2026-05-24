@@ -1,5 +1,7 @@
+use crate::db::DbPool;
 use crate::{
-    cache::CacheEngine,
+    cache::{policy::SemanticCachePolicy, CacheEngine},
+    cluster::rate_limit::DbRateLimiter,
     config::{Config, RuntimeConfig},
     gateway::ProviderRegistry,
     middleware::rate_limit::RateLimiter,
@@ -7,7 +9,6 @@ use crate::{
 };
 use dashmap::DashMap;
 use serde_json::Value;
-use crate::db::DbPool;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
@@ -21,7 +22,11 @@ pub struct AppState {
     pub providers: Arc<ProviderRegistry>,
     pub key_cache: Arc<DashMap<[u8; 32], ApiKey>>,
     pub rate_limiter: Arc<RateLimiter>,
+    /// DB-backed rate limiter for cluster mode (Some when cluster.enabled = true).
+    pub cluster_rate_limiter: Option<Arc<DbRateLimiter>>,
     pub cache: Arc<CacheEngine>,
+    /// Controls which model/route/key combinations are eligible for semantic cache.
+    pub semantic_policy: SemanticCachePolicy,
     /// Broadcast channel for the live WebSocket feed (/admin/stream).
     /// Each completed gateway request sends one JSON event here.
     pub event_tx: broadcast::Sender<Value>,

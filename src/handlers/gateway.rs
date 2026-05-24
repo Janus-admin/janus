@@ -1,6 +1,15 @@
 use crate::{
-    cache::CacheHit, errors::AppError, gateway::pipeline, middleware::api_key_auth::GatewayAuth,
-    middleware::budget::check_budget, pii, providers::ChatCompletionRequest, state::AppState,
+    cache::{exact, CacheHit},
+    db,
+    errors::AppError,
+    gateway::{pipeline, strategies::RoutingStrategy},
+    middleware::api_key_auth::GatewayAuth,
+    middleware::budget::check_budget,
+    pii,
+    pricing::calculate_cost,
+    prompts::template,
+    providers::{ChatCompletionRequest, ChatMessage, EmbeddingRequest},
+    state::AppState,
 };
 use axum::{
     extract::{rejection::JsonRejection, FromRequest, State},
@@ -10,8 +19,10 @@ use axum::{
 };
 use chrono::Utc;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
+use uuid::Uuid;
 
 // ── ValidatedJson extractor ───────────────────────────────────────────────────
 
@@ -62,8 +73,14 @@ pub async fn chat_completions(
     }
 
     // Rate limit gate (RPM).
+    // Cluster mode: use DB-backed sliding window shared across all nodes.
+    // Single-node mode: use fast in-memory DashMap.
     if let Some(rpm) = api_key.rate_limit_rpm {
-        if let Err(retry_after) = state.rate_limiter.check_and_record(api_key.id, rpm) {
+        if let Some(ref cluster_rl) = state.cluster_rate_limiter {
+            if let Err(retry_after) = cluster_rl.check_and_record(api_key.id, rpm).await {
+                return AppError::RateLimitExceeded(Some(retry_after)).into_response();
+            }
+        } else if let Err(retry_after) = state.rate_limiter.check_and_record(api_key.id, rpm) {
             return AppError::RateLimitExceeded(Some(retry_after)).into_response();
         }
     }
@@ -71,7 +88,14 @@ pub async fn chat_completions(
     // Token-per-minute gate (TPM) — rough pre-flight estimate.
     if let Some(tpm) = api_key.rate_limit_tpm {
         let estimated_tokens = estimate_request_tokens(&request);
-        if let Err(retry_after) =
+        if let Some(ref cluster_rl) = state.cluster_rate_limiter {
+            if let Err(retry_after) = cluster_rl
+                .check_and_record_tokens(api_key.id, estimated_tokens, tpm)
+                .await
+            {
+                return AppError::RateLimitExceeded(Some(retry_after)).into_response();
+            }
+        } else if let Err(retry_after) =
             state
                 .rate_limiter
                 .check_and_record_tokens(api_key.id, estimated_tokens, tpm)
@@ -91,6 +115,41 @@ pub async fn chat_completions(
         }
     }
 
+    // ── Prompt injection (X-Velox-Prompt header) ─────────────────────────────
+    // If the caller supplies a prompt ID we load the active version, render the
+    // template with variables from X-Velox-Variables, and prepend the result to
+    // the messages array.  Requests without this header are unaffected.
+    let mut request = request;
+    let prompt_version_id: Option<Uuid> = if let Some(pid_str) =
+        headers.get("x-velox-prompt").and_then(|v| v.to_str().ok())
+    {
+        match Uuid::parse_str(pid_str) {
+            Err(_) => {
+                return AppError::BadRequest("X-Velox-Prompt must be a valid UUID".to_string())
+                    .into_response();
+            }
+            Ok(prompt_id) => match db::prompts::get_active_versions(&state.pool, prompt_id).await {
+                Err(e) => {
+                    return AppError::Anyhow(anyhow::anyhow!("Failed to load prompt: {e}"))
+                        .into_response();
+                }
+                Ok(versions) if versions.is_empty() => {
+                    return AppError::NotFound(format!("No active version for prompt {prompt_id}"))
+                        .into_response();
+                }
+                Ok(versions) => {
+                    let selected = select_version_by_weight(&versions);
+                    let variables = parse_variables_header(&headers);
+                    let rendered = template::render(&selected.content, &variables);
+                    inject_prompt(&mut request, selected.system_prompt.as_deref(), &rendered);
+                    Some(selected.id)
+                }
+            },
+        }
+    } else {
+        None
+    };
+
     // Snapshot mutable config once per request.
     let rc = state.runtime_config.read().await;
 
@@ -101,6 +160,15 @@ pub async fn chat_completions(
             .and_then(|v| v.to_str().ok())
             .map(|v| v.eq_ignore_ascii_case("false"))
             .unwrap_or(false);
+
+    // Bypass semantic cache when the policy excludes this model/route/key combination.
+    // Exact cache is unaffected by this flag.
+    let bypass_semantic = bypass_cache
+        || !state.semantic_policy.allows(
+            &request.model,
+            "/v1/chat/completions",
+            &api_key.name,
+        );
 
     let max_retries = rc.max_retries;
 
@@ -113,6 +181,16 @@ pub async fn chat_completions(
     let log_response_bodies = rc.log_response_bodies;
     drop(rc); // release read lock before the potentially-long provider call
 
+    // Parse routing strategy from API key and look up fallback models from config.
+    let strategy = RoutingStrategy::from_db_str(&api_key.routing_strategy);
+    let fallback_models: Vec<String> = state
+        .config
+        .routing
+        .fallbacks
+        .get(&request.model)
+        .cloned()
+        .unwrap_or_default();
+
     if request.stream == Some(true) {
         let start = Instant::now();
         match pipeline::run_streaming(
@@ -123,6 +201,10 @@ pub async fn chat_completions(
             max_retries,
             state.cache.clone(),
             bypass_cache,
+            bypass_semantic,
+            strategy,
+            fallback_models,
+            prompt_version_id,
         )
         .await
         {
@@ -166,6 +248,10 @@ pub async fn chat_completions(
             max_retries,
             &state.cache,
             bypass_cache,
+            bypass_semantic,
+            &strategy,
+            &fallback_models,
+            prompt_version_id,
         )
         .await
         {
@@ -231,14 +317,18 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoRespons
         model_display_name: Option<String>,
     }
 
-    let rows = sqlx::query_as::<_, ModelRow>(
-        "SELECT provider, model_id, model_display_name
-         FROM model_pricing
-         WHERE is_active = TRUE
-         ORDER BY provider, model_id",
-    )
-    .fetch_all(&state.pool)
-    .await;
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let active_clause = "WHERE is_active = TRUE";
+    #[cfg(feature = "sqlite")]
+    let active_clause = "WHERE is_active = 1";
+
+    let sql = format!(
+        "SELECT provider, model_id, model_display_name FROM model_pricing {active_clause} ORDER BY provider, model_id"
+    );
+
+    let rows = sqlx::query_as::<_, ModelRow>(&sql)
+        .fetch_all(&state.pool)
+        .await;
 
     match rows {
         Err(e) => crate::errors::AppError::Anyhow(anyhow::anyhow!(e)).into_response(),
@@ -261,6 +351,59 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoRespons
             Json(serde_json::json!({ "object": "list", "data": models })).into_response()
         }
     }
+}
+
+// ── Prompt injection helpers ──────────────────────────────────────────────────
+
+/// Prepend prompt content (and optionally a system message) to the request's
+/// messages array.  The caller's original messages follow the injected ones.
+fn inject_prompt(request: &mut ChatCompletionRequest, system_prompt: Option<&str>, content: &str) {
+    let mut prepend: Vec<ChatMessage> = Vec::new();
+    if let Some(sys) = system_prompt {
+        prepend.push(ChatMessage {
+            role: "system".to_string(),
+            content: serde_json::Value::String(sys.to_string()),
+            name: None,
+        });
+    }
+    prepend.push(ChatMessage {
+        role: "user".to_string(),
+        content: serde_json::Value::String(content.to_string()),
+        name: None,
+    });
+    prepend.extend(std::mem::take(&mut request.messages));
+    request.messages = prepend;
+}
+
+/// Weighted-random selection among active prompt versions.
+/// Versions with `ab_weight = 0` are never selected.
+fn select_version_by_weight(
+    versions: &[crate::db::prompts::PromptVersion],
+) -> &crate::db::prompts::PromptVersion {
+    use rand::Rng;
+    let total: i32 = versions.iter().map(|v| v.ab_weight.max(0)).sum();
+    if total <= 0 {
+        return &versions[0];
+    }
+    let mut pick = rand::thread_rng().gen_range(0..total);
+    for v in versions {
+        let w = v.ab_weight.max(0);
+        if pick < w {
+            return v;
+        }
+        pick -= w;
+    }
+    &versions[versions.len() - 1]
+}
+
+/// Parse `X-Velox-Variables: {"key": "value"}` header into a HashMap.
+/// Returns an empty map if the header is absent or invalid JSON.
+fn parse_variables_header(headers: &HeaderMap) -> HashMap<String, String> {
+    headers
+        .get("x-velox-variables")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| serde_json::from_str::<HashMap<String, String>>(s).ok())
+        .unwrap_or_default()
 }
 
 // ── Token estimation ──────────────────────────────────────────────────────────
@@ -316,6 +459,232 @@ fn broadcast_event(
 }
 
 // ── Header helpers ────────────────────────────────────────────────────────────
+
+// ── POST /v1/embeddings ───────────────────────────────────────────────────────
+
+/// POST /v1/embeddings
+///
+/// OpenAI-compatible embeddings endpoint. Supports exact caching (no semantic
+/// cache — embeddings are the index, not the queries). Logged with `request_type = 'embedding'`.
+pub async fn embeddings(
+    State(state): State<Arc<AppState>>,
+    GatewayAuth(api_key): GatewayAuth,
+    ValidatedJson(request): ValidatedJson<EmbeddingRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = check_budget(&api_key) {
+        return e.into_response();
+    }
+
+    let bypass_cache = !state.runtime_config.read().await.cache_enabled;
+
+    let hash = exact::compute_embedding_hash(&request);
+
+    if !bypass_cache {
+        if let Some(cached) = state.cache.lookup_embedding(&hash) {
+            return Json((*cached).clone()).into_response();
+        }
+    }
+
+    let start = Instant::now();
+
+    let provider = match crate::gateway::router::select_provider(&state.providers, &request.model) {
+        Some(p) => p,
+        None => {
+            return AppError::ProviderUnavailable("No providers available".into()).into_response()
+        }
+    };
+
+    match provider.embeddings(&request).await {
+        Ok(resp) => {
+            let latency_ms = start.elapsed().as_millis() as i32;
+
+            if !bypass_cache {
+                state
+                    .cache
+                    .insert_embedding(hash.clone(), Arc::new(resp.clone()));
+            }
+
+            let cost = db::requests::find_pricing(&state.pool, provider.name(), &resp.model)
+                .await
+                .ok()
+                .flatten()
+                .map(|(inp, _out)| {
+                    calculate_cost(
+                        resp.usage.prompt_tokens,
+                        0,
+                        inp,
+                        rust_decimal::Decimal::ZERO,
+                    )
+                });
+
+            let _ = db::requests::insert_embedding_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &resp.model,
+                Some(resp.usage.prompt_tokens as i32),
+                Some(resp.usage.total_tokens as i32),
+                cost,
+                latency_ms,
+                "success",
+            )
+            .await;
+
+            Json(resp).into_response()
+        }
+        Err(e) => {
+            let latency_ms = start.elapsed().as_millis() as i32;
+            let _ = db::requests::insert_embedding_request(
+                &state.pool,
+                Some(api_key.id),
+                api_key.workspace_id,
+                provider.name(),
+                &request.model,
+                None,
+                None,
+                None,
+                latency_ms,
+                "error",
+            )
+            .await;
+            AppError::ProviderUnavailable(e.to_string()).into_response()
+        }
+    }
+}
+
+// ── POST /v1/completions (legacy) ─────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct LegacyCompletionRequest {
+    pub model: String,
+    pub prompt: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
+}
+
+/// POST /v1/completions
+///
+/// Legacy completions endpoint. Converts `prompt` → single user message, calls
+/// the chat pipeline internally, and returns in legacy Completions response format.
+pub async fn legacy_completions(
+    State(state): State<Arc<AppState>>,
+    GatewayAuth(api_key): GatewayAuth,
+    ValidatedJson(request): ValidatedJson<LegacyCompletionRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = check_budget(&api_key) {
+        return e.into_response();
+    }
+
+    // Convert prompt (string or array) to a single user chat message.
+    let prompt_text = match &request.prompt {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        other => other.to_string(),
+    };
+
+    let chat_request = ChatCompletionRequest {
+        model: request.model.clone(),
+        messages: vec![crate::providers::ChatMessage {
+            role: "user".to_string(),
+            content: serde_json::Value::String(prompt_text),
+            name: None,
+        }],
+        max_tokens: request.max_tokens,
+        temperature: request.temperature,
+        stream: None,
+        top_p: None,
+        n: None,
+        stop: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        seed: None,
+        user: None,
+        logit_bias: None,
+        tools: None,
+        tool_choice: None,
+        parallel_tool_calls: None,
+        response_format: None,
+    };
+
+    let rc = state.runtime_config.read().await;
+    let bypass_cache = !rc.cache_enabled;
+    let max_retries = rc.max_retries;
+    drop(rc);
+
+    let strategy = RoutingStrategy::from_db_str(&api_key.routing_strategy);
+    let fallback_models: Vec<String> = state
+        .config
+        .routing
+        .fallbacks
+        .get(&chat_request.model)
+        .cloned()
+        .unwrap_or_default();
+
+    let bypass_semantic_legacy = bypass_cache
+        || !state.semantic_policy.allows(
+            &chat_request.model,
+            "/v1/completions",
+            &api_key.name,
+        );
+
+    match pipeline::run(
+        &state.pool,
+        &state.providers,
+        &chat_request,
+        &api_key,
+        max_retries,
+        &state.cache,
+        bypass_cache,
+        bypass_semantic_legacy,
+        &strategy,
+        &fallback_models,
+        None, // legacy completions don't support prompt management
+    )
+    .await
+    {
+        Ok((resp, _cache_hit)) => {
+            let text = resp
+                .choices
+                .first()
+                .and_then(|c| c.message.content.as_str())
+                .unwrap_or("")
+                .to_string();
+            let finish_reason = resp
+                .choices
+                .first()
+                .and_then(|c| c.finish_reason.clone())
+                .unwrap_or_else(|| "stop".to_string());
+            Json(serde_json::json!({
+                "id": resp.id,
+                "object": "text_completion",
+                "created": resp.created,
+                "model": resp.model,
+                "choices": [{
+                    "text": text,
+                    "index": 0,
+                    "logprobs": null,
+                    "finish_reason": finish_reason
+                }],
+                "usage": {
+                    "prompt_tokens": resp.usage.prompt_tokens,
+                    "completion_tokens": resp.usage.completion_tokens,
+                    "total_tokens": resp.usage.total_tokens
+                }
+            }))
+            .into_response()
+        }
+        Err(e) => e.into_response(),
+    }
+}
 
 fn attach_cache_headers(headers: &mut axum::http::HeaderMap, hit: &CacheHit) {
     match hit {

@@ -36,7 +36,7 @@ cargo test 2>&1 | tail -20
 | Web framework | axum 0.7 |
 | Database | PostgreSQL (docker-compose) + SQLite (`--no-default-features --features sqlite`) |
 | Repository | /Users/wallex/rust-backend |
-| Roadmap | VELOX_ROADMAP.md |
+| Roadmap | VELOX_ROADMAP.md (v1), VELOX_V2_ROADMAP.md (v2), VELOX_V3_ROADMAP.md (v3) |
 | Decisions | DECISIONS.md |
 
 ---
@@ -56,11 +56,11 @@ Phase 8: Open Source Launch  → [SKIPPED] — marketing/launch work, not techni
 Phase 9: Mobile App          → [SKIPPED] — out of scope for v1
 ```
 
-**VELOX v0.1.0 IS FEATURE-COMPLETE.**
+**VELOX v0.1.0 IS FEATURE-COMPLETE. V2 is also complete (all 8 phases, 2026-05-23).**
 
-Next work is V2 features. See **VELOX_V2_ROADMAP.md** for the full v2 plan.
-The v2 roadmap contains: gap analysis, 8 phases, test contracts, migration plan, and dependency plan.
-Always start a v2 session by reading VELOX_V2_ROADMAP.md §13 (Phase Status Tracker).
+Current work is V3 — hardening, scaling, enterprise readiness.
+See **VELOX_V3_ROADMAP.md** for the full v3 plan.
+Always start a v3 session by reading VELOX_V3_ROADMAP.md §11 (Phase Status Tracker).
 
 ---
 
@@ -264,10 +264,10 @@ Layer 1 — Exact match:
   Speed:  < 2ms
 
 Layer 2 — Semantic match:
-  Key:    HNSW nearest-neighbor on prompt embedding
-  Store:  HNSW index in memory + embeddings in PostgreSQL
-  Speed:  < 10ms
-  Threshold: 0.95 cosine similarity (configurable)
+  Key:    Cosine similarity over sentence embeddings (linear scan; HNSW planned V3-1)
+  Store:  Vec<(embedding, hash)> in memory + embeddings in PostgreSQL (BYTEA)
+  Speed:  < 10ms (degrades linearly with entry count)
+  Threshold: 0.90 cosine similarity (configurable via semantic_cache_threshold)
 ```
 
 ### 12. What Lives on Which Port
@@ -418,7 +418,7 @@ velox/
 │   ├── cache/               ← Caching subsystem
 │   │   ├── mod.rs           ← CacheEngine (combines exact + semantic)
 │   │   ├── exact.rs         ← SHA-256 based exact match
-│   │   └── semantic.rs      ← HNSW vector similarity
+│   │   └── semantic.rs      ← Linear cosine scan (HNSW planned V3-1)
 │   ├── middleware/          ← axum middleware
 │   │   ├── api_key_auth.rs  ← Validate vx-sk-... keys
 │   │   ├── rate_limit.rs    ← Sliding window limiter
@@ -476,8 +476,9 @@ velox/
 9. **Provider API keys must be encrypted at rest.** Never store them as plaintext
    in the database. Use the AES-256-GCM encryption helpers in `src/crypto.rs`.
 
-10. **HNSW index is in-memory only.** Persist it explicitly on shutdown.
-    Do not assume it survives a restart without the snapshot file.
+10. **Semantic index is in-memory only (linear scan over Vec).** It is rebuilt from
+    PostgreSQL embeddings at startup via `warm_from_db()`. No snapshot file needed —
+    the DB is the source of truth. HNSW indexing is planned for V3-1.
 
 ---
 

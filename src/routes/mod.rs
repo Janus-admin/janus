@@ -22,6 +22,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/v1/chat/completions",
             post(handlers::gateway::chat_completions),
         )
+        .route("/v1/embeddings", post(handlers::gateway::embeddings))
+        .route(
+            "/v1/completions",
+            post(handlers::gateway::legacy_completions),
+        )
         .route("/v1/models", get(handlers::gateway::list_models))
         .layer(RequestBodyLimitLayer::new(1024 * 1024)); // 1MB
 
@@ -99,6 +104,25 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/cache/entries/:id",
             delete(handlers::admin::cache::delete_entry),
         )
+        // ── Admin — Prompts ──────────────────────────────────────────────────
+        .route(
+            "/admin/prompts",
+            post(handlers::admin::prompts::create_prompt)
+                .get(handlers::admin::prompts::list_prompts),
+        )
+        .route(
+            "/admin/prompts/:id",
+            get(handlers::admin::prompts::get_prompt)
+                .delete(handlers::admin::prompts::delete_prompt),
+        )
+        .route(
+            "/admin/prompts/:id/versions",
+            post(handlers::admin::prompts::create_version),
+        )
+        .route(
+            "/admin/prompts/:id/versions/:version",
+            patch(handlers::admin::prompts::update_version),
+        )
         // ── Admin — Config ───────────────────────────────────────────────────
         .route(
             "/admin/config",
@@ -115,9 +139,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             Arc<AppState>,
         >(state.clone()));
 
+    // MCP routes — JWT authentication handled inside the handlers (token in header
+    // or params.token for initialize), not via the admin middleware layer.
+    let mcp_routes = Router::new()
+        .route("/mcp/rpc", post(handlers::mcp::rpc_handler))
+        .route("/mcp/sse", get(handlers::mcp::sse_handler));
+
     Router::new()
         .merge(gateway_routes)
         .merge(admin_routes)
+        .merge(mcp_routes)
         // ── Existing routes ──────────────────────────────────────────────────
         .route("/health", get(handlers::health::health_check))
         .route("/metrics", get(handlers::metrics::prometheus_handler))

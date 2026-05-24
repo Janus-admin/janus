@@ -29,6 +29,9 @@ pub struct ApiKey {
 
     pub allowed_models: Option<Vec<String>>,
 
+    /// Routing strategy name as stored in the DB (e.g. "priority", "cost", "latency", "round_robin").
+    pub routing_strategy: String,
+
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -45,6 +48,13 @@ pub struct CreateApiKeyRequest {
     pub rate_limit_tpm: Option<i32>,
     pub allowed_models: Option<Vec<String>>,
     pub expires_at: Option<DateTime<Utc>>,
+    /// Routing strategy for this key. Defaults to "priority" (original behavior).
+    #[serde(default = "default_routing_strategy")]
+    pub routing_strategy: String,
+}
+
+fn default_routing_strategy() -> String {
+    "priority".to_string()
 }
 
 /// Response returned once on key creation — full key shown here, never again.
@@ -54,6 +64,7 @@ pub struct CreateApiKeyResponse {
     pub name: String,
     pub key: String,
     pub key_prefix: String,
+    pub routing_strategy: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -71,6 +82,7 @@ pub struct ApiKeyView {
     pub rate_limit_rpm: Option<i32>,
     pub rate_limit_tpm: Option<i32>,
     pub allowed_models: Option<Vec<String>>,
+    pub routing_strategy: String,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -89,6 +101,7 @@ impl From<ApiKey> for ApiKeyView {
             rate_limit_rpm: k.rate_limit_rpm,
             rate_limit_tpm: k.rate_limit_tpm,
             allowed_models: k.allowed_models,
+            routing_strategy: k.routing_strategy,
             is_active: k.is_active,
             created_at: k.created_at,
             expires_at: k.expires_at,

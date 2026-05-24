@@ -1,11 +1,13 @@
 pub mod circuit_breaker;
 pub mod pipeline;
 pub mod router;
+pub mod strategies;
 
 use crate::models::api_key::ApiKey;
 use crate::providers::Provider;
 use circuit_breaker::CircuitBreaker;
 use dashmap::DashMap;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 const FAILURE_THRESHOLD: u32 = 5;
@@ -17,8 +19,9 @@ pub struct ProviderRegistry {
     providers: Vec<Arc<dyn Provider>>,
     key_cache: Arc<DashMap<[u8; 32], ApiKey>>,
     /// One circuit breaker per provider instance, keyed by provider priority.
-    /// Priority is unique per instance, so two same-named providers get separate breakers.
     pub circuit_breakers: DashMap<u8, CircuitBreaker>,
+    /// Monotonically incrementing counter for round-robin routing.
+    pub round_robin_counter: AtomicU64,
 }
 
 impl ProviderRegistry {
@@ -39,6 +42,7 @@ impl ProviderRegistry {
             providers,
             key_cache,
             circuit_breakers: breakers,
+            round_robin_counter: AtomicU64::new(0),
         }
     }
 

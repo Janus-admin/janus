@@ -1,7 +1,7 @@
+use crate::db::DbPool;
 use crate::{errors::AppResult, models::cache_entry::CacheStats};
 use chrono::Utc;
 use rust_decimal::Decimal;
-use crate::db::DbPool;
 use uuid::Uuid;
 
 // ── Row type for warm-up load ─────────────────────────────────────────────────
@@ -202,12 +202,11 @@ pub async fn load_all_entries(pool: &DbPool) -> AppResult<Vec<CacheEntryRow>> {
 /// Returns `Some(prompt_hash)` if the row was found and deleted,
 /// `None` if no row with that id exists.
 pub async fn delete_entry(pool: &DbPool, id: Uuid) -> AppResult<Option<String>> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "DELETE FROM cache_entries WHERE id = $1 RETURNING prompt_hash",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(String,)> =
+        sqlx::query_as("DELETE FROM cache_entries WHERE id = $1 RETURNING prompt_hash")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
 
     Ok(row.map(|(h,)| h))
 }

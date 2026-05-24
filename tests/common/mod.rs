@@ -133,6 +133,16 @@ struct TestAppOpts {
     /// Load the embedding model from config paths.
     /// Must be true for Phase 5 semantic cache tests. Panics if model files missing.
     load_embedding_model: bool,
+    /// Warm the exact cache from the DB at startup (without loading the embedding model).
+    /// Use when a previously-spawned node has already populated the DB cache.
+    warm_cache: bool,
+    /// Enable cluster mode (DB-backed rate limiting + pg_notify key invalidation).
+    cluster_enabled: bool,
+    /// Node ID to use when cluster_enabled = true.
+    cluster_node_id: Option<String>,
+    /// Load all active keys from the DB at startup (in addition to the pre-seeded test key).
+    /// Required for tests where a key was created via admin API on another node.
+    load_keys_from_db: bool,
 }
 
 impl Default for TestAppOpts {
@@ -143,6 +153,10 @@ impl Default for TestAppOpts {
             rate_limit_rpm: None,
             rate_limit_window_secs: 60,
             load_embedding_model: false,
+            warm_cache: false,
+            cluster_enabled: false,
+            cluster_node_id: None,
+            load_keys_from_db: false,
         }
     }
 }
@@ -232,6 +246,53 @@ pub async fn spawn_app_with_embedding_base(openai_base_url: String) -> String {
     .await
 }
 
+/// Start app with cluster mode enabled (DB-backed rate limiting + pg_notify key sync).
+///
+/// The `node_id` is used in log correlation when running multiple nodes in tests.
+/// Both nodes must share the same PostgreSQL database.
+pub async fn spawn_app_with_cluster(openai_base_url: String, node_id: &str) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(openai_base_url),
+        cluster_enabled: true,
+        cluster_node_id: Some(node_id.to_string()),
+        ..Default::default()
+    })
+    .await
+}
+
+/// Like `spawn_app_with_cluster` but also sets a rate limit on the test key.
+pub async fn spawn_app_with_cluster_and_rate_limit(
+    openai_base_url: String,
+    node_id: &str,
+    rpm: i32,
+) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(openai_base_url),
+        cluster_enabled: true,
+        cluster_node_id: Some(node_id.to_string()),
+        rate_limit_rpm: Some(rpm),
+        rate_limit_window_secs: 2,
+        ..Default::default()
+    })
+    .await
+}
+
+/// Spawn app in cluster mode, warm the cache from DB, and load all active DB keys.
+///
+/// Use this when starting a "second node" that needs to see keys and cache entries
+/// created by a previously-running first node.
+pub async fn spawn_app_with_cluster_warmed(openai_base_url: String, node_id: &str) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        openai_base_url: Some(openai_base_url),
+        cluster_enabled: true,
+        cluster_node_id: Some(node_id.to_string()),
+        warm_cache: true,
+        load_keys_from_db: true,
+        ..Default::default()
+    })
+    .await
+}
+
 // ── Internal implementation ───────────────────────────────────────────────────
 
 async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
@@ -241,6 +302,14 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     // Override the rate-limit window if requested (e.g. 1 s for fast tests).
     config.rate_limit_window_secs = opts.rate_limit_window_secs;
+
+    // Enable cluster mode if requested.
+    if opts.cluster_enabled {
+        config.cluster.enabled = true;
+        if let Some(ref node_id) = opts.cluster_node_id {
+            config.cluster.node_id = node_id.clone();
+        }
+    }
 
     let pool = velox::db::pool::connect(&config.database_url)
         .await
@@ -310,6 +379,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         rate_limit_rpm: opts.rate_limit_rpm,
         rate_limit_tpm: None,
         allowed_models: None,
+        routing_strategy: "priority".to_string(),
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -336,6 +406,15 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     .await
     .expect("Failed to insert test API key into DB");
 
+    // ── Load additional DB keys if requested ─────────────────────────────────
+    if opts.load_keys_from_db {
+        if let Ok(entries) = velox::db::api_keys::load_all_active(&pool).await {
+            for (hash, key) in entries {
+                key_cache.insert(hash, key);
+            }
+        }
+    }
+
     // ── Build cache engine ────────────────────────────────────────────────────
     let cache = if opts.load_embedding_model {
         let model = velox::cache::embedding::EmbeddingModel::load(
@@ -354,7 +433,12 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         engine.warm_from_db(&pool).await;
         engine
     } else {
-        std::sync::Arc::new(velox::cache::CacheEngine::new())
+        let engine = std::sync::Arc::new(velox::cache::CacheEngine::new());
+        if opts.warm_cache {
+            // Warm the exact cache from DB without loading the embedding model.
+            engine.warm_from_db(&pool).await;
+        }
+        engine
     };
 
     let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
@@ -364,6 +448,15 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     let rate_limiter =
         velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+
+    let cluster_rate_limiter = if config.cluster.enabled {
+        Some(velox::cluster::rate_limit::DbRateLimiter::new(
+            pool.clone(),
+            config.rate_limit_window_secs,
+        ))
+    } else {
+        None
+    };
 
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
@@ -378,7 +471,10 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         providers: registry,
         key_cache,
         rate_limiter,
+        cluster_rate_limiter,
         cache,
+        // Tests use the permissive default (allows all models/routes/keys).
+        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
     });
 

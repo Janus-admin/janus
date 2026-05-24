@@ -59,7 +59,12 @@ impl RateLimiter {
     /// Check and record an estimated token count against the TPM limit.
     ///
     /// Returns `Ok(())` if within the limit, `Err(retry_after_secs)` if exceeded.
-    pub fn check_and_record_tokens(&self, key_id: Uuid, tokens: i64, limit: i32) -> Result<(), u64> {
+    pub fn check_and_record_tokens(
+        &self,
+        key_id: Uuid,
+        tokens: i64,
+        limit: i32,
+    ) -> Result<(), u64> {
         let now_ms = chrono::Utc::now().timestamp_millis();
         let cutoff_ms = now_ms - self.window_ms;
 

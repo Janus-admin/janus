@@ -481,6 +481,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         rate_limit_rpm: None,
         rate_limit_tpm: None,
         allowed_models: None,
+        routing_strategy: "priority".into(),
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -544,7 +545,9 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         providers: registry,
         key_cache,
         rate_limiter,
+        cluster_rate_limiter: None,
         cache,
+        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
     });
 
@@ -603,6 +606,7 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         rate_limit_rpm: None,
         rate_limit_tpm: Some(1), // 1 token per minute — first request exhausts it
         allowed_models: None,
+        routing_strategy: "priority".into(),
         is_active: true,
         created_at: Utc::now(),
         expires_at: None,
@@ -651,7 +655,9 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         providers: registry,
         key_cache,
         rate_limiter,
+        cluster_rate_limiter: None,
         cache,
+        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
     });
 
