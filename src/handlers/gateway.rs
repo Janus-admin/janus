@@ -243,6 +243,7 @@ async fn chat_completions_inner(
             strategy,
             fallback_models,
             prompt_version_id,
+            state.plugins.clone(),
         )
         .await
         {
@@ -290,6 +291,7 @@ async fn chat_completions_inner(
             &strategy,
             &fallback_models,
             prompt_version_id,
+            &state.plugins,
         )
         .await
         {
@@ -684,6 +686,7 @@ pub async fn legacy_completions(
         &strategy,
         &fallback_models,
         None, // legacy completions don't support prompt management
+        &state.plugins,
     )
     .await
     {

@@ -6,6 +6,7 @@ use crate::{
     gateway::ProviderRegistry,
     middleware::rate_limit::RateLimiter,
     models::api_key::ApiKey,
+    plugins::RequestPlugin,
 };
 use dashmap::DashMap;
 use serde_json::Value;
@@ -30,4 +31,6 @@ pub struct AppState {
     /// Broadcast channel for the live WebSocket feed (/admin/stream).
     /// Each completed gateway request sends one JSON event here.
     pub event_tx: broadcast::Sender<Value>,
+    /// Ordered plugin chain executed for every gateway request.
+    pub plugins: Arc<Vec<Box<dyn RequestPlugin>>>,
 }

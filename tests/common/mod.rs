@@ -372,6 +372,8 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         name: "Test Key".to_string(),
         key_hash: "placeholder".to_string(),
         key_sha256: None,
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: test_key_str[..12].to_string(),
         workspace_id: None,
         budget_limit: None,
@@ -476,6 +478,8 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         // Tests use the permissive default (allows all models/routes/keys).
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
+        // Tests start with an empty plugin chain so behavior is unchanged.
+        plugins: std::sync::Arc::new(vec![]),
     });
 
     let app = velox::routes::create_router(state);

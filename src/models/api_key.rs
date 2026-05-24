@@ -18,6 +18,12 @@ pub struct ApiKey {
     /// SHA-256 hex of the full key — used for dashmap lookup (never exposed via API).
     #[serde(skip)]
     pub key_sha256: Option<String>,
+    /// SHA-256 hex of the previous key, valid until rotation_expires_at (V3-5).
+    #[serde(skip)]
+    pub previous_key_sha256: Option<String>,
+    /// Grace-period deadline for the previous key after rotation (V3-5).
+    #[serde(skip)]
+    pub rotation_expires_at: Option<DateTime<Utc>>,
     pub key_prefix: String,
     pub workspace_id: Option<Uuid>,
 

@@ -5,6 +5,7 @@ use crate::{
     db,
     errors::{AppError, AppResult},
     models::api_key::ApiKey,
+    plugins::{self, PluginError, RequestPlugin},
     pricing,
     providers::{
         ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice,
@@ -73,7 +74,21 @@ pub async fn run(
     strategy: &RoutingStrategy,
     fallback_models: &[String],
     prompt_version_id: Option<Uuid>,
+    plugin_chain: &[Box<dyn RequestPlugin>],
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
+    // Clone request so plugins can mutate it without affecting the caller.
+    let mut request = request.clone();
+
+    // ── Plugin before_request chain ───────────────────────────────────────────
+    match plugins::run_before(plugin_chain, &mut request, api_key).await {
+        Ok(()) => {}
+        Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
+        Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
+        Err(PluginError::Warning(_)) => {} // already logged in run_before
+    }
+
+    let request = &request; // reborrow as shared ref for the rest of the pipeline
+
     // ── Exact cache lookup ────────────────────────────────────────────────────
     let hash = cache::exact::compute_hash(request);
 
@@ -86,7 +101,13 @@ pub async fn run(
                 .increment(1);
             let _ = db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
             crate::metrics::record_request(true);
-            return Ok(((*cached).clone(), CacheHit::Exact));
+            let mut resp = (*cached).clone();
+            match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
+                Ok(()) | Err(PluginError::Warning(_)) => {}
+                Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
+                Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
+            }
+            return Ok((resp, CacheHit::Exact));
         }
     }
 
@@ -112,7 +133,13 @@ pub async fn run(
                     counter!("velox_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
                     let _ = db::cache::record_hit(pool, &hit_hash, tokens, Decimal::ZERO).await;
                     crate::metrics::record_request(true);
-                    return Ok(((*cached).clone(), CacheHit::Semantic(score)));
+                    let mut resp = (*cached).clone();
+                    match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
+                        Ok(()) | Err(PluginError::Warning(_)) => {}
+                        Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
+                        Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
+                    }
+                    return Ok((resp, CacheHit::Semantic(score)));
                 }
             }
         }
@@ -183,7 +210,7 @@ pub async fn run(
                 let latency_ms = start.elapsed().as_millis() as i32;
 
                 match result {
-                    Ok(resp) => {
+                    Ok(mut resp) => {
                         if let Some(cb) = registry.circuit_breakers.get(&provider.priority()) {
                             cb.record_success();
                         }
@@ -313,6 +340,15 @@ pub async fn run(
                         }
 
                         crate::metrics::record_request(false);
+                        match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
+                            Ok(()) | Err(PluginError::Warning(_)) => {}
+                            Err(PluginError::BadRequest(msg)) => {
+                                return Err(AppError::BadRequest(msg))
+                            }
+                            Err(PluginError::Forbidden(msg)) => {
+                                return Err(AppError::Forbidden(msg))
+                            }
+                        }
                         return Ok((resp, CacheHit::None));
                     }
 
@@ -413,7 +449,7 @@ pub async fn run(
 pub async fn run_streaming(
     pool: DbPool,
     registry: Arc<ProviderRegistry>,
-    request: ChatCompletionRequest,
+    mut request: ChatCompletionRequest,
     api_key: ApiKey,
     max_retries: u32,
     cache: Arc<CacheEngine>,
@@ -422,7 +458,16 @@ pub async fn run_streaming(
     strategy: RoutingStrategy,
     fallback_models: Vec<String>,
     prompt_version_id: Option<Uuid>,
+    plugin_chain: Arc<Vec<Box<dyn RequestPlugin>>>,
 ) -> AppResult<(Response, CacheHit)> {
+    // ── Plugin before_request chain ───────────────────────────────────────────
+    match plugins::run_before(&plugin_chain, &mut request, &api_key).await {
+        Ok(()) => {}
+        Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
+        Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
+        Err(PluginError::Warning(_)) => {}
+    }
+
     // ── Exact cache lookup ────────────────────────────────────────────────────
     let hash = cache::exact::compute_hash(&request);
 
@@ -555,54 +600,92 @@ pub async fn run_streaming(
                             let mut completion_tokens: u32 = 0;
                             let mut ttfb_ms: Option<i32> = None;
                             let mut final_model = model.clone();
+                            // 6.3: Track whether the stream ended cleanly or with a
+                            // provider error so the request log reflects reality.
+                            let mut stream_status = "success";
 
                             tokio::pin!(provider_stream);
 
-                            while let Some(chunk_result) = provider_stream.next().await {
-                                if ttfb_ms.is_none() {
-                                    ttfb_ms = Some(wall_start.elapsed().as_millis() as i32);
-                                }
+                            loop {
+                                tokio::select! {
+                                    biased;
 
-                                match chunk_result {
-                                    Err(e) => {
-                                        tracing::error!(
+                                    // 6.1: Detect client disconnect.
+                                    // tx.closed() resolves when the ReceiverStream
+                                    // (SSE body) is dropped by axum — i.e. the client
+                                    // disconnected.  Abort the provider stream
+                                    // immediately instead of letting it run to
+                                    // completion and burning tokens for nobody.
+                                    _ = tx.closed() => {
+                                        tracing::debug!(
                                             provider = provider_name,
-                                            "Stream error: {e}"
+                                            "Client disconnected — cancelling provider stream"
                                         );
                                         break;
                                     }
-                                    Ok(chunk) => {
-                                        if !chunk.model.is_empty() {
-                                            final_model = chunk.model.clone();
+
+                                    chunk_opt = provider_stream.next() => {
+                                        let Some(chunk_result) = chunk_opt else { break };
+
+                                        // Record TTFB on first byte received (error or data).
+                                        if ttfb_ms.is_none() {
+                                            ttfb_ms = Some(wall_start.elapsed().as_millis() as i32);
                                         }
 
-                                        if let Some(usage) = &chunk.usage {
-                                            prompt_tokens = usage.prompt_tokens;
-                                            completion_tokens = usage.completion_tokens;
-                                        } else {
-                                            for choice in &chunk.choices {
-                                                if !choice
-                                                    .delta
-                                                    .content
-                                                    .as_deref()
-                                                    .unwrap_or("")
-                                                    .is_empty()
-                                                {
-                                                    completion_tokens += 1;
+                                        match chunk_result {
+                                            Err(e) => {
+                                                // 6.3: Provider returned an error mid-stream
+                                                // (HTTP 200 then error SSE event).  Set
+                                                // status = "error" so the audit log is correct.
+                                                tracing::error!(
+                                                    provider = provider_name,
+                                                    error = %e,
+                                                    "Mid-stream provider error"
+                                                );
+                                                stream_status = "error";
+                                                break;
+                                            }
+                                            Ok(chunk) => {
+                                                if !chunk.model.is_empty() {
+                                                    final_model = chunk.model.clone();
+                                                }
+
+                                                if let Some(usage) = &chunk.usage {
+                                                    prompt_tokens = usage.prompt_tokens;
+                                                    completion_tokens = usage.completion_tokens;
+                                                } else {
+                                                    for choice in &chunk.choices {
+                                                        if !choice
+                                                            .delta
+                                                            .content
+                                                            .as_deref()
+                                                            .unwrap_or("")
+                                                            .is_empty()
+                                                        {
+                                                            completion_tokens += 1;
+                                                        }
+                                                    }
+                                                }
+
+                                                let data = match serde_json::to_string(&chunk) {
+                                                    Ok(s) => s,
+                                                    Err(e) => {
+                                                        tracing::warn!("Chunk serialise error: {e}");
+                                                        continue;
+                                                    }
+                                                };
+
+                                                // 6.2: send().await provides natural
+                                                // backpressure: the task suspends when
+                                                // the channel is full, preventing the
+                                                // provider from being consumed faster
+                                                // than the client can receive.  If the
+                                                // receiver was dropped between select!
+                                                // arms, is_err() returns immediately.
+                                                if tx.send(Ok(Event::default().data(data))).await.is_err() {
+                                                    break;
                                                 }
                                             }
-                                        }
-
-                                        let data = match serde_json::to_string(&chunk) {
-                                            Ok(s) => s,
-                                            Err(e) => {
-                                                tracing::warn!("Chunk serialise error: {e}");
-                                                continue;
-                                            }
-                                        };
-
-                                        if tx.send(Ok(Event::default().data(data))).await.is_err() {
-                                            break;
                                         }
                                     }
                                 }
@@ -616,7 +699,7 @@ pub async fn run_streaming(
                             let total_tokens = prompt_tokens + completion_tokens;
 
                             // Record streaming metrics
-                            counter!("velox_requests_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "status" => "success", "cache_type" => "none").increment(1);
+                            counter!("velox_requests_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "status" => stream_status, "cache_type" => "none").increment(1);
                             histogram!("velox_request_duration_seconds", "provider" => provider_name.to_string(), "model" => final_model.clone()).record(elapsed_secs);
                             counter!("velox_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "prompt").increment(prompt_tokens as u64);
                             counter!("velox_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "completion").increment(completion_tokens as u64);
@@ -659,7 +742,7 @@ pub async fn run_streaming(
                                     Some(total_tokens as i32),
                                     cost,
                                     latency_ms,
-                                    "success",
+                                    stream_status,
                                     true,
                                     ttfb_ms,
                                     prompt_version_id,
@@ -737,6 +820,7 @@ pub async fn run_with_workspace(
         strategy,
         fallback_models,
         None,
+        &[], // no plugins in workspace convenience wrapper
     )
     .await
 }

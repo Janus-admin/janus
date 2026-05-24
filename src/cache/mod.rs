@@ -5,11 +5,7 @@ pub mod policy;
 pub mod semantic;
 
 use crate::{
-    cache::{
-        embedding::EmbeddingModel,
-        index::hnsw::HnswIndex,
-        semantic::SemanticCache,
-    },
+    cache::{embedding::EmbeddingModel, index::hnsw::HnswIndex, semantic::SemanticCache},
     providers::{ChatCompletionRequest, ChatCompletionResponse, EmbeddingResponse},
 };
 use dashmap::DashMap;

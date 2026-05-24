@@ -31,13 +31,13 @@ fn orthogonal_embedding(dim: usize) -> Vec<f32> {
 // ─── LinearIndex tests ────────────────────────────────────────────────────────
 
 #[test]
-fn v3p1_linear_index_implements_embedding_index_trait() {
+fn v3_1_linear_index_implements_embedding_index_trait() {
     // Trait object creation verifies the impl satisfies Send + Sync.
     let _: Box<dyn EmbeddingIndex> = Box::new(LinearIndex::new());
 }
 
 #[test]
-fn v3p1_linear_insert_then_lookup_finds_entry() {
+fn v3_1_linear_insert_then_lookup_finds_entry() {
     let idx = LinearIndex::new();
     let emb = unit_embedding(64);
     idx.insert(emb.clone(), "linear-hash".to_string());
@@ -52,7 +52,7 @@ fn v3p1_linear_insert_then_lookup_finds_entry() {
 }
 
 #[test]
-fn v3p1_linear_lookup_returns_none_below_threshold() {
+fn v3_1_linear_lookup_returns_none_below_threshold() {
     let idx = LinearIndex::new();
     idx.insert(unit_embedding(64), "h".to_string());
     // Orthogonal vector has cosine similarity 0 with the unit embedding.
@@ -64,7 +64,7 @@ fn v3p1_linear_lookup_returns_none_below_threshold() {
 }
 
 #[test]
-fn v3p1_linear_clear_empties_index() {
+fn v3_1_linear_clear_empties_index() {
     let idx = LinearIndex::new();
     idx.insert(unit_embedding(64), "a".to_string());
     idx.insert(unit_embedding(64), "b".to_string());
@@ -77,12 +77,12 @@ fn v3p1_linear_clear_empties_index() {
 // ─── HnswIndex tests ──────────────────────────────────────────────────────────
 
 #[test]
-fn v3p1_hnsw_index_implements_embedding_index_trait() {
+fn v3_1_hnsw_index_implements_embedding_index_trait() {
     let _: Box<dyn EmbeddingIndex> = Box::new(HnswIndex::new(16, 200));
 }
 
 #[test]
-fn v3p1_hnsw_insert_then_lookup_finds_entry() {
+fn v3_1_hnsw_insert_then_lookup_finds_entry() {
     let idx = HnswIndex::new(16, 200);
     let emb = unit_embedding(64);
     idx.insert(emb.clone(), "hnsw-hash".to_string());
@@ -94,7 +94,7 @@ fn v3p1_hnsw_insert_then_lookup_finds_entry() {
 }
 
 #[test]
-fn v3p1_hnsw_lookup_returns_none_below_threshold() {
+fn v3_1_hnsw_lookup_returns_none_below_threshold() {
     let idx = HnswIndex::new(16, 200);
     idx.insert(unit_embedding(64), "h".to_string());
     // Orthogonal vector: cosine similarity = 0, well below any threshold.
@@ -103,7 +103,7 @@ fn v3p1_hnsw_lookup_returns_none_below_threshold() {
 }
 
 #[test]
-fn v3p1_hnsw_lookup_returns_above_threshold_entry() {
+fn v3_1_hnsw_lookup_returns_above_threshold_entry() {
     let idx = HnswIndex::new(16, 200);
     let emb = unit_embedding(128);
     idx.insert(emb.clone(), "above-thresh".to_string());
@@ -114,7 +114,7 @@ fn v3p1_hnsw_lookup_returns_above_threshold_entry() {
 }
 
 #[test]
-fn v3p1_hnsw_clear_empties_index() {
+fn v3_1_hnsw_clear_empties_index() {
     let idx = HnswIndex::new(16, 200);
     let emb = unit_embedding(64);
     idx.insert(emb.clone(), "will-be-cleared".to_string());
@@ -127,7 +127,7 @@ fn v3p1_hnsw_clear_empties_index() {
 }
 
 #[test]
-fn v3p1_hnsw_multiple_inserts_lookup_finds_best() {
+fn v3_1_hnsw_multiple_inserts_lookup_finds_best() {
     let idx = HnswIndex::new(16, 200);
     let target = unit_embedding(64);
     let other = orthogonal_embedding(64);
@@ -140,7 +140,7 @@ fn v3p1_hnsw_multiple_inserts_lookup_finds_best() {
 // ─── SemanticCache with HNSW backend ─────────────────────────────────────────
 
 #[test]
-fn v3p1_hnsw_backend_hits_on_similar_prompt() {
+fn v3_1_hnsw_backend_hits_on_similar_prompt() {
     let idx = Box::new(HnswIndex::new(16, 200));
     let sc = SemanticCache::with_index(idx, 0.80);
     let emb = unit_embedding(128);
@@ -154,7 +154,7 @@ fn v3p1_hnsw_backend_hits_on_similar_prompt() {
 }
 
 #[test]
-fn v3p1_linear_backend_still_works_unchanged() {
+fn v3_1_linear_backend_still_works_unchanged() {
     // SemanticCache::new() still uses LinearIndex (backwards compatible).
     let sc = SemanticCache::new(0.80);
     let emb = unit_embedding(64);
@@ -165,7 +165,7 @@ fn v3p1_linear_backend_still_works_unchanged() {
 }
 
 #[test]
-fn v3p1_regression_semantic_flush_clears_hnsw_index() {
+fn v3_1_regression_semantic_flush_clears_hnsw_index() {
     let idx = Box::new(HnswIndex::new(16, 200));
     let sc = SemanticCache::with_index(idx, 0.80);
     let emb = unit_embedding(64);
@@ -178,7 +178,7 @@ fn v3p1_regression_semantic_flush_clears_hnsw_index() {
 // ─── SemanticCachePolicy tests ────────────────────────────────────────────────
 
 #[test]
-fn v3p1_policy_allows_all_when_models_list_empty() {
+fn v3_1_policy_allows_all_when_models_list_empty() {
     let policy = SemanticCachePolicy::default(); // models = []
     assert!(policy.allows("gpt-4o", "/v1/chat/completions", "any-key"));
     assert!(policy.allows("claude-3-opus", "/v1/chat/completions", "any-key"));
@@ -186,7 +186,7 @@ fn v3p1_policy_allows_all_when_models_list_empty() {
 }
 
 #[test]
-fn v3p1_policy_denies_unlisted_model() {
+fn v3_1_policy_denies_unlisted_model() {
     let policy = SemanticCachePolicy::new(vec!["gpt-4o-mini".to_string()], vec![], vec![]);
     assert!(policy.allows("gpt-4o-mini", "/v1/chat/completions", "k"));
     assert!(!policy.allows("gpt-4o", "/v1/chat/completions", "k"));
@@ -194,7 +194,7 @@ fn v3p1_policy_denies_unlisted_model() {
 }
 
 #[test]
-fn v3p1_policy_denies_excluded_route_prefix() {
+fn v3_1_policy_denies_excluded_route_prefix() {
     let policy = SemanticCachePolicy::new(vec![], vec!["/v1/embeddings".to_string()], vec![]);
     assert!(!policy.allows("any-model", "/v1/embeddings", "k"));
     assert!(!policy.allows("any-model", "/v1/embeddings/batch", "k"));
@@ -202,14 +202,14 @@ fn v3p1_policy_denies_excluded_route_prefix() {
 }
 
 #[test]
-fn v3p1_policy_denies_excluded_key() {
+fn v3_1_policy_denies_excluded_key() {
     let policy = SemanticCachePolicy::new(vec![], vec![], vec!["no-cache-key".to_string()]);
     assert!(!policy.allows("gpt-4o", "/v1/chat/completions", "no-cache-key"));
     assert!(policy.allows("gpt-4o", "/v1/chat/completions", "other-key"));
 }
 
 #[test]
-fn v3p1_policy_blocks_semantic_cache_for_excluded_model() {
+fn v3_1_policy_blocks_semantic_cache_for_excluded_model() {
     // When a model is excluded, the cache engine's semantic lookup should be skipped.
     let policy = SemanticCachePolicy::new(vec!["gpt-4o-mini".to_string()], vec![], vec![]);
 
@@ -233,7 +233,7 @@ fn v3p1_policy_blocks_semantic_cache_for_excluded_model() {
 // ─── Scale: O(log n) vs O(n) ─────────────────────────────────────────────────
 
 #[test]
-fn v3p1_hnsw_lookup_faster_than_linear_at_1000_entries() {
+fn v3_1_hnsw_lookup_faster_than_linear_at_1000_entries() {
     const N: usize = 1_000;
     const DIM: usize = 128;
     const REPS: usize = 50;
@@ -287,7 +287,7 @@ fn v3p1_hnsw_lookup_faster_than_linear_at_1000_entries() {
 // ─── Regression ───────────────────────────────────────────────────────────────
 
 #[test]
-fn v3p1_regression_exact_cache_unaffected() {
+fn v3_1_regression_exact_cache_unaffected() {
     use serde_json::json;
     use std::sync::Arc;
     use velox::cache::exact::compute_hash;

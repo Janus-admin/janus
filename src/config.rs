@@ -121,6 +121,19 @@ pub struct Config {
     #[serde(default)]
     pub tracing: TracingConfig,
 
+    // ── Plugin middleware (V3-4) ──────────────────────────────────────────────
+    #[serde(default)]
+    pub plugins: PluginsConfig,
+
+    // ── TLS / mTLS for provider connections (V3-5) ───────────────────────────
+    #[serde(default)]
+    pub provider_tls: ProviderTlsConfig,
+
+    // ── Key rotation grace period (V3-5) ─────────────────────────────────────
+    /// Seconds the old key remains valid after a rotation. Default: 300 (5 min).
+    #[serde(default = "default_rotation_grace_period_secs")]
+    pub rotation_grace_period_secs: u64,
+
     // ── Clustering (V2-6) ─────────────────────────────────────────────────────
     /// Multi-node clustering configuration.
     /// When enabled, rate limits use the shared `rate_limit_windows` DB table
@@ -142,6 +155,60 @@ pub struct RoutingConfig {
     /// Per-model fallback chains: model → ordered list of fallback model IDs.
     #[serde(default)]
     pub fallbacks: HashMap<String, Vec<String>>,
+}
+
+/// mTLS / TLS-pinning configuration for outbound provider connections (V3-5).
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ProviderTlsConfig {
+    /// Path to a PEM-encoded CA certificate for TLS pinning. Empty = disabled.
+    #[serde(default)]
+    pub ca_cert_path: String,
+    /// Path to a PEM-encoded client certificate for mTLS. Empty = disabled.
+    /// Must be set together with `client_key_path`.
+    #[serde(default)]
+    pub client_cert_path: String,
+    /// Path to the PEM-encoded private key for the client certificate.
+    #[serde(default)]
+    pub client_key_path: String,
+}
+
+impl ProviderTlsConfig {
+    /// Validate paths and key/cert pairing at startup.
+    /// Returns an error string on the first problem found.
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.ca_cert_path.is_empty() && !std::path::Path::new(&self.ca_cert_path).exists() {
+            return Err(format!(
+                "provider_tls.ca_cert_path not found: {}",
+                self.ca_cert_path
+            ));
+        }
+        if !self.client_cert_path.is_empty() && self.client_key_path.is_empty() {
+            return Err(
+                "provider_tls.client_key_path is required when client_cert_path is set".to_string(),
+            );
+        }
+        if !self.client_key_path.is_empty() && self.client_cert_path.is_empty() {
+            return Err(
+                "provider_tls.client_cert_path is required when client_key_path is set".to_string(),
+            );
+        }
+        if !self.client_cert_path.is_empty()
+            && !std::path::Path::new(&self.client_cert_path).exists()
+        {
+            return Err(format!(
+                "provider_tls.client_cert_path not found: {}",
+                self.client_cert_path
+            ));
+        }
+        if !self.client_key_path.is_empty() && !std::path::Path::new(&self.client_key_path).exists()
+        {
+            return Err(format!(
+                "provider_tls.client_key_path not found: {}",
+                self.client_key_path
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Multi-node clustering configuration (V2-6).
@@ -168,6 +235,10 @@ impl Default for ClusterConfig {
 
 fn default_node_id() -> String {
     "node-1".to_string()
+}
+
+fn default_rotation_grace_period_secs() -> u64 {
+    300
 }
 
 fn default_host() -> String {
@@ -246,6 +317,27 @@ pub struct TracingConfig {
     /// Sampling rate [0.0, 1.0]. 1.0 = 100%, 0.1 = 10%. Default: 1.0
     #[serde(default = "default_sample_rate")]
     pub sample_rate: f64,
+}
+
+/// Plugin middleware configuration (V3-4).
+#[derive(Debug, Clone, Deserialize)]
+pub struct PluginsConfig {
+    /// Enable PII redaction of request message content. Default: true.
+    #[serde(default = "default_true")]
+    pub pii_redaction: bool,
+    /// Reject requests whose total message characters exceed this limit.
+    /// 0 = no limit (default).
+    #[serde(default)]
+    pub max_prompt_chars: usize,
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self {
+            pii_redaction: true,
+            max_prompt_chars: 0,
+        }
+    }
 }
 
 impl Default for TracingConfig {

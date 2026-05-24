@@ -60,6 +60,8 @@ struct ApiKeyRowSqlite {
     pub name: String,
     pub key_hash: String,
     pub key_sha256: Option<String>,
+    pub previous_key_sha256: Option<String>,
+    pub rotation_expires_at: Option<DateTime<Utc>>,
     pub key_prefix: String,
     pub workspace_id: Option<Uuid>,
     // budget columns stored as TEXT in SQLite; read as String, parsed to Decimal in From<>
@@ -87,6 +89,8 @@ impl From<ApiKeyRowSqlite> for ApiKey {
             name: row.name,
             key_hash: row.key_hash,
             key_sha256: row.key_sha256,
+            previous_key_sha256: row.previous_key_sha256,
+            rotation_expires_at: row.rotation_expires_at,
             key_prefix: row.key_prefix,
             workspace_id: row.workspace_id,
             budget_limit: row.budget_limit.and_then(|s| s.parse().ok()),
@@ -221,6 +225,9 @@ pub async fn list(pool: &DbPool, page: i64, per_page: i64) -> AppResult<(Vec<Api
 
 /// Load every active key together with its sha256 bytes.
 /// Used at startup to populate the in-memory dashmap.
+///
+/// For keys with an active rotation grace period (rotation_expires_at in the future),
+/// also emits an entry under the previous_key_sha256 so old keys stay valid.
 pub async fn load_all_active(pool: &DbPool) -> AppResult<Vec<([u8; 32], ApiKey)>> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
@@ -229,13 +236,24 @@ pub async fn load_all_active(pool: &DbPool) -> AppResult<Vec<([u8; 32], ApiKey)>
         )
         .fetch_all(pool)
         .await?;
-        Ok(keys
-            .into_iter()
-            .filter_map(|k| {
-                let hash = parse_sha256_hex(k.key_sha256.as_deref()?)?;
-                Some((hash, k))
-            })
-            .collect())
+
+        let mut out = Vec::with_capacity(keys.len());
+        for k in keys {
+            if let Some(hash) = parse_sha256_hex(k.key_sha256.as_deref().unwrap_or("")) {
+                // Also register the previous (old) key hash during its grace period.
+                if let (Some(prev_hex), Some(expires_at)) =
+                    (&k.previous_key_sha256, &k.rotation_expires_at)
+                {
+                    if *expires_at > chrono::Utc::now() {
+                        if let Some(prev_hash) = parse_sha256_hex(prev_hex) {
+                            out.push((prev_hash, k.clone()));
+                        }
+                    }
+                }
+                out.push((hash, k));
+            }
+        }
+        Ok(out)
     }
 
     #[cfg(feature = "sqlite")]
@@ -245,14 +263,24 @@ pub async fn load_all_active(pool: &DbPool) -> AppResult<Vec<([u8; 32], ApiKey)>
         )
         .fetch_all(pool)
         .await?;
-        Ok(rows
-            .into_iter()
-            .filter_map(|r| {
-                let hash = parse_sha256_hex(r.key_sha256.as_deref()?)?;
-                let key: ApiKey = r.into();
-                Some((hash, key))
-            })
-            .collect())
+
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let key: ApiKey = r.into();
+            if let Some(hash) = parse_sha256_hex(key.key_sha256.as_deref().unwrap_or("")) {
+                if let (Some(prev_hex), Some(expires_at)) =
+                    (&key.previous_key_sha256, &key.rotation_expires_at)
+                {
+                    if *expires_at > chrono::Utc::now() {
+                        if let Some(prev_hash) = parse_sha256_hex(prev_hex) {
+                            out.push((prev_hash, key.clone()));
+                        }
+                    }
+                }
+                out.push((hash, key));
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -392,4 +420,64 @@ pub async fn revoke_key(pool: &DbPool, id: Uuid) -> AppResult<bool> {
         .execute(pool)
         .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Rotate an API key: generate new credentials while keeping the same ID.
+///
+/// The old `key_sha256` is moved to `previous_key_sha256`, which remains valid
+/// until `rotation_expires_at` (= now + grace_period_secs). The new key is active
+/// immediately. Returns the updated ApiKey or None if the id does not exist.
+pub async fn rotate_key(
+    pool: &DbPool,
+    id: Uuid,
+    new_key_sha256: &str,
+    new_key_hash: &str,
+    new_key_prefix: &str,
+    grace_period_secs: u64,
+) -> AppResult<Option<ApiKey>> {
+    let expires_at = chrono::Utc::now() + chrono::Duration::seconds(grace_period_secs as i64);
+
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        let key = sqlx::query_as::<_, ApiKey>(
+            "UPDATE api_keys
+             SET previous_key_sha256 = key_sha256,
+                 rotation_expires_at = $1,
+                 key_sha256          = $2,
+                 key_hash            = $3,
+                 key_prefix          = $4
+             WHERE id = $5 AND is_active = TRUE
+             RETURNING *",
+        )
+        .bind(expires_at)
+        .bind(new_key_sha256)
+        .bind(new_key_hash)
+        .bind(new_key_prefix)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(key)
+    }
+
+    #[cfg(feature = "sqlite")]
+    {
+        let row = sqlx::query_as::<_, ApiKeyRowSqlite>(
+            "UPDATE api_keys
+             SET previous_key_sha256 = key_sha256,
+                 rotation_expires_at = $1,
+                 key_sha256          = $2,
+                 key_hash            = $3,
+                 key_prefix          = $4
+             WHERE id = $5 AND is_active = 1
+             RETURNING *",
+        )
+        .bind(expires_at)
+        .bind(new_key_sha256)
+        .bind(new_key_hash)
+        .bind(new_key_prefix)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row.map(Into::into))
+    }
 }

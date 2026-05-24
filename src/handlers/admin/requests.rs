@@ -2,11 +2,12 @@ use crate::{db::requests as db_requests, errors::AppResult, state::AppState};
 use axum::{
     extract::{Path, Query, State},
     http::header,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -20,6 +21,12 @@ pub struct ListRequestsQuery {
     pub model: Option<String>,
     pub status: Option<String>,
     pub api_key_id: Option<Uuid>,
+    /// RFC3339 lower bound (inclusive) on created_at (V3-5 audit filter).
+    pub start_time: Option<chrono::DateTime<chrono::Utc>>,
+    /// RFC3339 upper bound (inclusive) on created_at (V3-5 audit filter).
+    pub end_time: Option<chrono::DateTime<chrono::Utc>>,
+    /// When true, return only cached responses; false = only live responses (V3-5).
+    pub has_cache_hit: Option<bool>,
 }
 
 fn default_page() -> i64 {
@@ -30,10 +37,13 @@ fn default_per_page() -> i64 {
 }
 
 /// GET /admin/requests — list requests with optional filters.
+///
+/// V3-5: adds start_time, end_time, has_cache_hit filters and returns
+/// `X-Velox-Audit-Hash: <sha256-of-response-body>` for tamper detection.
 pub async fn list_requests(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListRequestsQuery>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<Response> {
     let page = params.page.max(1);
     let per_page = params.per_page.clamp(1, 100);
 
@@ -45,17 +55,37 @@ pub async fn list_requests(
         params.model.as_deref(),
         params.status.as_deref(),
         params.api_key_id,
+        params.start_time,
+        params.end_time,
+        params.has_cache_hit,
     )
     .await?;
 
-    Ok(Json(json!({
+    let body = json!({
         "data": rows,
         "meta": {
             "page": page,
             "per_page": per_page,
             "total": total,
         }
-    })))
+    });
+
+    let body_bytes = serde_json::to_vec(&body).unwrap_or_default();
+    let audit_hash = {
+        let mut h = Sha256::new();
+        h.update(&body_bytes);
+        h.finalize()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
+    };
+
+    let mut response = Json(body).into_response();
+    response
+        .headers_mut()
+        .insert("X-Velox-Audit-Hash", audit_hash.parse().unwrap());
+
+    Ok(response)
 }
 
 /// GET /admin/requests/export — download all matching requests as CSV.
@@ -75,6 +105,9 @@ pub async fn export_requests(
         params.model.as_deref(),
         params.status.as_deref(),
         params.api_key_id,
+        params.start_time,
+        params.end_time,
+        params.has_cache_hit,
     )
     .await
     {

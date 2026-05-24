@@ -76,7 +76,7 @@ tests/
     └── v3_5_security.rs
 ```
 
-Test naming: `v3p{phase}_{feature}_{expected_outcome}`
+Test naming: `v3_{phase}_{feature}_{expected_outcome}` (e.g. `v3_1_hnsw_lookup_returns_above_threshold_entry`)
 
 ---
 
@@ -832,9 +832,9 @@ async-trait = "0.1"   # if not already present
 | V3-0 | Foundation Fixes | ✅ Complete (2026-05-24) | CLAUDE.md + semantic flush + benches |
 | V3-1 | Semantic Cache Redesign | ✅ Complete (2026-05-24) | O(n) → HNSW, EmbeddingIndex trait, SemanticCachePolicy |
 | V3-2 | OpenTelemetry | ✅ Complete (2026-05-24) | `src/telemetry.rs`, span tree, OTLP gRPC, W3C propagation, 16 tests |
-| V3-3 | Streaming Hardening | ⬜ Not started | Disconnect propagation, backpressure |
-| V3-4 | Plugin Middleware | ⬜ Not started | RequestPlugin trait, plugin chain |
-| V3-5 | Security Hardening | ⬜ Not started | mTLS, key rotation, audit API |
+| V3-3 | Streaming Hardening | ✅ Complete (2026-05-24) | select!+tx.closed() disconnect, bounded-channel backpressure, mid-stream error status |
+| V3-4 | Plugin Middleware | ✅ Complete (2026-05-24) | RequestPlugin trait, plugin chain, PiiRedactionPlugin, ContentLengthPlugin, 13 tests |
+| V3-5 | Security Hardening | ✅ Complete (2026-05-24) | mTLS validation, key rotation with grace period, extended audit log + X-Velox-Audit-Hash, 16 tests |
 
 ---
 

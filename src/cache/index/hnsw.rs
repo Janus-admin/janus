@@ -70,7 +70,10 @@ impl EmbeddingIndex for HnswIndex {
         let best = results.into_iter().next()?;
         let similarity = 1.0_f32 - best.distance;
         if similarity >= threshold {
-            inner.id_to_hash.get(&best.d_id).map(|h| (h.clone(), similarity))
+            inner
+                .id_to_hash
+                .get(&best.d_id)
+                .map(|h| (h.clone(), similarity))
         } else {
             None
         }

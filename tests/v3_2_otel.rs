@@ -51,25 +51,25 @@ fn get_exporter() -> &'static InMemorySpanExporter {
 // ── TracingConfig defaults ────────────────────────────────────────────────────
 
 #[test]
-fn v3p2_tracing_config_defaults_to_disabled() {
+fn v3_2_tracing_config_defaults_to_disabled() {
     let cfg = TracingConfig::default();
     assert!(!cfg.enabled, "tracing must be off by default");
 }
 
 #[test]
-fn v3p2_tracing_config_default_endpoint() {
+fn v3_2_tracing_config_default_endpoint() {
     let cfg = TracingConfig::default();
     assert_eq!(cfg.otlp_endpoint, "http://localhost:4317");
 }
 
 #[test]
-fn v3p2_tracing_config_default_service_name() {
+fn v3_2_tracing_config_default_service_name() {
     let cfg = TracingConfig::default();
     assert_eq!(cfg.service_name, "velox");
 }
 
 #[test]
-fn v3p2_tracing_config_default_sample_rate_is_one() {
+fn v3_2_tracing_config_default_sample_rate_is_one() {
     let cfg = TracingConfig::default();
     assert!(
         (cfg.sample_rate - 1.0).abs() < f64::EPSILON,
@@ -80,7 +80,7 @@ fn v3p2_tracing_config_default_sample_rate_is_one() {
 // ── init_tracer disabled path ────────────────────────────────────────────────
 
 #[test]
-fn v3p2_tracing_disabled_init_returns_none() {
+fn v3_2_tracing_disabled_init_returns_none() {
     let cfg = TracingConfig::default(); // enabled = false
     let result = velox::telemetry::init_tracer(&cfg);
     assert!(result.is_ok(), "init_tracer must not error when disabled");
@@ -94,7 +94,7 @@ fn v3p2_tracing_disabled_init_returns_none() {
 
 #[tokio::test]
 #[serial]
-async fn v3p2_request_produces_root_span() {
+async fn v3_2_request_produces_root_span() {
     let exporter = get_exporter();
     exporter.reset();
 
@@ -115,7 +115,7 @@ async fn v3p2_request_produces_root_span() {
 
 #[tokio::test]
 #[serial]
-async fn v3p2_cache_hit_span_produced() {
+async fn v3_2_cache_hit_span_produced() {
     let exporter = get_exporter();
     exporter.reset();
 
@@ -136,7 +136,7 @@ async fn v3p2_cache_hit_span_produced() {
 
 #[tokio::test]
 #[serial]
-async fn v3p2_provider_call_span_has_model_attribute() {
+async fn v3_2_provider_call_span_has_model_attribute() {
     let exporter = get_exporter();
     exporter.reset();
 
@@ -175,7 +175,7 @@ async fn v3p2_provider_call_span_has_model_attribute() {
 
 #[tokio::test]
 #[serial]
-async fn v3p2_span_includes_token_counts_on_success() {
+async fn v3_2_span_includes_token_counts_on_success() {
     let exporter = get_exporter();
     exporter.reset();
 
@@ -222,7 +222,7 @@ async fn v3p2_span_includes_token_counts_on_success() {
 // ── Incoming traceparent propagation ─────────────────────────────────────────
 
 #[test]
-fn v3p2_extract_context_parses_valid_traceparent() {
+fn v3_2_extract_context_parses_valid_traceparent() {
     get_exporter(); // ensure propagator is registered
 
     let mut headers = axum::http::HeaderMap::new();
@@ -248,7 +248,7 @@ fn v3p2_extract_context_parses_valid_traceparent() {
 }
 
 #[test]
-fn v3p2_extract_context_returns_empty_when_no_traceparent() {
+fn v3_2_extract_context_returns_empty_when_no_traceparent() {
     get_exporter(); // ensure propagator is registered
 
     let headers = axum::http::HeaderMap::new();
@@ -263,7 +263,7 @@ fn v3p2_extract_context_returns_empty_when_no_traceparent() {
 
 #[tokio::test]
 #[serial]
-async fn v3p2_incoming_traceparent_header_linked_to_root_span() {
+async fn v3_2_incoming_traceparent_header_linked_to_root_span() {
     let exporter = get_exporter();
     exporter.reset();
 
@@ -302,7 +302,7 @@ async fn v3p2_incoming_traceparent_header_linked_to_root_span() {
 
 #[tokio::test]
 #[serial]
-async fn v3p2_inject_trace_headers_is_noop_without_active_span() {
+async fn v3_2_inject_trace_headers_is_noop_without_active_span() {
     let client = reqwest::Client::new();
     // Build a request but don't send it — verify no panic outside a span.
     let builder = client.get("http://127.0.0.1:1/noop");
@@ -312,7 +312,7 @@ async fn v3p2_inject_trace_headers_is_noop_without_active_span() {
 
 #[tokio::test]
 #[serial]
-async fn v3p2_inject_trace_headers_adds_traceparent_inside_span() {
+async fn v3_2_inject_trace_headers_adds_traceparent_inside_span() {
     get_exporter(); // ensure OTel subscriber is active
 
     let client = reqwest::Client::new();
@@ -341,7 +341,7 @@ async fn v3p2_inject_trace_headers_adds_traceparent_inside_span() {
 // ── Disabled tracing regression ──────────────────────────────────────────────
 
 #[test]
-fn v3p2_tracing_disabled_produces_no_provider() {
+fn v3_2_tracing_disabled_produces_no_provider() {
     let cfg = TracingConfig::default(); // enabled = false
     let result = velox::telemetry::init_tracer(&cfg).unwrap();
     assert!(
@@ -351,7 +351,7 @@ fn v3p2_tracing_disabled_produces_no_provider() {
 }
 
 #[test]
-fn v3p2_regression_gateway_latency_tracing_disabled_is_fast() {
+fn v3_2_regression_gateway_latency_tracing_disabled_is_fast() {
     use std::time::Instant;
 
     let cfg = TracingConfig::default(); // enabled = false

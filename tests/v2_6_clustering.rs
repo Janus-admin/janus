@@ -188,6 +188,8 @@ async fn v2p6_key_revocation_propagates_via_notify() {
         name: "propagation-test".to_string(),
         key_hash: "placeholder".to_string(),
         key_sha256: Some(sha256_hex.clone()),
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: "vx-sk-Propa".to_string(),
         workspace_id: None,
         budget_limit: None,

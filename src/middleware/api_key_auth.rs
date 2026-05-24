@@ -1,5 +1,8 @@
 use crate::{
-    db::api_keys::sha256_bytes, errors::AppError, models::api_key::ApiKey, state::AppState,
+    db::api_keys::{sha256_bytes, sha256_hex},
+    errors::AppError,
+    models::api_key::ApiKey,
+    state::AppState,
 };
 use axum::{
     extract::{FromRef, FromRequestParts},
@@ -11,6 +14,11 @@ use std::sync::Arc;
 ///
 /// On success, injects the validated `ApiKey` into the handler. On failure, returns
 /// `401 Unauthorized` with a JSON error body matching the Velox admin API format.
+///
+/// Key rotation (V3-5): if a key has been rotated, the DashMap contains entries for
+/// both the new hash and the previous hash (pointing to the same ApiKey record).
+/// When the presented hash matches `previous_key_sha256`, we check that
+/// `rotation_expires_at` is still in the future; expired old keys are evicted and rejected.
 pub struct GatewayAuth(pub ApiKey);
 
 #[axum::async_trait]
@@ -55,6 +63,32 @@ where
         if let Some(expires_at) = api_key.expires_at {
             if expires_at < chrono::Utc::now() {
                 return Err(AppError::Unauthorized("API key has expired".to_string()));
+            }
+        }
+
+        // Rotation grace-period check (V3-5):
+        // If the presented hash does not match the current key_sha256, the caller
+        // is using the old (pre-rotation) key. Verify the grace window is still open.
+        let presented_hex = sha256_hex(token);
+        let is_previous_hash = api_key
+            .key_sha256
+            .as_deref()
+            .map(|current| current != presented_hex.as_str())
+            .unwrap_or(false);
+
+        if is_previous_hash {
+            match api_key.rotation_expires_at {
+                Some(expires_at) if expires_at > chrono::Utc::now() => {
+                    // Within grace period — allow the old key to pass.
+                }
+                _ => {
+                    // Grace period has expired (or rotation_expires_at was never set).
+                    // Evict the stale DashMap entry so future lookups fail fast.
+                    app_state.key_cache.remove(&key_bytes);
+                    return Err(AppError::Unauthorized(
+                        "API key rotation grace period has expired".to_string(),
+                    ));
+                }
             }
         }
 

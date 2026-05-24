@@ -15,6 +15,8 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
 
+// ── Key rotation ──────────────────────────────────────────────────────────────
+
 // ── Request / response types ──────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +221,60 @@ pub async fn update_key(
         .ok_or_else(|| crate::errors::AppError::NotFound(format!("API key {id}")))?;
 
     Ok(Json(json!({ "data": ApiKeyView::from(key) })))
+}
+
+/// POST /admin/keys/:id/rotate — generate a new secret for an existing key.
+///
+/// The old secret remains valid for `config.rotation_grace_period_secs` (default 300 s)
+/// so callers have time to swap to the new key without a hard cutover. After the grace
+/// period expires the old key is rejected by the auth middleware.
+///
+/// The new full key is returned ONCE here. Copy it immediately — it is never stored.
+pub async fn rotate_key(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    let new_raw_key = db_api_keys::generate_key();
+    let new_key_hash = hash(&new_raw_key, DEFAULT_COST)
+        .map_err(|e| crate::errors::AppError::Anyhow(anyhow::anyhow!(e)))?;
+    let new_key_sha256 = db_api_keys::sha256_hex(&new_raw_key);
+    let new_key_prefix: String = new_raw_key.chars().take(12).collect();
+
+    let grace = state.config.rotation_grace_period_secs;
+
+    let updated = db_api_keys::rotate_key(
+        &state.pool,
+        id,
+        &new_key_sha256,
+        &new_key_hash,
+        &new_key_prefix,
+        grace,
+    )
+    .await?
+    .ok_or_else(|| crate::errors::AppError::NotFound(format!("API key {id}")))?;
+
+    // Register the new hash in the dashmap immediately.
+    let new_hash_bytes = db_api_keys::sha256_bytes(&new_raw_key);
+    state.key_cache.insert(new_hash_bytes, updated.clone());
+
+    // Also register the old (previous) hash so it remains valid during the grace period.
+    if let Some(ref prev_hex) = updated.previous_key_sha256 {
+        if let Some(prev_bytes) = db_api_keys::parse_sha256_hex(prev_hex) {
+            state.key_cache.insert(prev_bytes, updated.clone());
+        }
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "data": {
+                "id": updated.id,
+                "key": new_raw_key,
+                "key_prefix": updated.key_prefix,
+                "rotation_expires_at": updated.rotation_expires_at,
+            }
+        })),
+    ))
 }
 
 /// DELETE /admin/keys/:id — revoke (deactivate) a key.

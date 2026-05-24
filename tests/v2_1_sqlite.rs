@@ -59,6 +59,8 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
         name: "SQLite Test Key".to_string(),
         key_hash: "placeholder".to_string(),
         key_sha256: None,
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: test_key_str[..12].to_string(),
         workspace_id: None,
         budget_limit: None,
@@ -121,6 +123,7 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
         cache,
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
+        plugins: std::sync::Arc::new(vec![]),
     });
 
     let app = velox::routes::create_router(state);
@@ -353,6 +356,8 @@ async fn v2_1_sqlite_rate_limit_enforced() {
         name: "RL Key".to_string(),
         key_hash: "placeholder2".to_string(),
         key_sha256: None,
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: test_key_str[..12].to_string(),
         workspace_id: None,
         budget_limit: None,
@@ -396,6 +401,7 @@ async fn v2_1_sqlite_rate_limit_enforced() {
         cache,
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
+        plugins: std::sync::Arc::new(vec![]),
     });
 
     let app = velox::routes::create_router(state);
@@ -456,6 +462,8 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
         name: "Budget Key".to_string(),
         key_hash: "placeholder3".to_string(),
         key_sha256: None,
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: test_key_str[..12].to_string(),
         workspace_id: None,
         budget_limit: Some(Decimal::new(1, 6)), // $0.000001
@@ -498,6 +506,7 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
         cache,
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
+        plugins: std::sync::Arc::new(vec![]),
     });
 
     let app = velox::routes::create_router(state);

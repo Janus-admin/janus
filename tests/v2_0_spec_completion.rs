@@ -474,6 +474,8 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         name: "circuit-test".into(),
         key_hash: "placeholder".into(),
         key_sha256: None,
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: api_key_str[..12].into(),
         workspace_id: None,
         budget_limit: None,
@@ -549,6 +551,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         cache,
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
+        plugins: std::sync::Arc::new(vec![]),
     });
 
     let app = velox::routes::create_router(state);
@@ -599,6 +602,8 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         name: "tpm-test".into(),
         key_hash: "placeholder".into(),
         key_sha256: None,
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: api_key_str[..12].into(),
         workspace_id: None,
         budget_limit: None,
@@ -659,6 +664,7 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         cache,
         semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
         event_tx,
+        plugins: std::sync::Arc::new(vec![]),
     });
 
     let app = velox::routes::create_router(state);

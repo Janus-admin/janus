@@ -181,6 +181,7 @@ async fn proxy_llm_request(state: &Arc<AppState>, args: Value) -> Result<Value, 
         &strategy,
         &[],
         None,
+        &state.plugins,
     )
     .await
     {
@@ -333,6 +334,8 @@ fn internal_service_key() -> ApiKey {
         name: "mcp-internal".to_string(),
         key_hash: String::new(),
         key_sha256: None,
+        previous_key_sha256: None,
+        rotation_expires_at: None,
         key_prefix: "mcp-".to_string(),
         workspace_id: None,
         budget_limit: None,

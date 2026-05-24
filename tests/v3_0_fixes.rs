@@ -4,14 +4,12 @@
 // Run with: cargo test v3_0
 // These are pure unit tests — no DB, no HTTP, no spawned app required.
 
-use std::sync::Arc;
-use velox::cache::{
-    exact::compute_hash,
-    semantic::SemanticCache,
-    CacheEngine,
-};
-use velox::providers::{ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData};
 use serde_json::json;
+use std::sync::Arc;
+use velox::cache::{exact::compute_hash, semantic::SemanticCache, CacheEngine};
+use velox::providers::{
+    ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData,
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -178,7 +176,10 @@ fn v3_0_regression_semantic_cache_threshold_respected() {
     // which is impossible. Use a threshold just below 1.0 to test near-match.
     let sc_near = SemanticCache::new(0.99);
     sc_near.insert(emb_a.clone(), "hash-near".to_string());
-    assert!(sc_near.lookup(&emb_a).is_some(), "identical vectors must hit");
+    assert!(
+        sc_near.lookup(&emb_a).is_some(),
+        "identical vectors must hit"
+    );
 
     // Non-matching vector must miss even at low threshold when too dissimilar.
     let sc_strict = SemanticCache::new(0.99);

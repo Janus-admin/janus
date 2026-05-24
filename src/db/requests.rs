@@ -135,6 +135,9 @@ pub async fn insert_request(
 }
 
 /// List requests with optional filters. Returns (rows, total_count).
+///
+/// V3-5 extended filters: start_time, end_time, has_cache_hit.
+#[allow(clippy::too_many_arguments)]
 pub async fn list_requests(
     pool: &DbPool,
     page: i64,
@@ -143,9 +146,12 @@ pub async fn list_requests(
     model: Option<&str>,
     status: Option<&str>,
     api_key_id: Option<Uuid>,
+    start_time: Option<chrono::DateTime<Utc>>,
+    end_time: Option<chrono::DateTime<Utc>>,
+    has_cache_hit: Option<bool>,
 ) -> AppResult<(Vec<crate::models::request::Request>, i64)> {
-    // PostgreSQL: ::text / ::uuid casts are required so the planner knows the
-    // parameter type when the value is NULL.
+    // PostgreSQL: ::text / ::uuid / ::timestamptz casts are required so the planner
+    // knows the parameter type when the value is NULL.
     // SQLite: no cast syntax; plain `$N IS NULL` works for both NULL and non-NULL.
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     let (count_sql, list_sql) = (
@@ -153,14 +159,24 @@ pub async fn list_requests(
          WHERE ($1::text IS NULL OR provider = $1)
            AND ($2::text IS NULL OR model = $2)
            AND ($3::text IS NULL OR status = $3)
-           AND ($4::uuid IS NULL OR api_key_id = $4)",
+           AND ($4::uuid IS NULL OR api_key_id = $4)
+           AND ($5::timestamptz IS NULL OR created_at >= $5)
+           AND ($6::timestamptz IS NULL OR created_at <= $6)
+           AND ($7::boolean IS NULL
+                OR ($7 = TRUE  AND cache_type IS NOT NULL)
+                OR ($7 = FALSE AND cache_type IS NULL))",
         "SELECT * FROM requests
          WHERE ($1::text IS NULL OR provider = $1)
            AND ($2::text IS NULL OR model = $2)
            AND ($3::text IS NULL OR status = $3)
            AND ($4::uuid IS NULL OR api_key_id = $4)
+           AND ($5::timestamptz IS NULL OR created_at >= $5)
+           AND ($6::timestamptz IS NULL OR created_at <= $6)
+           AND ($7::boolean IS NULL
+                OR ($7 = TRUE  AND cache_type IS NOT NULL)
+                OR ($7 = FALSE AND cache_type IS NULL))
          ORDER BY created_at DESC
-         LIMIT $5 OFFSET $6",
+         LIMIT $8 OFFSET $9",
     );
 
     #[cfg(feature = "sqlite")]
@@ -169,21 +185,40 @@ pub async fn list_requests(
          WHERE ($1 IS NULL OR provider = $1)
            AND ($2 IS NULL OR model = $2)
            AND ($3 IS NULL OR status = $3)
-           AND ($4 IS NULL OR api_key_id = $4)",
+           AND ($4 IS NULL OR api_key_id = $4)
+           AND ($5 IS NULL OR created_at >= $5)
+           AND ($6 IS NULL OR created_at <= $6)
+           AND ($7 IS NULL
+                OR ($7 = 1 AND cache_type IS NOT NULL)
+                OR ($7 = 0 AND cache_type IS NULL))",
         "SELECT * FROM requests
          WHERE ($1 IS NULL OR provider = $1)
            AND ($2 IS NULL OR model = $2)
            AND ($3 IS NULL OR status = $3)
            AND ($4 IS NULL OR api_key_id = $4)
+           AND ($5 IS NULL OR created_at >= $5)
+           AND ($6 IS NULL OR created_at <= $6)
+           AND ($7 IS NULL
+                OR ($7 = 1 AND cache_type IS NOT NULL)
+                OR ($7 = 0 AND cache_type IS NULL))
          ORDER BY created_at DESC
-         LIMIT $5 OFFSET $6",
+         LIMIT $8 OFFSET $9",
     );
+
+    // SQLite stores booleans as integers; bind None/Some(0)/Some(1).
+    #[cfg(feature = "sqlite")]
+    let cache_hit_bind: Option<i64> = has_cache_hit.map(|b| if b { 1 } else { 0 });
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let cache_hit_bind = has_cache_hit;
 
     let total: (i64,) = sqlx::query_as(count_sql)
         .bind(provider)
         .bind(model)
         .bind(status)
         .bind(api_key_id)
+        .bind(start_time)
+        .bind(end_time)
+        .bind(cache_hit_bind)
         .fetch_one(pool)
         .await?;
 
@@ -193,6 +228,9 @@ pub async fn list_requests(
         .bind(model)
         .bind(status)
         .bind(api_key_id)
+        .bind(start_time)
+        .bind(end_time)
+        .bind(cache_hit_bind)
         .bind(per_page)
         .bind((page - 1) * per_page)
         .fetch_all(pool)
@@ -205,6 +243,9 @@ pub async fn list_requests(
             .bind(model)
             .bind(status)
             .bind(api_key_id)
+            .bind(start_time)
+            .bind(end_time)
+            .bind(cache_hit_bind)
             .bind(per_page)
             .bind((page - 1) * per_page)
             .fetch_all(pool)
