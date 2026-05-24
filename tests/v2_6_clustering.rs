@@ -38,7 +38,7 @@ async fn mock_server_with_response(body: serde_json::Value) -> MockServer {
 /// Cluster rate limiting uses the DB; two `DbRateLimiter` instances sharing the
 /// same database (simulating two nodes) count toward the same global limit.
 #[tokio::test]
-async fn v2p6_rate_limit_enforced_globally_across_two_nodes() {
+async fn v2_6_rate_limit_enforced_globally_across_two_nodes() {
     load_env();
     let config = velox::config::Config::load().expect("Failed to load config");
     let pool = velox::db::pool::connect(&config.database_url)
@@ -76,7 +76,7 @@ async fn v2p6_rate_limit_enforced_globally_across_two_nodes() {
 /// The cleanup task should delete rows older than 2× the window.
 /// We insert a stale row directly and verify it disappears.
 #[tokio::test]
-async fn v2p6_cleanup_task_removes_old_rate_limit_rows() {
+async fn v2_6_cleanup_task_removes_old_rate_limit_rows() {
     load_env();
     let config = velox::config::Config::load().expect("Failed to load config");
     let pool = velox::db::pool::connect(&config.database_url)
@@ -133,7 +133,7 @@ async fn v2p6_cleanup_task_removes_old_rate_limit_rows() {
 /// (The test key has no budget_limit by default; this test verifies the gateway
 /// still proxies successfully and budget_used increments are DB-persisted.)
 #[tokio::test]
-async fn v2p6_budget_tracked_in_cluster_mode() {
+async fn v2_6_budget_tracked_in_cluster_mode() {
     let mock = mock_server_with_response(fake_response()).await;
     let base_url = spawn_app_with_cluster(mock.uri(), "node-budget").await;
 
@@ -162,7 +162,7 @@ async fn v2p6_budget_tracked_in_cluster_mode() {
 ///   4. After a brief propagation window, verifying the second DashMap no longer has the key.
 #[tokio::test]
 #[cfg(not(feature = "sqlite"))]
-async fn v2p6_key_revocation_propagates_via_notify() {
+async fn v2_6_key_revocation_propagates_via_notify() {
     use dashmap::DashMap;
     use std::sync::Arc;
 
@@ -247,7 +247,7 @@ async fn v2p6_key_revocation_propagates_via_notify() {
 
 /// A key revoked via admin API stops working on the same node immediately.
 #[tokio::test]
-async fn v2p6_revoked_key_rejected_on_same_node() {
+async fn v2_6_revoked_key_rejected_on_same_node() {
     let mock = mock_server_with_response(fake_response()).await;
     let base_url = spawn_app_with_cluster(mock.uri(), "node-same").await;
 
@@ -301,7 +301,7 @@ async fn v2p6_revoked_key_rejected_on_same_node() {
 ///   2. node2 is spawned WITH warm_cache=true — it loads the DB cache at startup.
 ///   3. The same request on node2 is served as an exact cache hit (no provider call).
 #[tokio::test]
-async fn v2p6_exact_cache_hit_on_second_node_after_first_node_populates() {
+async fn v2_6_exact_cache_hit_on_second_node_after_first_node_populates() {
     let mock = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
@@ -357,7 +357,7 @@ async fn v2p6_exact_cache_hit_on_second_node_after_first_node_populates() {
 
 /// cluster.enabled defaults to false; the in-memory rate limiter is used.
 #[tokio::test]
-async fn v2p6_cluster_disabled_by_default() {
+async fn v2_6_cluster_disabled_by_default() {
     load_env();
     let config = velox::config::Config::load().expect("Failed to load config");
     assert!(
@@ -368,7 +368,7 @@ async fn v2p6_cluster_disabled_by_default() {
 
 /// In single-node mode the existing in-memory rate limiter still works.
 #[tokio::test]
-async fn v2p6_single_node_mode_uses_in_memory_rate_limit() {
+async fn v2_6_single_node_mode_uses_in_memory_rate_limit() {
     let mock = mock_server_with_response(fake_response()).await;
     let base_url = spawn_app_with_rate_limit(mock.uri(), 1).await;
 
@@ -397,7 +397,7 @@ async fn v2p6_single_node_mode_uses_in_memory_rate_limit() {
 
 /// Gateway proxy still works correctly in cluster mode.
 #[tokio::test]
-async fn v2p6_regression_gateway_still_fast_in_single_node_mode() {
+async fn v2_6_regression_gateway_still_fast_in_single_node_mode() {
     let mock = mock_server_with_response(fake_response()).await;
     let base_url = spawn_app_with_openai_base(mock.uri()).await;
 
@@ -424,7 +424,7 @@ async fn v2p6_regression_gateway_still_fast_in_single_node_mode() {
 
 /// Auth is still enforced in cluster mode.
 #[tokio::test]
-async fn v2p6_regression_auth_still_enforced() {
+async fn v2_6_regression_auth_still_enforced() {
     let mock = mock_server_with_response(fake_response()).await;
     let base_url = spawn_app_with_cluster(mock.uri(), "node-auth").await;
 

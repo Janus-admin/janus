@@ -71,7 +71,7 @@ fn tools_call(id: u32, tool: &str, args: serde_json::Value) -> serde_json::Value
 // ── Tool schema validation (sync, no server needed) ───────────────────────────
 
 #[test]
-fn v2p7_all_tools_have_valid_json_schema() {
+fn v2_7_all_tools_have_valid_json_schema() {
     let tools = velox::mcp::tools::tool_list();
     assert!(!tools.is_empty(), "tool list must not be empty");
 
@@ -91,7 +91,7 @@ fn v2p7_all_tools_have_valid_json_schema() {
 }
 
 #[test]
-fn v2p7_tool_inputs_correctly_validated() {
+fn v2_7_tool_inputs_correctly_validated() {
     let tools = velox::mcp::tools::tool_list();
 
     let proxy = tools
@@ -126,7 +126,7 @@ fn v2p7_tool_inputs_correctly_validated() {
 // ── Tool execution: get_usage_stats ──────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_get_usage_stats_returns_valid_data() {
+async fn v2_7_get_usage_stats_returns_valid_data() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
     let token = jwt.strip_prefix("Bearer ").unwrap();
@@ -155,7 +155,7 @@ async fn v2p7_get_usage_stats_returns_valid_data() {
 // ── Tool execution: list_api_keys ─────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_list_api_keys_returns_array() {
+async fn v2_7_list_api_keys_returns_array() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
     let token = jwt.strip_prefix("Bearer ").unwrap();
@@ -183,7 +183,7 @@ async fn v2p7_list_api_keys_returns_array() {
 // ── Tool execution: create_api_key ────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_create_api_key_returns_new_key() {
+async fn v2_7_create_api_key_returns_new_key() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
     let token = jwt.strip_prefix("Bearer ").unwrap();
@@ -214,7 +214,7 @@ async fn v2p7_create_api_key_returns_new_key() {
 // ── Tool execution: get_cache_stats ──────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_get_cache_stats_returns_valid_data() {
+async fn v2_7_get_cache_stats_returns_valid_data() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
     let token = jwt.strip_prefix("Bearer ").unwrap();
@@ -239,7 +239,7 @@ async fn v2p7_get_cache_stats_returns_valid_data() {
 // ── Tool execution: flush_cache ───────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_flush_cache_clears_entries() {
+async fn v2_7_flush_cache_clears_entries() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
     let token = jwt.strip_prefix("Bearer ").unwrap();
@@ -267,7 +267,7 @@ async fn v2p7_flush_cache_clears_entries() {
 // ── Tool execution: proxy_llm_request ────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_proxy_llm_request_returns_completion() {
+async fn v2_7_proxy_llm_request_returns_completion() {
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
@@ -313,7 +313,7 @@ async fn v2p7_proxy_llm_request_returns_completion() {
 // ── Transport: SSE ────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_sse_transport_sends_json_rpc_events() {
+async fn v2_7_sse_transport_sends_json_rpc_events() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
 
@@ -350,7 +350,7 @@ async fn v2p7_sse_transport_sends_json_rpc_events() {
 // ── Auth enforcement ──────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_unauthenticated_request_rejected() {
+async fn v2_7_unauthenticated_request_rejected() {
     let base = common::spawn_app().await;
 
     let resp = rpc_no_auth(&base, tools_list_request()).await;
@@ -368,7 +368,7 @@ async fn v2p7_unauthenticated_request_rejected() {
 }
 
 #[tokio::test]
-async fn v2p7_sse_unauthenticated_returns_401() {
+async fn v2_7_sse_unauthenticated_returns_401() {
     let base = common::spawn_app().await;
 
     let resp = reqwest::Client::new()
@@ -381,7 +381,7 @@ async fn v2p7_sse_unauthenticated_returns_401() {
 }
 
 #[tokio::test]
-async fn v2p7_invalid_method_returns_error_response() {
+async fn v2_7_invalid_method_returns_error_response() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
     let token = jwt.strip_prefix("Bearer ").unwrap();
@@ -412,7 +412,7 @@ async fn v2p7_invalid_method_returns_error_response() {
 // ── Initialize with token in params ──────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_initialize_accepts_token_in_params() {
+async fn v2_7_initialize_accepts_token_in_params() {
     let base = common::spawn_app().await;
     let jwt = common::admin_auth_header(&base).await;
     let token = jwt.strip_prefix("Bearer ").unwrap();
@@ -433,7 +433,7 @@ async fn v2p7_initialize_accepts_token_in_params() {
 // ── Regression ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p7_regression_gateway_unaffected_by_mcp_server() {
+async fn v2_7_regression_gateway_unaffected_by_mcp_server() {
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))

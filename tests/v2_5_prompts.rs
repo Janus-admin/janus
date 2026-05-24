@@ -18,14 +18,14 @@ use velox::prompts::template;
 // ── Template unit tests (no DB / server) ─────────────────────────────────────
 
 #[test]
-fn v2p5_template_single_variable_interpolated() {
+fn v2_5_template_single_variable_interpolated() {
     let mut vars = HashMap::new();
     vars.insert("name".to_string(), "Alice".to_string());
     assert_eq!(template::render("Hello, {{name}}!", &vars), "Hello, Alice!");
 }
 
 #[test]
-fn v2p5_template_multiple_variables_interpolated() {
+fn v2_5_template_multiple_variables_interpolated() {
     let mut vars = HashMap::new();
     vars.insert("topic".to_string(), "Rust".to_string());
     vars.insert("level".to_string(), "beginner".to_string());
@@ -34,14 +34,14 @@ fn v2p5_template_multiple_variables_interpolated() {
 }
 
 #[test]
-fn v2p5_template_missing_variable_leaves_placeholder() {
+fn v2_5_template_missing_variable_leaves_placeholder() {
     let vars = HashMap::new();
     let result = template::render("Hello, {{name}}!", &vars);
     assert_eq!(result, "Hello, {{name}}!");
 }
 
 #[test]
-fn v2p5_template_extra_variables_ignored() {
+fn v2_5_template_extra_variables_ignored() {
     let mut vars = HashMap::new();
     vars.insert("used".to_string(), "yes".to_string());
     vars.insert("unused".to_string(), "ignored".to_string());
@@ -52,7 +52,7 @@ fn v2p5_template_extra_variables_ignored() {
 
 /// POST /admin/prompts + GET /admin/prompts — create and list.
 #[tokio::test]
-async fn v2p5_create_prompt_returns_id() {
+async fn v2_5_create_prompt_returns_id() {
     let (base_url, _mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -74,7 +74,7 @@ async fn v2p5_create_prompt_returns_id() {
 
 /// POST /admin/prompts/:id/versions increments version number.
 #[tokio::test]
-async fn v2p5_create_version_increments_version_number() {
+async fn v2_5_create_version_increments_version_number() {
     let (base_url, _mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -121,7 +121,7 @@ async fn v2p5_create_version_increments_version_number() {
 
 /// Activating a version deactivates all previous versions.
 #[tokio::test]
-async fn v2p5_activate_version_deactivates_previous() {
+async fn v2_5_activate_version_deactivates_previous() {
     let (base_url, _mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -170,7 +170,7 @@ async fn v2p5_activate_version_deactivates_previous() {
 
 /// DELETE /admin/prompts/:id cascades to versions.
 #[tokio::test]
-async fn v2p5_delete_prompt_cascades_to_versions() {
+async fn v2_5_delete_prompt_cascades_to_versions() {
     let (base_url, _mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -198,7 +198,7 @@ async fn v2p5_delete_prompt_cascades_to_versions() {
 
 /// Unknown prompt ID returns 404.
 #[tokio::test]
-async fn v2p5_unknown_prompt_id_returns_404() {
+async fn v2_5_unknown_prompt_id_returns_404() {
     let (base_url, _mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
 
@@ -216,7 +216,7 @@ async fn v2p5_unknown_prompt_id_returns_404() {
 
 /// X-Velox-Prompt header loads the active version and injects it into the request.
 #[tokio::test]
-async fn v2p5_x_velox_prompt_header_loads_active_version() {
+async fn v2_5_x_velox_prompt_header_loads_active_version() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -250,7 +250,7 @@ async fn v2p5_x_velox_prompt_header_loads_active_version() {
 
 /// Template variables are rendered before the request reaches the provider.
 #[tokio::test]
-async fn v2p5_template_variables_rendered_before_send_to_provider() {
+async fn v2_5_template_variables_rendered_before_send_to_provider() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -302,7 +302,7 @@ async fn v2p5_template_variables_rendered_before_send_to_provider() {
 
 /// prompt_version_id is recorded in the request log.
 #[tokio::test]
-async fn v2p5_prompt_version_id_recorded_in_request_log() {
+async fn v2_5_prompt_version_id_recorded_in_request_log() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -352,7 +352,7 @@ async fn v2p5_prompt_version_id_recorded_in_request_log() {
 
 /// A/B test: weighted distribution sends traffic across versions.
 #[tokio::test]
-async fn v2p5_ab_test_distributes_traffic_by_weight() {
+async fn v2_5_ab_test_distributes_traffic_by_weight() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -393,7 +393,7 @@ async fn v2p5_ab_test_distributes_traffic_by_weight() {
 
 /// A version with ab_weight=0 is never selected.
 #[tokio::test]
-async fn v2p5_weight_zero_version_never_selected() {
+async fn v2_5_weight_zero_version_never_selected() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -432,7 +432,7 @@ async fn v2p5_weight_zero_version_never_selected() {
 
 /// Requests without the X-Velox-Prompt header work exactly as before.
 #[tokio::test]
-async fn v2p5_regression_requests_without_prompt_header_work_unchanged() {
+async fn v2_5_regression_requests_without_prompt_header_work_unchanged() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
 
@@ -453,7 +453,7 @@ async fn v2p5_regression_requests_without_prompt_header_work_unchanged() {
 
 /// Exact cache still works for requests that do not use the prompt header.
 #[tokio::test]
-async fn v2p5_regression_cache_still_works_for_non_prompt_requests() {
+async fn v2_5_regression_cache_still_works_for_non_prompt_requests() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
 

@@ -51,7 +51,7 @@ async fn mount_chat_mock(mock_server: &MockServer) {
 // ── Embeddings ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p3_embeddings_endpoint_returns_openai_format() {
+async fn v2_3_embeddings_endpoint_returns_openai_format() {
     let mock_server = MockServer::start().await;
     mount_embedding_mock(&mock_server).await;
     let base = common::spawn_app_with_openai_base(mock_server.uri()).await;
@@ -85,7 +85,7 @@ async fn v2p3_embeddings_endpoint_returns_openai_format() {
 }
 
 #[tokio::test]
-async fn v2p3_embeddings_string_and_array_inputs_both_work() {
+async fn v2_3_embeddings_string_and_array_inputs_both_work() {
     let mock_server = MockServer::start().await;
 
     // Mount mock to handle both requests (no request limit so it handles both).
@@ -127,7 +127,7 @@ async fn v2p3_embeddings_string_and_array_inputs_both_work() {
 }
 
 #[tokio::test]
-async fn v2p3_embeddings_exact_cache_hit_on_identical_input() {
+async fn v2_3_embeddings_exact_cache_hit_on_identical_input() {
     let mock_server = MockServer::start().await;
 
     // The mock expects exactly ONE real call — the second must come from cache.
@@ -171,7 +171,7 @@ async fn v2p3_embeddings_exact_cache_hit_on_identical_input() {
 // ── Models list ───────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p3_models_endpoint_returns_active_models() {
+async fn v2_3_models_endpoint_returns_active_models() {
     let base = common::spawn_app().await;
     let client = reqwest::Client::new();
 
@@ -203,7 +203,7 @@ async fn v2p3_models_endpoint_returns_active_models() {
 }
 
 #[tokio::test]
-async fn v2p3_models_endpoint_requires_no_auth() {
+async fn v2_3_models_endpoint_requires_no_auth() {
     let base = common::spawn_app().await;
     let client = reqwest::Client::new();
 
@@ -222,7 +222,7 @@ async fn v2p3_models_endpoint_requires_no_auth() {
 }
 
 #[tokio::test]
-async fn v2p3_models_list_contains_all_enabled_providers() {
+async fn v2_3_models_list_contains_all_enabled_providers() {
     let base = common::spawn_app().await;
     let client = reqwest::Client::new();
 
@@ -251,7 +251,7 @@ async fn v2p3_models_list_contains_all_enabled_providers() {
 // ── Tool use / Function calling pass-through ──────────────────────────────────
 
 #[tokio::test]
-async fn v2p3_tool_call_fields_passed_through_to_provider() {
+async fn v2_3_tool_call_fields_passed_through_to_provider() {
     let mock_server = MockServer::start().await;
 
     // The mock accepts the request and captures it — we verify the tools field was forwarded.
@@ -310,7 +310,7 @@ async fn v2p3_tool_call_fields_passed_through_to_provider() {
 }
 
 #[tokio::test]
-async fn v2p3_tool_call_included_in_exact_cache_key() {
+async fn v2_3_tool_call_included_in_exact_cache_key() {
     let mock_server = MockServer::start().await;
 
     // Both requests must reach the provider (different tools = different cache keys).
@@ -358,7 +358,7 @@ async fn v2p3_tool_call_included_in_exact_cache_key() {
 }
 
 #[tokio::test]
-async fn v2p3_identical_tool_call_request_returns_cache_hit() {
+async fn v2_3_identical_tool_call_request_returns_cache_hit() {
     let mock_server = MockServer::start().await;
 
     // Expect exactly 1 provider call — second must be a cache hit.
@@ -408,7 +408,7 @@ async fn v2p3_identical_tool_call_request_returns_cache_hit() {
 // ── Vision / Multi-modal pass-through ─────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p3_image_url_content_passes_through_unchanged() {
+async fn v2_3_image_url_content_passes_through_unchanged() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -457,7 +457,7 @@ async fn v2p3_image_url_content_passes_through_unchanged() {
 }
 
 #[tokio::test]
-async fn v2p3_base64_image_content_passes_through_unchanged() {
+async fn v2_3_base64_image_content_passes_through_unchanged() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -511,7 +511,7 @@ async fn v2p3_base64_image_content_passes_through_unchanged() {
 // ── Legacy completions ────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p3_completions_endpoint_accepts_legacy_format() {
+async fn v2_3_completions_endpoint_accepts_legacy_format() {
     let mock_server = MockServer::start().await;
     mount_chat_mock(&mock_server).await;
 
@@ -551,7 +551,7 @@ async fn v2p3_completions_endpoint_accepts_legacy_format() {
 // ── Regression ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p3_regression_chat_completions_still_work() {
+async fn v2_3_regression_chat_completions_still_work() {
     let mock_server = MockServer::start().await;
     mount_chat_mock(&mock_server).await;
 
@@ -574,7 +574,7 @@ async fn v2p3_regression_chat_completions_still_work() {
 }
 
 #[tokio::test]
-async fn v2p3_regression_streaming_still_works() {
+async fn v2_3_regression_streaming_still_works() {
     let mock_server = MockServer::start().await;
 
     let sse_body = "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1716000000,\"model\":\"gpt-4o-mini\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hello\"},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n";

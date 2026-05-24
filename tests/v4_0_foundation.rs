@@ -47,7 +47,7 @@ fn make_request(content: &str) -> ChatCompletionRequest {
 
 #[tokio::test]
 #[serial]
-async fn v4p0_load_base_urls_returns_db_values() {
+async fn v4_0_load_base_urls_returns_db_values() {
     let pool = test_pool().await;
 
     let urls = velox::db::providers::load_base_urls(&pool).await;
@@ -70,7 +70,7 @@ async fn v4p0_load_base_urls_returns_db_values() {
 
 #[tokio::test]
 #[serial]
-async fn v4p0_provider_uses_custom_base_url_when_set() {
+async fn v4_0_provider_uses_custom_base_url_when_set() {
     // Set a custom base_url in the DB, verify load_base_urls returns it.
     let pool = test_pool().await;
     let custom_url = "http://localhost:11434/v1";
@@ -100,7 +100,7 @@ async fn v4p0_provider_uses_custom_base_url_when_set() {
 
 #[tokio::test]
 #[serial]
-async fn v4p0_provider_falls_back_to_hardcoded_default_when_base_url_empty() {
+async fn v4_0_provider_falls_back_to_hardcoded_default_when_base_url_empty() {
     // When base_url is empty, the application's resolve_base_url helper should
     // use the adapter's compiled-in default. We test load_base_urls returns
     // the empty string and that the resolve logic handles it.
@@ -136,7 +136,7 @@ async fn v4p0_provider_falls_back_to_hardcoded_default_when_base_url_empty() {
 
 #[tokio::test]
 #[serial]
-async fn v4p0_update_provider_base_url_via_api() {
+async fn v4_0_update_provider_base_url_via_api() {
     // Verify PATCH /admin/providers/:id accepts and persists base_url.
     let (base_url, mock_server) = common::spawn_app_with_wiremock().await;
     let admin_jwt = common::admin_auth_header(&base_url).await;
@@ -162,7 +162,7 @@ async fn v4p0_update_provider_base_url_via_api() {
 }
 
 #[tokio::test]
-async fn v4p0_provider_request_routed_to_custom_base_url() {
+async fn v4_0_provider_request_routed_to_custom_base_url() {
     // Spawn app with wiremock as the provider; make a request; verify wiremock received it.
     // This tests the end-to-end path: spawn_app uses with_base_url(), which now
     // mirrors the DB base_url read in main.rs.
@@ -194,7 +194,7 @@ async fn v4p0_provider_request_routed_to_custom_base_url() {
 // ─── 3.2 velox doctor — readiness checks ─────────────────────────────────────
 
 #[test]
-fn v4p0_doctor_fails_when_jwt_secret_too_short() {
+fn v4_0_doctor_fails_when_jwt_secret_too_short() {
     let mut config = Config::load().unwrap_or_else(|_| {
         common::load_env();
         Config::load().unwrap()
@@ -212,7 +212,7 @@ fn v4p0_doctor_fails_when_jwt_secret_too_short() {
 }
 
 #[test]
-fn v4p0_doctor_passes_when_jwt_secret_long_enough() {
+fn v4_0_doctor_passes_when_jwt_secret_long_enough() {
     let status = if "a-32-byte-secret-that-is-long-ok!".len() >= 32 {
         CheckStatus::Pass
     } else {
@@ -222,7 +222,7 @@ fn v4p0_doctor_passes_when_jwt_secret_long_enough() {
 }
 
 #[test]
-fn v4p0_doctor_warns_when_embedding_model_missing() {
+fn v4_0_doctor_warns_when_embedding_model_missing() {
     let mut config = Config::load().unwrap_or_else(|_| {
         common::load_env();
         Config::load().unwrap()
@@ -247,7 +247,7 @@ fn v4p0_doctor_warns_when_embedding_model_missing() {
 
 #[tokio::test]
 #[serial]
-async fn v4p0_doctor_fails_when_no_providers_enabled() {
+async fn v4_0_doctor_fails_when_no_providers_enabled() {
     let pool = test_pool().await;
 
     // Disable all providers temporarily.
@@ -282,7 +282,7 @@ async fn v4p0_doctor_fails_when_no_providers_enabled() {
 
 #[tokio::test]
 #[serial]
-async fn v4p0_readiness_endpoint_returns_valid_json() {
+async fn v4_0_readiness_endpoint_returns_valid_json() {
     // The endpoint exists and always returns JSON with a `data` object
     // containing `checks`, `errors`, `warnings`, and `healthy` fields.
     let (base_url, _mock) = common::spawn_app_with_wiremock().await;
@@ -313,7 +313,7 @@ async fn v4p0_readiness_endpoint_returns_valid_json() {
 
 #[tokio::test]
 #[serial]
-async fn v4p0_readiness_endpoint_returns_503_when_jwt_secret_short() {
+async fn v4_0_readiness_endpoint_returns_503_when_jwt_secret_short() {
     // We can't easily reconfigure the test server's JWT secret mid-test,
     // so we test the logic directly: run_checks with a short secret → errors > 0.
     let pool = test_pool().await;
@@ -339,19 +339,19 @@ async fn v4p0_readiness_endpoint_returns_503_when_jwt_secret_short() {
 // ─── 3.3 Demo mode — DemoProvider ────────────────────────────────────────────
 
 #[test]
-fn v4p0_demo_provider_name_is_demo() {
+fn v4_0_demo_provider_name_is_demo() {
     let provider = DemoProvider;
     assert_eq!(provider.name(), "demo");
 }
 
 #[test]
-fn v4p0_demo_provider_is_always_enabled() {
+fn v4_0_demo_provider_is_always_enabled() {
     let provider = DemoProvider;
     assert!(provider.is_enabled(), "DemoProvider must always report enabled");
 }
 
 #[tokio::test]
-async fn v4p0_demo_provider_returns_canned_chat_response() {
+async fn v4_0_demo_provider_returns_canned_chat_response() {
     let provider = DemoProvider;
     let request = make_request("Hello demo!");
 
@@ -375,7 +375,7 @@ async fn v4p0_demo_provider_returns_canned_chat_response() {
 }
 
 #[tokio::test]
-async fn v4p0_demo_provider_streaming_returns_chunks() {
+async fn v4_0_demo_provider_streaming_returns_chunks() {
     use futures_util::StreamExt;
 
     let provider = DemoProvider;
@@ -409,7 +409,7 @@ async fn v4p0_demo_provider_streaming_returns_chunks() {
 // ─── Regression ──────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v4p0_regression_existing_provider_adapters_unaffected() {
+async fn v4_0_regression_existing_provider_adapters_unaffected() {
     // Existing OpenAI-compatible path still works end-to-end with a wiremock stub.
     let mock_server = MockServer::start().await;
 

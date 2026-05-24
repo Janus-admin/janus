@@ -51,13 +51,13 @@ fn sha256_hex(key: &str) -> String {
 // ─── §8.1  mTLS Config Validation ────────────────────────────────────────────
 
 #[test]
-fn v3p5_tls_config_empty_is_valid() {
+fn v3_5_tls_config_empty_is_valid() {
     let cfg = ProviderTlsConfig::default();
     assert!(cfg.validate().is_ok(), "empty TLS config must be valid");
 }
 
 #[test]
-fn v3p5_invalid_ca_cert_path_fails_at_startup() {
+fn v3_5_invalid_ca_cert_path_fails_at_startup() {
     let cfg = ProviderTlsConfig {
         ca_cert_path: "/nonexistent/path/ca.pem".to_string(),
         client_cert_path: String::new(),
@@ -73,7 +73,7 @@ fn v3p5_invalid_ca_cert_path_fails_at_startup() {
 }
 
 #[test]
-fn v3p5_missing_client_key_with_cert_fails_at_startup() {
+fn v3_5_missing_client_key_with_cert_fails_at_startup() {
     let cfg = ProviderTlsConfig {
         ca_cert_path: String::new(),
         client_cert_path: "/some/cert.pem".to_string(),
@@ -89,7 +89,7 @@ fn v3p5_missing_client_key_with_cert_fails_at_startup() {
 }
 
 #[test]
-fn v3p5_missing_client_cert_with_key_fails_at_startup() {
+fn v3_5_missing_client_cert_with_key_fails_at_startup() {
     let cfg = ProviderTlsConfig {
         ca_cert_path: String::new(),
         client_cert_path: String::new(), // missing cert
@@ -107,7 +107,7 @@ fn v3p5_missing_client_cert_with_key_fails_at_startup() {
 // ─── §8.2  API Key Rotation ────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v3p5_rotate_returns_new_key() {
+async fn v3_5_rotate_returns_new_key() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -149,7 +149,7 @@ async fn v3p5_rotate_returns_new_key() {
 }
 
 #[tokio::test]
-async fn v3p5_new_key_valid_immediately_after_rotation() {
+async fn v3_5_new_key_valid_immediately_after_rotation() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -195,7 +195,7 @@ async fn v3p5_new_key_valid_immediately_after_rotation() {
 }
 
 #[tokio::test]
-async fn v3p5_old_key_still_valid_within_grace_period() {
+async fn v3_5_old_key_still_valid_within_grace_period() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -239,7 +239,7 @@ async fn v3p5_old_key_still_valid_within_grace_period() {
 }
 
 #[tokio::test]
-async fn v3p5_old_key_rejected_after_grace_period_expires() {
+async fn v3_5_old_key_rejected_after_grace_period_expires() {
     common::load_env();
 
     // Build an app state with a key whose rotation has already expired.
@@ -337,7 +337,7 @@ async fn v3p5_old_key_rejected_after_grace_period_expires() {
 }
 
 #[tokio::test]
-async fn v3p5_rotate_nonexistent_key_returns_404() {
+async fn v3_5_rotate_nonexistent_key_returns_404() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -361,7 +361,7 @@ async fn v3p5_rotate_nonexistent_key_returns_404() {
 // ─── §8.3  Audit Log API ──────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v3p5_audit_log_response_includes_hash_header() {
+async fn v3_5_audit_log_response_includes_hash_header() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -382,7 +382,7 @@ async fn v3p5_audit_log_response_includes_hash_header() {
 }
 
 #[tokio::test]
-async fn v3p5_audit_log_hash_matches_body_sha256() {
+async fn v3_5_audit_log_hash_matches_body_sha256() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -418,7 +418,7 @@ async fn v3p5_audit_log_hash_matches_body_sha256() {
 }
 
 #[tokio::test]
-async fn v3p5_audit_log_filters_by_date_range() {
+async fn v3_5_audit_log_filters_by_date_range() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -446,7 +446,7 @@ async fn v3p5_audit_log_filters_by_date_range() {
 }
 
 #[tokio::test]
-async fn v3p5_audit_log_filters_by_status() {
+async fn v3_5_audit_log_filters_by_status() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -472,7 +472,7 @@ async fn v3p5_audit_log_filters_by_status() {
 }
 
 #[tokio::test]
-async fn v3p5_audit_log_filters_by_api_key_id() {
+async fn v3_5_audit_log_filters_by_api_key_id() {
     common::load_env();
     let base_url = common::spawn_app().await;
     let admin_auth = common::admin_auth_header(&base_url).await;
@@ -502,7 +502,7 @@ async fn v3p5_audit_log_filters_by_api_key_id() {
 // ─── Regression ───────────────────────────────────────────────────────────────
 
 #[test]
-fn v3p5_regression_existing_key_auth_unaffected() {
+fn v3_5_regression_existing_key_auth_unaffected() {
     // Keys with no rotation state (previous_key_sha256 = None) should be authenticated
     // exactly as before: key_sha256 matches the presented token's hash → accepted.
     let key_str = "vx-sk-NormalKeyNoRotation0000000000000000000000000";
@@ -525,7 +525,7 @@ fn v3p5_regression_existing_key_auth_unaffected() {
 }
 
 #[tokio::test]
-async fn v3p5_regression_gateway_proxy_unaffected() {
+async fn v3_5_regression_gateway_proxy_unaffected() {
     common::load_env();
     let base_url = common::spawn_app().await;
 

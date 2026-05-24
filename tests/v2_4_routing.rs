@@ -65,7 +65,7 @@ impl velox::providers::Provider for NamedProvider {
 // ── Round-robin unit tests ────────────────────────────────────────────────────
 
 #[test]
-fn v2p4_round_robin_distributes_across_three_providers() {
+fn v2_4_round_robin_distributes_across_three_providers() {
     let providers: Vec<Arc<dyn velox::providers::Provider>> = vec![
         Arc::new(NamedProvider {
             name: "openai",
@@ -97,7 +97,7 @@ fn v2p4_round_robin_distributes_across_three_providers() {
 }
 
 #[test]
-fn v2p4_round_robin_wraps_around() {
+fn v2_4_round_robin_wraps_around() {
     let providers: Vec<Arc<dyn velox::providers::Provider>> = vec![
         Arc::new(NamedProvider {
             name: "a",
@@ -120,7 +120,7 @@ fn v2p4_round_robin_wraps_around() {
 }
 
 #[test]
-fn v2p4_round_robin_skips_disabled_providers() {
+fn v2_4_round_robin_skips_disabled_providers() {
     // sort_round_robin only operates on the slice passed to it.
     // Filtering disabled providers is done by select_providers_for_strategy before calling
     // sort_round_robin. Verify an empty slice returns empty output.
@@ -135,7 +135,7 @@ fn v2p4_round_robin_skips_disabled_providers() {
 // ── RoutingStrategy parsing ───────────────────────────────────────────────────
 
 #[test]
-fn v2p4_routing_strategy_parse_all_variants() {
+fn v2_4_routing_strategy_parse_all_variants() {
     assert_eq!(
         RoutingStrategy::from_db_str("priority"),
         RoutingStrategy::Priority
@@ -160,7 +160,7 @@ fn v2p4_routing_strategy_parse_all_variants() {
 }
 
 #[test]
-fn v2p4_routing_strategy_as_db_str_round_trips() {
+fn v2_4_routing_strategy_as_db_str_round_trips() {
     for s in ["priority", "cost", "latency", "round_robin"] {
         let parsed = RoutingStrategy::from_db_str(s);
         assert_eq!(parsed.as_db_str(), s, "round-trip for '{s}'");
@@ -206,7 +206,7 @@ async fn create_key_with_strategy(
 }
 
 #[tokio::test]
-async fn v2p4_strategy_stored_per_api_key() {
+async fn v2_4_strategy_stored_per_api_key() {
     let mock = MockServer::start().await;
     mount_chat_mock(&mock).await;
     let base = common::spawn_app_with_openai_base(mock.uri()).await;
@@ -222,7 +222,7 @@ async fn v2p4_strategy_stored_per_api_key() {
 }
 
 #[tokio::test]
-async fn v2p4_priority_routing_unchanged_for_existing_keys() {
+async fn v2_4_priority_routing_unchanged_for_existing_keys() {
     let mock = MockServer::start().await;
     mount_chat_mock(&mock).await;
     let base = common::spawn_app_with_openai_base(mock.uri()).await;
@@ -241,7 +241,7 @@ async fn v2p4_priority_routing_unchanged_for_existing_keys() {
 }
 
 #[tokio::test]
-async fn v2p4_cost_router_falls_back_to_priority_when_pricing_unknown() {
+async fn v2_4_cost_router_falls_back_to_priority_when_pricing_unknown() {
     // Create a key with cost routing. With unknown pricing, sort_by_cost falls back to
     // Decimal::MAX for all providers, preserving original priority order — request succeeds.
     let mock = MockServer::start().await;
@@ -276,7 +276,7 @@ async fn v2p4_cost_router_falls_back_to_priority_when_pricing_unknown() {
 }
 
 #[tokio::test]
-async fn v2p4_latency_router_falls_back_to_priority_on_no_data() {
+async fn v2_4_latency_router_falls_back_to_priority_on_no_data() {
     // Create a key with latency routing; no historical requests → all providers score MAX.
     let mock = MockServer::start().await;
     mount_chat_mock(&mock).await;
@@ -305,7 +305,7 @@ async fn v2p4_latency_router_falls_back_to_priority_on_no_data() {
 }
 
 #[tokio::test]
-async fn v2p4_round_robin_requests_all_succeed() {
+async fn v2_4_round_robin_requests_all_succeed() {
     // Round-robin key can make multiple requests without error.
     let mock = MockServer::start().await;
     mock.register(
@@ -341,7 +341,7 @@ async fn v2p4_round_robin_requests_all_succeed() {
 }
 
 #[tokio::test]
-async fn v2p4_model_fallback_chain_activated_on_provider_error() {
+async fn v2_4_model_fallback_chain_activated_on_provider_error() {
     // Two mock servers: primary rejects, secondary accepts.
     // Config fallback: "model-that-fails" → "gpt-4o-mini"
     // Expect the second request (on fallback model) to reach the secondary mock.
@@ -399,7 +399,7 @@ async fn v2p4_model_fallback_chain_activated_on_provider_error() {
 }
 
 #[tokio::test]
-async fn v2p4_routing_strategy_updated_via_patch() {
+async fn v2_4_routing_strategy_updated_via_patch() {
     let mock = MockServer::start().await;
     mount_chat_mock(&mock).await;
     let base = common::spawn_app_with_openai_base(mock.uri()).await;
@@ -433,7 +433,7 @@ async fn v2p4_routing_strategy_updated_via_patch() {
 // ── Regression tests ──────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn v2p4_regression_proxy_still_reaches_correct_provider() {
+async fn v2_4_regression_proxy_still_reaches_correct_provider() {
     let mock = MockServer::start().await;
     mock.register(
         Mock::given(method("POST"))
@@ -464,7 +464,7 @@ async fn v2p4_regression_proxy_still_reaches_correct_provider() {
 }
 
 #[tokio::test]
-async fn v2p4_regression_failover_still_works() {
+async fn v2_4_regression_failover_still_works() {
     // Primary fails, secondary succeeds.
     let primary = MockServer::start().await;
     let secondary = MockServer::start().await;
