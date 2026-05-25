@@ -1,5 +1,6 @@
 pub mod alerts;
 pub mod analytics;
+pub mod auth;
 pub mod cache;
 pub mod cli;
 pub mod cluster;

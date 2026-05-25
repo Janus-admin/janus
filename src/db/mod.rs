@@ -2,6 +2,7 @@ pub mod alerts;
 pub mod analytics;
 pub mod api_keys;
 pub mod cache;
+pub mod identities;
 pub mod pool;
 pub mod prompts;
 pub mod providers;

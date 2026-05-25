@@ -49,6 +49,7 @@ struct RequestSqliteRow {
     prompt_version_id: Option<Uuid>,
     replay_of_request_id: Option<String>,
     is_playground: bool,
+    tags: Option<String>,
     created_at: chrono::DateTime<Utc>,
 }
 
@@ -83,6 +84,10 @@ impl From<RequestSqliteRow> for crate::models::request::Request {
                 .as_deref()
                 .and_then(|s| s.parse().ok()),
             is_playground: r.is_playground,
+            tags: r
+                .tags
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
             created_at: r.created_at,
         }
     }
@@ -115,24 +120,30 @@ pub async fn insert_request(
     downgrade_triggered: bool,
     endpoint: &str,
     tool_calls: Option<&serde_json::Value>,
+    tags: &serde_json::Value,
 ) -> AppResult<()> {
     // SQLite stores cost_usd as TEXT; rebind as string in sqlite builds.
     #[cfg(feature = "sqlite")]
     let cost_usd = cost_usd.map(|d| d.to_string());
 
-    // SQLite has no JSONB — encode tool_calls as a JSON text blob.
+    // SQLite has no JSONB — encode tool_calls and tags as JSON text blobs.
     #[cfg(feature = "sqlite")]
     let tool_calls_bind: Option<String> = tool_calls.map(|v| v.to_string());
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     let tool_calls_bind: Option<serde_json::Value> = tool_calls.cloned();
+
+    #[cfg(feature = "sqlite")]
+    let tags_bind = tags.to_string();
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let tags_bind = tags.clone();
 
     sqlx::query(
         "INSERT INTO requests (
              id, api_key_id, workspace_id, provider, model,
              prompt_tokens, completion_tokens, total_tokens, cost_usd,
              latency_ms, status, stream, ttfb_ms, prompt_version_id,
-             downgrade_triggered, endpoint, tool_calls, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)",
+             downgrade_triggered, endpoint, tool_calls, tags, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)",
     )
     .bind(Uuid::new_v4())
     .bind(api_key_id)
@@ -151,6 +162,7 @@ pub async fn insert_request(
     .bind(downgrade_triggered)
     .bind(endpoint)
     .bind(tool_calls_bind)
+    .bind(tags_bind)
     .bind(Utc::now())
     .execute(pool)
     .await?;

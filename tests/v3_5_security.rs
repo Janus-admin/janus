@@ -320,6 +320,7 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
             &config.time_sensitive_patterns,
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
     });
 
     let app = velox::routes::create_router(state);

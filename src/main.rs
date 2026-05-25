@@ -367,6 +367,7 @@ async fn main() -> anyhow::Result<()> {
         dedup: Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
         time_guard,
         models_cache: Arc::new(std::sync::Mutex::new(None)),
+        oidc_states: Arc::new(dashmap::DashMap::new()),
     });
 
     // ── Background: cache TTL prune (V4-3) ───────────────────────────────────

@@ -70,8 +70,8 @@ V5-0, V5-1, and V5-2 are fully complete. The remaining phases use a new L-series
 
 ```
 V5-L1: Brand & First Impression  → [x] COMPLETE — README rewritten, Docker paths fixed, Cargo.toml metadata
-V5-L2: OIDC Login                → [ ] NOT STARTED — migration 0028
-V5-L3: Cost Tags                 → [ ] NOT STARTED — migration 0029
+V5-L2: OIDC Login                → [x] COMPLETE — migration 0028, 7 acceptance tests
+V5-L3: Cost Tags                 → [x] COMPLETE — migration 0029, tags on requests, GET /admin/analytics/cost-by-tag, 6 acceptance tests
 V5-L4: Polished Alerts           → [ ] NOT STARTED — Slack + Email; migration 0030
 V5-L5: Onboarding & Docs Polish  → [ ] NOT STARTED — migration 0031, license switch to ELv2
 ```
@@ -245,6 +245,30 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `docs/deployment/ha.md`: HA runbook — Postgres primary+replica, ≥2 Velox nodes, cluster mode, embedding-model strategies, encryption key rotation, DR runbook tied to `velox backup`. `docs/deployment/helm.md` (chart reference) and `docs/deployment/terraform.md` (provider stub for the separate repo).
 - [x] `tests/fixtures/v5_2/`: synthetic `litellm-sample.yaml`, `portkey-sample.json`, `openrouter-models.json`, and `helm-minimal-values.yaml` used by the acceptance tests.
 - [x] `tests/v5_2_migration_imports.rs`: 11 acceptance tests — LiteLLM parsing + routing map + unknown-provider notes, Portkey provider list + routing map + cache flow, OpenRouter alias grouping + unmapped pass-through, backup archive complete-file shape, restore round-trip, version compatibility refusal, `helm lint`, `helm template` (lint/template tests skip gracefully when `helm` is not on PATH).
+
+### Velox-Specific Rust Modules (V5-L2 — OIDC Login)
+- [x] `migrations/0028_oidc.sql` (+ SQLite mirror): adds `identity_providers` (id, workspace_id, kind, name, config JSONB, group_role_map JSONB, enabled, created_at) and `identities` (id, user_id, idp_id, external_id, last_login) with UNIQUE(idp_id, external_id)
+- [x] `src/auth/mod.rs` + `src/auth/oidc.rs`: OIDC protocol helpers — `fetch_discovery`, `generate_pkce` (S256), `random_token`, `build_auth_url`, `exchange_code` (token exchange + RS256/384/512 ID token validation via JWKS + nonce check)
+- [x] `src/db/identities.rs`: dynamic sqlx queries for `identity_providers` and `identities` tables — `list_idps`, `get_idp`, `create_idp`, `delete_idp`, `find_identity`, `create_identity`, `touch_last_login`
+- [x] `src/handlers/auth/sso.rs`: `GET /auth/oidc/:idp_id/start` (PKCE redirect) + `GET /auth/oidc/:idp_id/callback` (code exchange, JIT user creation, group→role mapping, JWT mint)
+- [x] `src/handlers/admin/idp.rs`: `GET /admin/idp`, `POST /admin/idp`, `DELETE /admin/idp/:id` (Admin role required; client_secret AES-256-GCM encrypted at rest)
+- [x] `src/state.rs`: added `OidcState` struct + `oidc_states: Arc<DashMap<String, OidcState>>` for per-login PKCE/nonce ephemeral state (removed on callback or after 10-minute TTL)
+- [x] `dashboard/src/app/(dashboard)/settings/sso/page.tsx`: SSO settings page — IdP table (name, issuer, client_id, enabled badge, created_at, delete), "Add OIDC provider" dialog, delete confirmation dialog, "How it works" card
+- [x] `tests/v5_l2_oidc.rs`: 7 acceptance tests using wiremock + rsa crate — admin CRUD endpoints require Admin role, OIDC start redirects to IdP, callback creates user JIT, invalid ID token rejected, second login reuses same user row, group claim maps to Velox role, CSRF state param enforced
+
+### Velox-Specific Rust Modules (V5-L3 — Cost Tags)
+- [x] `migrations/0029_request_tags.sql` (+ SQLite mirror): adds `tags JSONB NOT NULL DEFAULT '{}'` to `requests` table; GIN index on PostgreSQL, plain index on SQLite
+- [x] `src/providers/mod.rs`: added `metadata: Option<serde_json::Value>` field to `ChatCompletionRequest` (mirrors OpenAI's `metadata` field; skipped on serialization if absent)
+- [x] `src/handlers/gateway.rs`: added `extract_tags(request, headers)` — merges tags from `metadata` body field (OpenAI convention) and `X-Velox-Tags: key=val,key2=val2` header; header values win on key collision
+- [x] `src/gateway/pipeline.rs`: `run()` and `run_streaming()` accept `tags: &serde_json::Value` / `serde_json::Value`; cloned into fire-and-forget spawn for DB write; all call sites updated (replay, playground, MCP tools)
+- [x] `src/db/requests.rs`: `insert_request` extended with `tags: &serde_json::Value`; PostgreSQL uses native JSONB binding, SQLite serializes to `TEXT`
+- [x] `src/models/request.rs`: `Request` struct gains `tags: serde_json::Value` with `#[serde(default)]`
+- [x] `src/db/analytics.rs`: `cost_by_tag(pool, tag_key, days)` — PostgreSQL uses `->>` JSONB operator; SQLite uses `json_extract`; returns grouped `(tag_value, cost_usd, request_count)` with NULL group for untagged requests
+- [x] `src/handlers/admin/analytics.rs`: `GET /admin/analytics/cost-by-tag?tag=<key>&days=<n>` — validates tag key (alphanumeric + underscore only), requires BillingViewer role
+- [x] `src/routes/mod.rs`: wired `/admin/analytics/cost-by-tag` route
+- [x] `dashboard/src/lib/api.ts`: added `CostByTagGroup`, `CostByTagResponse` types and `analytics.costByTag(tag, days)` method
+- [x] `dashboard/src/app/(dashboard)/analytics/page.tsx`: cost-by-tag card — tag key input, horizontal Recharts BarChart grouped by tag value
+- [x] `tests/v5_l3_cost_tags.rs`: 6 acceptance tests — metadata tags stored, header tags stored, header overrides body, cost breakdown endpoint, null group for untagged, 400 for invalid tag key
 
 ---
 

@@ -560,6 +560,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
             &config.time_sensitive_patterns,
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
     });
 
     let app = velox::routes::create_router(state);
@@ -681,6 +682,7 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
             &config.time_sensitive_patterns,
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
     });
 
     let app = velox::routes::create_router(state);

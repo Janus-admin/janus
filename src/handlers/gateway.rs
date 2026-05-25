@@ -273,6 +273,9 @@ async fn chat_completions_inner(
         .cloned()
         .unwrap_or_default();
 
+    // V5-L3: extract cost tags from metadata field + X-Velox-Tags header.
+    let tags = extract_tags(&request, &headers);
+
     if request.stream == Some(true) {
         let start = Instant::now();
         match pipeline::run_streaming(
@@ -290,6 +293,7 @@ async fn chat_completions_inner(
             state.plugins.clone(),
             cache_ttl_secs,
             downgrade_triggered,
+            tags.clone(),
             "/v1/chat/completions",
         )
         .await
@@ -354,6 +358,7 @@ async fn chat_completions_inner(
             cache_ttl_secs,
             downgrade_triggered,
             None,
+            &tags,
             "/v1/chat/completions",
         )
         .await
@@ -867,6 +872,39 @@ fn select_version_by_weight(
     &versions[versions.len() - 1]
 }
 
+/// Extract cost tags from the request body (`metadata` field) and `X-Velox-Tags` header.
+///
+/// Merge order: body metadata first, then header values (header wins on key collision).
+/// Returns an empty JSON object when neither source provides tags.
+pub(crate) fn extract_tags(
+    request: &ChatCompletionRequest,
+    headers: &HeaderMap,
+) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+
+    if let Some(meta) = &request.metadata {
+        if let Some(obj) = meta.as_object() {
+            for (k, v) in obj {
+                map.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    if let Some(header_val) = headers.get("x-velox-tags").and_then(|v| v.to_str().ok()) {
+        for pair in header_val.split(',') {
+            let pair = pair.trim();
+            if let Some((k, v)) = pair.split_once('=') {
+                map.insert(
+                    k.trim().to_string(),
+                    serde_json::Value::String(v.trim().to_string()),
+                );
+            }
+        }
+    }
+
+    serde_json::Value::Object(map)
+}
+
 /// Parse `X-Velox-Variables: {"key": "value"}` header into a HashMap.
 /// Returns an empty map if the header is absent or invalid JSON.
 fn parse_variables_header(headers: &HeaderMap) -> HashMap<String, String> {
@@ -1111,6 +1149,7 @@ pub async fn legacy_completions(
         tool_choice: None,
         parallel_tool_calls: None,
         response_format: None,
+        metadata: None,
     };
 
     let rc = state.runtime_config.read().await;
@@ -1149,6 +1188,7 @@ pub async fn legacy_completions(
         0,     // no TTL for legacy completions endpoint
         false, // legacy completions bypass downgrade — budget check above uses simple path
         None,
+        &serde_json::Value::Object(serde_json::Map::new()),
         "/v1/completions",
     )
     .await

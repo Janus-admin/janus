@@ -2,6 +2,7 @@ pub mod alerts;
 pub mod analytics;
 pub mod cache;
 pub mod docs;
+pub mod idp;
 pub mod keys;
 pub mod members;
 pub mod models;

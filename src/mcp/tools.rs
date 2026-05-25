@@ -157,6 +157,7 @@ async fn proxy_llm_request(state: &Arc<AppState>, args: Value) -> Result<Value, 
         tool_choice: None,
         parallel_tool_calls: None,
         response_format: None,
+        metadata: None,
     };
 
     // Use an unconstrained internal key for MCP-originated requests.
@@ -186,6 +187,7 @@ async fn proxy_llm_request(state: &Arc<AppState>, args: Value) -> Result<Value, 
         0,     // no TTL for MCP calls
         false, // MCP calls are internal — no budget downgrade
         None,
+        &serde_json::Value::Object(serde_json::Map::new()),
         "/mcp/chat",
     )
     .await

@@ -286,6 +286,21 @@ export interface CacheAnalytics {
   avg_semantic_similarity: number | null;
 }
 
+export interface CostByTagGroup {
+  tag_value: string | null;
+  cost_usd: number;
+  request_count: number;
+}
+
+export interface CostByTagResponse {
+  data: {
+    tag_key: string;
+    period: string;
+    total_cost_usd: number;
+    groups: CostByTagGroup[];
+  };
+}
+
 export const analytics = {
   overview: () => apiFetch<OverviewResponse>("/admin/analytics/overview"),
   costs: (days = 30) =>
@@ -294,6 +309,8 @@ export const analytics = {
     apiFetch<{ data: LatencyRow[] }>(`/admin/analytics/latency?hours=${hours}`),
   cache: (hours = 24) =>
     apiFetch<CacheAnalytics>(`/admin/analytics/cache?hours=${hours}`),
+  costByTag: (tag: string, days = 30) =>
+    apiFetch<CostByTagResponse>(`/admin/analytics/cost-by-tag?tag=${encodeURIComponent(tag)}&days=${days}`),
 };
 
 // ── Providers ─────────────────────────────────────────────────────────────────
@@ -661,4 +678,38 @@ export const membersApi = {
       `/admin/workspaces/${workspaceId}/members/${userId}`,
       { method: "DELETE" }
     ),
+};
+
+// ── Identity Providers / OIDC SSO (V5-L2) ────────────────────────────────────
+
+export interface IdentityProvider {
+  id: string;
+  workspace_id: string;
+  name: string;
+  discovery_url: string;
+  client_id: string;
+  group_role_map: Record<string, string>;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface CreateIdpRequest {
+  name: string;
+  discovery_url: string;
+  client_id: string;
+  client_secret: string;
+  group_role_map?: Record<string, string>;
+  workspace_id?: string;
+}
+
+export const idpApi = {
+  list: () =>
+    apiFetch<{ data: IdentityProvider[] }>("/admin/idp"),
+  create: (body: CreateIdpRequest) =>
+    apiFetch<{ data: IdentityProvider }>("/admin/idp", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  delete: (id: string) =>
+    apiFetch<void>(`/admin/idp/${id}`, { method: "DELETE" }),
 };

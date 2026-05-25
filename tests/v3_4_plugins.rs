@@ -77,6 +77,7 @@ fn make_request(content: &str) -> ChatCompletionRequest {
         tool_choice: None,
         parallel_tool_calls: None,
         response_format: None,
+        metadata: None,
     }
 }
 

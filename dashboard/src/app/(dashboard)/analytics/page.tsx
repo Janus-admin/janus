@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { analytics, cache } from "@/lib/api";
+import { analytics, cache, type CostByTagGroup } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ChartContainer,
@@ -69,6 +70,10 @@ const costChartConfig = {
   cost: { label: "Cost (USD)", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
+const tagChartConfig = {
+  cost: { label: "Cost (USD)", color: "var(--chart-3)" },
+} satisfies ChartConfig;
+
 const providerChartConfig = {
   cost: { label: "Cost (USD)", color: "var(--chart-2)" },
 } satisfies ChartConfig;
@@ -78,6 +83,8 @@ export default function AnalyticsPage() {
   const [costDays, setCostDays] = useState<CostDays>(30);
   const [latencyHours, setLatencyHours] = useState<LatencyHours>(24);
   const [flushOpen, setFlushOpen] = useState(false);
+  const [tagKey, setTagKey] = useState("team");
+  const [tagInput, setTagInput] = useState("team");
 
   const costsQ = useQuery({
     queryKey: ["analytics", "costs", costDays],
@@ -99,6 +106,12 @@ export default function AnalyticsPage() {
     queryKey: ["cache", "stats"],
     queryFn: () => cache.stats(),
     refetchInterval: 30_000,
+  });
+
+  const tagQ = useQuery({
+    queryKey: ["analytics", "cost-by-tag", tagKey, costDays],
+    queryFn: () => analytics.costByTag(tagKey, costDays),
+    enabled: /^[a-zA-Z0-9_]+$/.test(tagKey),
   });
 
   const flushMut = useMutation({
@@ -501,6 +514,84 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Cost by tag section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-medium">Cost by tag</h2>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              Breakdown by any tag key sent via <code>metadata</code> field or{" "}
+              <code>X-Velox-Tags</code> header.
+            </p>
+          </div>
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (/^[a-zA-Z0-9_]+$/.test(tagInput)) setTagKey(tagInput);
+            }}
+          >
+            <Input
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              placeholder="tag key (e.g. team)"
+              className="h-8 w-40 text-sm"
+            />
+            <Button type="submit" size="sm" variant="outline" className="h-8 text-xs px-3">
+              Apply
+            </Button>
+          </form>
+        </div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">
+              Cost by <code className="text-xs bg-muted px-1 py-0.5 rounded">{tagKey}</code> — last {costDays}d
+            </CardTitle>
+            <CardDescription className="text-xs">
+              {tagQ.data?.data.total_cost_usd != null
+                ? `Total: $${tagQ.data.data.total_cost_usd.toFixed(4)}`
+                : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {tagQ.isLoading ? (
+              <Skeleton className="h-44 w-full" />
+            ) : !tagQ.data?.data.groups.length ? (
+              <p className="text-center text-muted-foreground text-sm py-10">
+                No tagged requests in this window. Send requests with{" "}
+                <code className="bg-muted px-1 rounded">X-Velox-Tags: {tagKey}=value</code>.
+              </p>
+            ) : (
+              <ChartContainer config={tagChartConfig} className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={(tagQ.data?.data.groups ?? []).map((g: CostByTagGroup) => ({
+                      name: g.tag_value ?? "(untagged)",
+                      cost: g.cost_usd,
+                      requests: g.request_count,
+                    }))}
+                    layout="vertical"
+                  >
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tickFormatter={(v) => `$${v.toFixed(3)}`} className="text-xs" />
+                    <YAxis type="category" dataKey="name" width={90} className="text-xs" />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          formatter={(value) => [`$${Number(value).toFixed(4)}`, "cost"]}
+                        />
+                      }
+                    />
+                    <Bar dataKey="cost" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Flush cache confirmation */}

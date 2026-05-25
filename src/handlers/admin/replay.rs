@@ -163,6 +163,7 @@ pub async fn replay_request(
         cache_ttl_secs,
         false,
         opts.provider.as_deref(),
+        &serde_json::Value::Object(serde_json::Map::new()),
         "/admin/replay",
     )
     .await?;
@@ -342,6 +343,7 @@ pub async fn playground(
         cache_ttl_secs,
         false,
         None,
+        &serde_json::Value::Object(serde_json::Map::new()),
         "/admin/playground",
     )
     .await?;

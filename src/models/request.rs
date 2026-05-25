@@ -89,6 +89,9 @@ pub struct Request {
     pub replay_of_request_id: Option<Uuid>,
     /// True for requests made via `POST /admin/playground` (V4-6).
     pub is_playground: bool,
+    /// V5-L3: cost attribution tags (e.g. `{"team": "backend", "project": "rag"}`).
+    #[serde(default)]
+    pub tags: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 

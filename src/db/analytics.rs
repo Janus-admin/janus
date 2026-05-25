@@ -768,6 +768,136 @@ fn decimal_to_f64(d: Decimal) -> f64 {
     f64::try_from(d).unwrap_or(0.0)
 }
 
+// ── Cost breakdown by tag (V5-L3) ─────────────────────────────────────────────
+
+/// Return cost grouped by a single tag key over a rolling window.
+///
+/// `tag_key` is a simple string (e.g. `"team"`). Rows where the tag is absent
+/// are reported with `tag_value = null`.
+/// `days` is clamped to 1–365 by the caller.
+pub async fn cost_by_tag(
+    pool: &DbPool,
+    tag_key: &str,
+    days: i32,
+) -> AppResult<serde_json::Value> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    {
+        let interval = format!("{} days", days);
+
+        // Total cost in the period (for share calculation).
+        let total_cost: Option<Decimal> = sqlx::query_scalar(
+            "SELECT SUM(cost_usd) FROM requests WHERE created_at >= NOW() - $1::interval",
+        )
+        .bind(&interval)
+        .fetch_optional(pool)
+        .await?
+        .flatten();
+
+        // Group by the value of tags->>key; NULL when the tag is absent.
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            tag_value: Option<String>,
+            cost_usd: Option<Decimal>,
+            request_count: i64,
+        }
+
+        let rows = sqlx::query_as::<_, Row>(
+            "SELECT
+                 tags->>$2                AS tag_value,
+                 SUM(cost_usd)            AS cost_usd,
+                 COUNT(*)                 AS request_count
+             FROM requests
+             WHERE created_at >= NOW() - $1::interval
+             GROUP BY tags->>$2
+             ORDER BY cost_usd DESC NULLS LAST",
+        )
+        .bind(&interval)
+        .bind(tag_key)
+        .fetch_all(pool)
+        .await?;
+
+        let total = total_cost.unwrap_or(Decimal::ZERO);
+        let groups: Vec<serde_json::Value> = rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "tag_value":     r.tag_value,
+                    "cost_usd":      decimal_to_f64(r.cost_usd.unwrap_or(Decimal::ZERO)),
+                    "request_count": r.request_count,
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "data": {
+                "tag_key":        tag_key,
+                "period":         format!("{}d", days),
+                "total_cost_usd": decimal_to_f64(total),
+                "groups":         groups,
+            }
+        }))
+    }
+
+    #[cfg(feature = "sqlite")]
+    {
+        let cutoff = Utc::now() - chrono::Duration::days(days as i64);
+
+        let total_cost: Option<f64> =
+            sqlx::query_scalar("SELECT SUM(cost_usd) FROM requests WHERE created_at >= $1")
+                .bind(cutoff)
+                .fetch_optional(pool)
+                .await?
+                .flatten();
+
+        // SQLite JSON: json_extract(tags, '$.<key>') extracts the value for key.
+        // Build the JSON path dynamically (key is validated by the handler).
+        let json_path = format!("$.{}", tag_key);
+
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            tag_value: Option<String>,
+            cost_usd: Option<f64>,
+            request_count: i64,
+        }
+
+        let rows = sqlx::query_as::<_, Row>(
+            "SELECT
+                 json_extract(tags, $2)  AS tag_value,
+                 SUM(cost_usd)           AS cost_usd,
+                 COUNT(*)                AS request_count
+             FROM requests
+             WHERE created_at >= $1
+             GROUP BY json_extract(tags, $2)
+             ORDER BY cost_usd DESC",
+        )
+        .bind(cutoff)
+        .bind(&json_path)
+        .fetch_all(pool)
+        .await?;
+
+        let total = total_cost.unwrap_or(0.0);
+        let groups: Vec<serde_json::Value> = rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "tag_value":     r.tag_value,
+                    "cost_usd":      r.cost_usd.unwrap_or(0.0),
+                    "request_count": r.request_count,
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "data": {
+                "tag_key":        tag_key,
+                "period":         format!("{}d", days),
+                "total_cost_usd": total,
+                "groups":         groups,
+            }
+        }))
+    }
+}
+
 struct ModelAggregate {
     model: String,
     request_count: i64,

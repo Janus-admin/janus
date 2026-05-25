@@ -91,6 +91,8 @@ pub async fn run(
     downgrade_triggered: bool,
     // When Some, only the provider with this string ID is tried (replay override).
     only_provider: Option<&str>,
+    // V5-L3: tags extracted from request metadata + X-Velox-Tags header.
+    tags: &serde_json::Value,
     // V5-0: route this request is being served on, written to requests.endpoint.
     endpoint: &str,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
@@ -402,6 +404,7 @@ pub async fn run(
                                 usage.total_tokens as i32,
                             );
                             let endpoint_log = endpoint_log_arc.clone();
+                            let tags_log = tags.clone();
                             tokio::spawn(async move {
                                 let _ = db::requests::insert_request(
                                     &pool,
@@ -421,6 +424,7 @@ pub async fn run(
                                     downgrade_triggered,
                                     &endpoint_log,
                                     tool_calls.as_ref(),
+                                    &tags_log,
                                 )
                                 .await;
                                 let _ = db::analytics::upsert_daily_cost(
@@ -488,6 +492,7 @@ pub async fn run(
                             let provider_name = provider.name();
                             let model = effective_request.model.clone();
                             let endpoint_log = endpoint_log_arc.clone();
+                            let tags_err = tags.clone();
                             tokio::spawn(async move {
                                 let _ = db::requests::insert_request(
                                     &pool,
@@ -507,6 +512,7 @@ pub async fn run(
                                     downgrade_triggered,
                                     &endpoint_log,
                                     None,
+                                    &tags_err,
                                 )
                                 .await;
                             });
@@ -585,6 +591,8 @@ pub async fn run_streaming(
     // reserved for future use when streaming cache writes are added.
     _cache_ttl_secs: u64,
     downgrade_triggered: bool,
+    // V5-L3: tags extracted from request metadata + X-Velox-Tags header.
+    tags: serde_json::Value,
     // V5-0: route this stream is being served on, written to requests.endpoint.
     endpoint: &str,
 ) -> AppResult<(Response, CacheHit)> {
@@ -721,6 +729,7 @@ pub async fn run_streaming(
                         let api_key_id = api_key.id;
                         let workspace_id = api_key.workspace_id;
                         let model = effective_request.model.clone();
+                        let tags_stream = tags.clone();
 
                         let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
 
@@ -879,6 +888,7 @@ pub async fn run_streaming(
                                     downgrade_triggered,
                                     &endpoint_log,
                                     None, // streaming tool_calls audit deferred to V5-1
+                                    &tags_stream,
                                 )
                                 .await;
                                 let _ = db::analytics::upsert_daily_cost(
@@ -962,6 +972,7 @@ pub async fn run_with_workspace(
         cache_ttl_secs,
         downgrade_triggered,
         None,
+        &serde_json::Value::Object(serde_json::Map::new()),
         endpoint,
     )
     .await

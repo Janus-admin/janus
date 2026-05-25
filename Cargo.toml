@@ -102,6 +102,12 @@ serde_yaml = "0.9"
 tar = "0.4"
 flate2 = "1"
 
+# ─── V5-L2: OIDC Login ────────────────────────────────────────────────────────
+# OIDC flow is implemented manually using reqwest (already present) +
+# jsonwebtoken (already present) for JWT validation. base64 is needed for
+# PKCE S256 challenge generation (URL-safe, no-padding encoding of SHA-256 hash).
+base64 = "0.22"
+
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]
 wiremock = "0.6"
@@ -113,6 +119,8 @@ reqwest = { version = "0.12", features = ["json"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 # V3-2: enable in-memory span exporter for tests
 opentelemetry_sdk = { version = "0.23", features = ["rt-tokio", "testing"] }
+# V5-L2: RSA key generation for mock OIDC ID tokens in tests
+rsa = { version = "0.9", features = ["pem"] }
 
 [[bench]]
 name = "cache_bench"

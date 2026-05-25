@@ -1,3 +1,5 @@
+pub mod sso;
+
 use crate::{
     db,
     errors::{AppError, AppResult},

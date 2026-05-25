@@ -99,6 +99,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/analytics/simulate",
             get(handlers::admin::analytics::simulate),
         )
+        .route(
+            "/admin/analytics/cost-by-tag",
+            get(handlers::admin::analytics::cost_by_tag),
+        )
         // ── Admin — Models (pricing catalogue) ──────────────────────────────
         .route("/admin/models", get(handlers::admin::models::list_models))
         // ── Admin — Providers ────────────────────────────────────────────────
@@ -186,6 +190,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             patch(handlers::admin::members::update_member)
                 .delete(handlers::admin::members::remove_member),
         )
+        // ── Admin — Identity Providers (V5-L2) ───────────────────────────────
+        .route(
+            "/admin/idp",
+            get(handlers::admin::idp::list_idps).post(handlers::admin::idp::create_idp),
+        )
+        .route(
+            "/admin/idp/:id",
+            delete(handlers::admin::idp::delete_idp),
+        )
         .route_layer(axum::middleware::from_extractor_with_state::<
             AuthUser,
             Arc<AppState>,
@@ -210,6 +223,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/auth/register", post(handlers::auth::register))
         .route("/api/v1/auth/login", post(handlers::auth::login))
         .route("/api/v1/auth/me", get(handlers::auth::me))
+        // ── V5-L2: OIDC SSO ──────────────────────────────────────────────────
+        .route(
+            "/auth/oidc/:idp_id/start",
+            get(handlers::auth::sso::oidc_start),
+        )
+        .route(
+            "/auth/oidc/:idp_id/callback",
+            get(handlers::auth::sso::oidc_callback),
+        )
         .route("/api/v1/users", get(handlers::users::list_users))
         .route("/api/v1/users/:id", get(handlers::users::get_user))
         .route("/api/v1/users/:id", put(handlers::users::update_user))

@@ -69,6 +69,7 @@ impl Modify for SecurityAddon {
         (name = "Config", description = "Runtime-mutable subset of velox.toml."),
         (name = "System", description = "Readiness, liveness, and metrics."),
         (name = "Workspaces", description = "Tenants and member RBAC."),
+        (name = "Identity Providers", description = "OIDC single sign-on configuration."),
         (name = "Gateway", description = "OpenAI-compatible proxy: chat, embeddings, images, audio, models."),
     ),
     paths(
@@ -126,6 +127,10 @@ impl Modify for SecurityAddon {
         crate::handlers::admin::members::add_member,
         crate::handlers::admin::members::update_member,
         crate::handlers::admin::members::remove_member,
+        // ── Identity Providers (V5-L2) ────────────────────────────────────────
+        crate::handlers::admin::idp::list_idps,
+        crate::handlers::admin::idp::create_idp,
+        crate::handlers::admin::idp::delete_idp,
         // ── Gateway (/v1/*) ──────────────────────────────────────────────────
         crate::handlers::gateway::chat_completions,
         crate::handlers::gateway::embeddings,

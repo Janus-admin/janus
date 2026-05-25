@@ -139,6 +139,58 @@ pub async fn cache(
     Ok(Json(data))
 }
 
+// ── Cost by tag (V5-L3) ───────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct CostByTagQuery {
+    /// The tag key to group by (e.g. `team`, `project`, `env`).
+    pub tag: String,
+    /// Number of days to look back (default: 30).
+    #[serde(default = "default_30")]
+    pub days: i32,
+}
+
+/// GET /admin/analytics/cost-by-tag?tag=team&days=30
+///
+/// Returns cost, request count, and share grouped by the value of a single tag key.
+/// Rows where the tag is absent are reported with `tag_value = null`.
+#[utoipa::path(
+    get,
+    path = "/admin/analytics/cost-by-tag",
+    tag = "Analytics",
+    params(CostByTagQuery),
+    responses(
+        (status = 200, description = "Cost grouped by tag value", body = serde_json::Value),
+        (status = 400, description = "Invalid tag key"),
+        (status = 403, description = "Forbidden"),
+    ),
+    security(("bearer_jwt" = [])),
+)]
+pub async fn cost_by_tag(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Query(params): Query<CostByTagQuery>,
+) -> AppResult<Json<Value>> {
+    require_role(Role::BillingViewer, &auth.0, &state).await?;
+
+    // Validate the tag key: alphanumeric + underscore only.
+    if params.tag.is_empty()
+        || !params
+            .tag
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_')
+    {
+        return Err(crate::errors::AppError::BadRequest(
+            "tag key must be non-empty and contain only alphanumeric characters or underscores"
+                .to_string(),
+        ));
+    }
+
+    let days = params.days.clamp(1, 365);
+    let data = db_analytics::cost_by_tag(&state.pool, &params.tag, days).await?;
+    Ok(Json(data))
+}
+
 // ── Cost simulator ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]

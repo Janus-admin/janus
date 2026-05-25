@@ -332,6 +332,7 @@ mod tests {
             tool_choice: None,
             parallel_tool_calls: None,
             response_format: None,
+            metadata: None,
         };
 
         let payload = provider.build_gemini_request(&request);

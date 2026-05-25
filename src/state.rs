@@ -12,6 +12,16 @@ use dashmap::DashMap;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
+use uuid::Uuid;
+
+/// Ephemeral state stored per OIDC login attempt.
+/// Keyed by the CSRF state token; removed on callback or after TTL.
+pub struct OidcState {
+    pub code_verifier: String,
+    pub nonce: String,
+    pub idp_id: Uuid,
+    pub created_at: std::time::Instant,
+}
 
 /// Shared application state threaded through all axum handlers via `Arc<AppState>`.
 pub struct AppState {
@@ -42,4 +52,7 @@ pub struct AppState {
     /// Short-lived in-memory cache for GET /v1/models responses (5-second TTL).
     /// Per-AppState so tests don't share a global singleton.
     pub models_cache: Arc<std::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>>,
+    /// In-flight OIDC login state: CSRF token → (PKCE verifier, nonce, idp_id).
+    /// Entries are removed on callback (single use) or after 10 minutes (TTL).
+    pub oidc_states: Arc<DashMap<String, OidcState>>,
 }
