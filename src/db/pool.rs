@@ -14,9 +14,13 @@ pub type DbPool = sqlx::SqlitePool;
 pub async fn connect(database_url: &str) -> anyhow::Result<DbPool> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
+        let connect_options = database_url
+            .parse::<sqlx::postgres::PgConnectOptions>()?
+            .ssl_mode(sqlx::postgres::PgSslMode::Prefer);
+
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(10)
-            .connect(database_url)
+            .connect_with(connect_options)
             .await?;
 
         sqlx::migrate!("./migrations")
