@@ -39,4 +39,7 @@ pub struct AppState {
     /// Time-sensitive query detector — skips cache for prompts matching
     /// time-bound patterns (e.g. "today", "current price", "الآن").
     pub time_guard: Arc<TimeGuard>,
+    /// Short-lived in-memory cache for GET /v1/models responses (5-second TTL).
+    /// Per-AppState so tests don't share a global singleton.
+    pub models_cache: Arc<std::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>>,
 }

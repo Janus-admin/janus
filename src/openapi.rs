@@ -50,8 +50,8 @@ impl Modify for SecurityAddon {
         title = "Velox Admin & Gateway API",
         version = "0.1.0",
         description = "Velox is a self-hosted AI gateway: OpenAI-compatible proxy for chat/embeddings/images/audio, with caching, cost tracking, alerts, and per-workspace RBAC.\n\nTwo authentication systems coexist:\n- **Admin API** (`/admin/*`, `/api/v1/auth/*`): JWT bearer token from dashboard login.\n- **Gateway API** (`/v1/*`): `vx-sk-...` API key as `Authorization: Bearer <key>`.\n\nGateway endpoints are OpenAI request/response compatible — clients change only the `base_url`.",
-        contact(name = "Velox", url = "https://github.com/anthropics/velox"),
-        license(name = "Elastic License v2", url = "https://www.elastic.co/licensing/elastic-license"),
+        contact(name = "Velox", url = "https://github.com/AlizadehAFPN/Velox"),
+        license(name = "MIT", url = "https://opensource.org/licenses/MIT"),
     ),
     servers(
         (url = "http://localhost:8080", description = "Local dev server"),

@@ -319,6 +319,7 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
         time_guard: std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
             &config.time_sensitive_patterns,
         )),
+        models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
     });
 
     let app = velox::routes::create_router(state);

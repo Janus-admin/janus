@@ -419,16 +419,7 @@ async fn chat_completions_inner(
 
 // ── GET /v1/models ────────────────────────────────────────────────────────────
 
-/// V5-0: aggregate provider + DB models, served from a 5-second in-memory cache.
-/// Re-reading on every request would hammer provider /models endpoints.
-type ModelsCacheCell = std::sync::Mutex<Option<(std::time::Instant, Vec<ModelInfo>)>>;
-static MODELS_CACHE: std::sync::OnceLock<ModelsCacheCell> = std::sync::OnceLock::new();
-
 const MODELS_CACHE_TTL_SECS: u64 = 5;
-
-fn models_cache() -> &'static ModelsCacheCell {
-    MODELS_CACHE.get_or_init(|| std::sync::Mutex::new(None))
-}
 
 /// GET /v1/models
 ///
@@ -447,14 +438,10 @@ fn models_cache() -> &'static ModelsCacheCell {
 pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Cache hit (within TTL): return immediately.
     {
-        let guard = models_cache().lock().unwrap();
+        let guard = state.models_cache.lock().unwrap();
         if let Some((ts, ref cached)) = *guard {
             if ts.elapsed().as_secs() < MODELS_CACHE_TTL_SECS {
-                return Json(serde_json::json!({
-                    "object": "list",
-                    "data":   cached.clone(),
-                }))
-                .into_response();
+                return Json(cached.clone()).into_response();
             }
         }
     }
@@ -509,18 +496,15 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoRespons
     }
 
     let aggregated: Vec<ModelInfo> = by_id.into_values().collect();
+    let body = serde_json::json!({ "object": "list", "data": aggregated });
 
     // Refresh cache.
     {
-        let mut guard = models_cache().lock().unwrap();
-        *guard = Some((std::time::Instant::now(), aggregated.clone()));
+        let mut guard = state.models_cache.lock().unwrap();
+        *guard = Some((std::time::Instant::now(), body.clone()));
     }
 
-    Json(serde_json::json!({
-        "object": "list",
-        "data":   aggregated,
-    }))
-    .into_response()
+    Json(body).into_response()
 }
 
 // ── POST /v1/images/generations ───────────────────────────────────────────────

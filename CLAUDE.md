@@ -61,18 +61,23 @@ Phase 9: Mobile App          → [SKIPPED] — out of scope for v1
 **V4 is fully complete — all 10 phases done (2026-05-24). No remaining V4 work.**
 See **VELOX_V4_ROADMAP.md §16** for the full phase history.
 
-**V5 — Market-Readiness — is IN PROGRESS. See VELOX_V5_ROADMAP.md.**
-Read that file's §16 (phase status), §17 (locked decisions), and §18 (session start ritual)
+**V5 — Launch Readiness — is IN PROGRESS. See VELOX_V5_ROADMAP.md.**
+The roadmap was revised on 2026-05-25 to focus on the first 10 customers (not full enterprise).
+Read that file's Phase Status Tracker, Locked Decisions, and Session Start Ritual sections
 before touching any code on a V5 phase.
 
-V5-0 (API Surface Expansion) and V5-1 server side (OpenAPI + Swagger UI + `velox` CLI)
-are complete. SDK repos (velox-python, velox-node) are V5-1b and live in separate repos.
+V5-0, V5-1, and V5-2 are fully complete. The remaining phases use a new L-series naming:
 
-V5-2 (Deployment & Migration Tooling) is complete on the server side: importers
-(LiteLLM / Portkey / OpenRouter), `velox backup`/`restore`, Helm chart, and
-one-click deploy configs (Railway / Fly / Render) all ship in this repo. The
-Terraform provider is a separate repo (`terraform-provider-velox`) and is not
-in scope for this branch.
+```
+V5-L1: Brand & First Impression  → [x] COMPLETE — README rewritten, Docker paths fixed, Cargo.toml metadata
+V5-L2: OIDC Login                → [ ] NOT STARTED — migration 0028
+V5-L3: Cost Tags                 → [ ] NOT STARTED — migration 0029
+V5-L4: Polished Alerts           → [ ] NOT STARTED — Slack + Email; migration 0030
+V5-L5: Onboarding & Docs Polish  → [ ] NOT STARTED — migration 0031, license switch to ELv2
+```
+
+Everything beyond these 5 (SAML, SCIM, SOC2, policy engine, FinOps, APM, GTM) is in
+VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks.
 
 ---
 

@@ -528,6 +528,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         plugins: std::sync::Arc::new(vec![]),
         dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
         time_guard,
+        models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
     });
 
     let app = velox::routes::create_router(state);

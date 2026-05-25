@@ -366,6 +366,7 @@ async fn main() -> anyhow::Result<()> {
         plugins,
         dedup: Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
         time_guard,
+        models_cache: Arc::new(std::sync::Mutex::new(None)),
     });
 
     // ── Background: cache TTL prune (V4-3) ───────────────────────────────────
