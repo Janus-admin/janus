@@ -31,8 +31,10 @@ COPY benches ./benches
 COPY build.rs .
 COPY dashboard ./dashboard
 COPY models ./models
+COPY .sqlx ./.sqlx
 
 # Build the application (includes dashboard build via build.rs)
+ENV SQLX_OFFLINE=true
 RUN cargo build --release
 
 # Stage 2: Runtime

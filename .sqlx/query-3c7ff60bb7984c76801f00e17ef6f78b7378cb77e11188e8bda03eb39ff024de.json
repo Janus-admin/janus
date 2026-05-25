@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE workspace_members wm\n            SET role_id = r.id\n            FROM roles r\n            WHERE r.name = $1\n              AND wm.workspace_id = $2\n              AND wm.user_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3c7ff60bb7984c76801f00e17ef6f78b7378cb77e11188e8bda03eb39ff024de"
+}

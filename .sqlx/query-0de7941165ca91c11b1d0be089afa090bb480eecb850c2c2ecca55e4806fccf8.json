@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT w.id, w.name, w.slug, w.created_at,\n                   COUNT(wm.id) as \"member_count!\"\n            FROM workspaces w\n            LEFT JOIN workspace_members wm ON wm.workspace_id = w.id\n            GROUP BY w.id, w.name, w.slug, w.created_at\n            ORDER BY w.created_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "slug",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "member_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "0de7941165ca91c11b1d0be089afa090bb480eecb850c2c2ecca55e4806fccf8"
+}

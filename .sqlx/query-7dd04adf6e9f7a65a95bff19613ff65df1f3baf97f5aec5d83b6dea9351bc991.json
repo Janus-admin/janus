@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT r.name as \"role_name\"\n            FROM workspace_members wm\n            JOIN roles r ON wm.role_id = r.id\n            WHERE wm.user_id = $1\n            ORDER BY\n                CASE r.name\n                    WHEN 'admin'          THEN 4\n                    WHEN 'api_manager'    THEN 3\n                    WHEN 'billing_viewer' THEN 2\n                    WHEN 'read_only'      THEN 1\n                    ELSE 0\n                END DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role_name",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7dd04adf6e9f7a65a95bff19613ff65df1f3baf97f5aec5d83b6dea9351bc991"
+}

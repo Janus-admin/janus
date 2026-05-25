@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO workspace_members (id, workspace_id, user_id, role_id, created_at)\n            SELECT $1, $2, $3, r.id, NOW()\n            FROM roles r WHERE r.name = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "61004c0994c1cbf27e6b040a6117b7e13c2e138db9698517bc0ce1c53842b110"
+}
