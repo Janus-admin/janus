@@ -187,6 +187,42 @@ pub struct Config {
     /// ```
     #[serde(default)]
     pub cluster: ClusterConfig,
+
+    // ── SMTP / Email Alerts (V5-L4) ───────────────────────────────────────────
+    #[serde(default)]
+    pub smtp: SmtpConfig,
+}
+
+/// SMTP configuration for email alert delivery (V5-L4).
+///
+/// Set `smtp.host` in velox.toml or via `SMTP__HOST` env var to enable email alerts.
+/// When `smtp.file_dir` is non-empty, emails are written to that directory as .eml
+/// files instead of being sent — useful for testing and CI environments.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SmtpConfig {
+    /// SMTP hostname. Leave empty to disable email alerts entirely.
+    #[serde(default)]
+    pub host: String,
+    /// SMTP port. Default: 587 (STARTTLS).
+    #[serde(default = "default_smtp_port")]
+    pub port: u16,
+    /// SMTP login username.
+    #[serde(default)]
+    pub username: String,
+    /// SMTP login password.
+    #[serde(default)]
+    pub password: String,
+    /// RFC 5321 sender address (e.g. `velox@acme.com`). Defaults to `velox@<host>`.
+    #[serde(default)]
+    pub from_address: String,
+    /// When non-empty, write emails as .eml files in this directory instead of sending.
+    /// Intended for testing and CI — not for production use.
+    #[serde(default)]
+    pub file_dir: String,
+}
+
+fn default_smtp_port() -> u16 {
+    587
 }
 
 /// Routing configuration for intelligent provider selection.

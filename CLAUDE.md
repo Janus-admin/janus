@@ -72,7 +72,7 @@ V5-0, V5-1, and V5-2 are fully complete. The remaining phases use a new L-series
 V5-L1: Brand & First Impression  → [x] COMPLETE — README rewritten, Docker paths fixed, Cargo.toml metadata
 V5-L2: OIDC Login                → [x] COMPLETE — migration 0028, 7 acceptance tests
 V5-L3: Cost Tags                 → [x] COMPLETE — migration 0029, tags on requests, GET /admin/analytics/cost-by-tag, 6 acceptance tests
-V5-L4: Polished Alerts           → [ ] NOT STARTED — Slack + Email; migration 0030
+V5-L4: Polished Alerts           → [x] COMPLETE — migration 0030, Slack block-kit + SMTP email, multi-channel test endpoint, 5 acceptance tests
 V5-L5: Onboarding & Docs Polish  → [ ] NOT STARTED — migration 0031, license switch to ELv2
 ```
 

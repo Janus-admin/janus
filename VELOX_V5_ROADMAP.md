@@ -439,8 +439,8 @@ helm lint charts/velox
 | V5-2 | Deployment & Migration Tooling | ✅ Complete (2026-05-25) | Helm, one-click deploy, importers, backup; Terraform = separate repo |
 | V5-L1 | Brand & First Impression | ✅ Complete (2026-05-25) | README rewritten, Docker image path fixed, Cargo.toml metadata, openapi.rs |
 | V5-L2 | OIDC Login | ✅ Complete (2026-05-25) | Migration 0028; identity_providers + identities tables, PKCE flow, JIT provisioning, group→role map, admin IdP CRUD, SSO dashboard page, 7 acceptance tests |
-| V5-L3 | Cost Tags | ⏳ Not started | Migration 0029 |
-| V5-L4 | Polished Alerts (Slack + Email) | ⏳ Not started | Migration 0030 |
+| V5-L3 | Cost Tags | ✅ Complete (2026-05-25) | Migration 0029; tags on requests, GET /admin/analytics/cost-by-tag, 6 acceptance tests |
+| V5-L4 | Polished Alerts (Slack + Email) | ✅ Complete (2026-05-25) | Migration 0030; slack_webhook_url + email_to columns, block-kit Slack dispatch, lettre SMTP/file email, multi-channel test endpoint, 5 acceptance tests |
 | V5-L5 | Onboarding & Docs Polish | ⏳ Not started | Migration 0031 |
 
 ---

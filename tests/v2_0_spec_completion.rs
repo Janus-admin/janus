@@ -187,7 +187,7 @@ async fn v2_0_spend_threshold_alert_fires_when_exceeded() {
     )
     .bind(Uuid::new_v4()).execute(&pool).await.expect("insert request");
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate failed");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -240,7 +240,7 @@ async fn v2_0_error_rate_alert_evaluates_over_window() {
         .expect("insert request");
     }
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate failed");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -285,7 +285,7 @@ async fn v2_0_latency_spike_alert_fires_on_high_p95() {
     .await
     .expect("insert request");
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate failed");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -327,7 +327,7 @@ async fn v2_0_alert_last_triggered_updated_when_fired() {
     )
     .bind(Uuid::new_v4()).execute(&pool).await.ok();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -373,7 +373,7 @@ async fn v2_0_inactive_alert_does_not_fire() {
     )
     .bind(Uuid::new_v4()).execute(&pool).await.ok();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =

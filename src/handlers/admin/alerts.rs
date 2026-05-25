@@ -1,5 +1,9 @@
 use crate::{
-    alerts::webhook::{WebhookContext, WebhookFormat},
+    alerts::{
+        email::{self, EmailContext},
+        slack::{self, SlackContext},
+        webhook::{WebhookContext, WebhookFormat},
+    },
     db::alerts::{self as db_alerts, CreateAlertParams, UpdateAlertParams},
     errors::AppResult,
     state::AppState,
@@ -9,6 +13,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use chrono::Utc;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -29,6 +34,11 @@ pub struct CreateAlertRequest {
     #[serde(default = "default_format")]
     pub webhook_format: String,
     pub webhook_secret: Option<String>,
+    /// Native Slack incoming-webhook URL. Receives block-kit payloads.
+    pub slack_webhook_url: Option<String>,
+    /// Recipient email addresses. Requires SMTP configured in velox.toml.
+    #[serde(default)]
+    pub email_to: Vec<String>,
 }
 
 fn default_window() -> i32 {
@@ -49,6 +59,10 @@ pub struct UpdateAlertRequest {
     pub webhook_format: Option<String>,
     /// Pass `null` to clear the secret.
     pub webhook_secret: Option<Value>,
+    /// Pass `null` to clear the Slack webhook URL.
+    pub slack_webhook_url: Option<Value>,
+    /// Omit to leave unchanged; pass `[]` to clear all recipients.
+    pub email_to: Option<Vec<String>>,
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -82,6 +96,8 @@ pub async fn create_alert(
             webhook_url: body.webhook_url.as_deref(),
             webhook_format: &body.webhook_format,
             webhook_secret: body.webhook_secret.as_deref(),
+            slack_webhook_url: body.slack_webhook_url.as_deref(),
+            email_to: &body.email_to,
         },
     )
     .await?;
@@ -180,6 +196,8 @@ pub async fn update_alert(
         webhook_url: parse_nullable_string(body.webhook_url),
         webhook_format: body.webhook_format,
         webhook_secret: parse_nullable_string(body.webhook_secret),
+        slack_webhook_url: parse_nullable_string(body.slack_webhook_url),
+        email_to: body.email_to,
     };
 
     let alert = db_alerts::update(&state.pool, id, params)
@@ -212,15 +230,19 @@ pub async fn delete_alert(
     Ok((StatusCode::OK, Json(json!({ "data": { "deleted": true } }))))
 }
 
-/// POST /admin/alerts/:id/test  — deliver a test webhook regardless of threshold
+/// POST /admin/alerts/:id/test
+///
+/// Delivers a sample payload to every configured channel (generic webhook,
+/// Slack, and/or email) regardless of whether the threshold is currently met.
+/// Requires at least one channel to be configured.
 #[utoipa::path(
     post,
     path = "/admin/alerts/{id}/test",
     tag = "Alerts",
     params(("id" = uuid::Uuid, Path, description = "Alert UUID")),
     responses(
-        (status = 200, description = "Webhook delivered successfully", body = serde_json::Value),
-        (status = 400, description = "Alert has no webhook URL or delivery failed"),
+        (status = 200, description = "Sample payload delivered to all channels", body = serde_json::Value),
+        (status = 400, description = "No channels configured, or one or more deliveries failed"),
         (status = 404, description = "Alert not found"),
     ),
     security(("bearer_jwt" = [])),
@@ -233,36 +255,80 @@ pub async fn test_alert(
         .await?
         .ok_or_else(|| crate::errors::AppError::NotFound(format!("Alert {id}")))?;
 
-    let Some(ref url) = alert.webhook_url else {
+    let has_webhook = alert.webhook_url.is_some();
+    let has_slack = alert.slack_webhook_url.is_some();
+    let has_email = !alert.email_to.is_empty();
+
+    if !has_webhook && !has_slack && !has_email {
         return Err(crate::errors::AppError::BadRequest(
-            "Alert has no webhook URL configured".to_string(),
+            "Alert has no delivery channels configured (webhook_url, slack_webhook_url, or email_to)"
+                .to_string(),
         ));
-    };
+    }
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap_or_default();
-    let format = WebhookFormat::parse(&alert.webhook_format);
-    let now = chrono::Utc::now();
-    let ctx = WebhookContext {
-        alert_id: alert.id,
-        alert_type: &alert.alert_type,
-        alert_name: &alert.name,
-        message: "Test webhook delivery from Velox",
-        value: 0.0,
-        threshold: alert.threshold,
-        triggered_at: now,
-    };
 
-    let secret = db_alerts::get_secret(&state.pool, id).await?;
+    let now = Utc::now();
+    let mut errors: Vec<String> = Vec::new();
 
-    let (delivered, error_msg) =
-        match crate::alerts::webhook::deliver(&client, url, &format, secret.as_deref(), &ctx).await
-        {
-            Ok(()) => (true, None),
-            Err(e) => (false, Some(e.to_string())),
+    // Channel 1: generic HTTP webhook.
+    if let Some(ref url) = alert.webhook_url {
+        let format = WebhookFormat::parse(&alert.webhook_format);
+        let ctx = WebhookContext {
+            alert_id: alert.id,
+            alert_type: &alert.alert_type,
+            alert_name: &alert.name,
+            message: "Test webhook delivery from Velox",
+            value: 0.0,
+            threshold: alert.threshold,
+            triggered_at: now,
         };
+        let secret = db_alerts::get_secret(&state.pool, id).await?;
+        if let Err(e) =
+            crate::alerts::webhook::deliver(&client, url, &format, secret.as_deref(), &ctx).await
+        {
+            errors.push(format!("webhook: {e}"));
+        }
+    }
+
+    // Channel 2: Slack block-kit.
+    if let Some(ref url) = alert.slack_webhook_url {
+        let ctx = SlackContext {
+            alert_id: alert.id,
+            alert_name: &alert.name,
+            alert_type: &alert.alert_type,
+            value: 0.0,
+            threshold: alert.threshold,
+            triggered_at: now,
+        };
+        if let Err(e) = slack::send(&client, url, &ctx).await {
+            errors.push(format!("slack: {e}"));
+        }
+    }
+
+    // Channel 3: email.
+    if has_email {
+        let ctx = EmailContext {
+            alert_name: &alert.name,
+            alert_type: &alert.alert_type,
+            value: 0.0,
+            threshold: alert.threshold,
+            triggered_at: now,
+        };
+        if let Err(e) = email::send(&state.config.smtp, &alert.email_to, &ctx).await {
+            errors.push(format!("email: {e}"));
+        }
+    }
+
+    let delivered = errors.is_empty();
+    let error_msg = if errors.is_empty() {
+        None
+    } else {
+        Some(errors.join("; "))
+    };
 
     db_alerts::record_test_delivery(&state.pool, id, delivered, error_msg.as_deref()).await?;
 
@@ -270,7 +336,7 @@ pub async fn test_alert(
         Ok(Json(json!({ "data": { "delivered": true } })))
     } else {
         Err(crate::errors::AppError::BadRequest(
-            error_msg.unwrap_or_else(|| "Webhook delivery failed".to_string()),
+            error_msg.unwrap_or_else(|| "One or more channel deliveries failed".to_string()),
         ))
     }
 }

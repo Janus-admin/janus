@@ -153,6 +153,9 @@ struct TestAppOpts {
     downgrade_strategy: Option<String>,
     /// Per-key downgrade model. None = use global config.
     downgrade_to_model: Option<String>,
+    /// When set, configure SMTP to write .eml files to this directory instead of sending.
+    /// Used by V5-L4 email alert tests.
+    smtp_file_dir: Option<String>,
 }
 
 impl Default for TestAppOpts {
@@ -172,6 +175,7 @@ impl Default for TestAppOpts {
             downgrade_at_percent: None,
             downgrade_strategy: None,
             downgrade_to_model: None,
+            smtp_file_dir: None,
         }
     }
 }
@@ -316,6 +320,18 @@ pub async fn spawn_app_with_cluster_and_rate_limit(
     .await
 }
 
+/// Start the app with SMTP configured in file-transport mode (for email alert tests).
+///
+/// Emails are written as .eml files to `smtp_file_dir` instead of being sent via SMTP.
+/// The caller should use `tempfile::TempDir` and pass `.path().to_str().unwrap()`.
+pub async fn spawn_app_with_smtp_file_dir(smtp_file_dir: &str) -> String {
+    spawn_app_from_opts(TestAppOpts {
+        smtp_file_dir: Some(smtp_file_dir.to_string()),
+        ..Default::default()
+    })
+    .await
+}
+
 /// Spawn app in cluster mode, warm the cache from DB, and load all active DB keys.
 ///
 /// Use this when starting a "second node" that needs to see keys and cache entries
@@ -341,6 +357,11 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     // Override the rate-limit window if requested (e.g. 1 s for fast tests).
     config.rate_limit_window_secs = opts.rate_limit_window_secs;
+
+    // Configure SMTP file transport for email alert tests.
+    if let Some(ref dir) = opts.smtp_file_dir {
+        config.smtp.file_dir = dir.clone();
+    }
 
     // Enable cluster mode if requested.
     if opts.cluster_enabled {

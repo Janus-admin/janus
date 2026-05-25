@@ -20,6 +20,9 @@ pub struct Alert {
     pub webhook_format: String,
     /// True when a webhook secret is configured (the secret itself is never returned).
     pub webhook_secret_set: bool,
+    pub slack_webhook_url: Option<String>,
+    /// Recipient email addresses for this alert.
+    pub email_to: Vec<String>,
     pub last_triggered: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
@@ -46,6 +49,8 @@ pub struct CreateAlertParams<'a> {
     pub webhook_url: Option<&'a str>,
     pub webhook_format: &'a str,
     pub webhook_secret: Option<&'a str>,
+    pub slack_webhook_url: Option<&'a str>,
+    pub email_to: &'a [String],
 }
 
 #[derive(Debug, Default)]
@@ -57,6 +62,8 @@ pub struct UpdateAlertParams {
     pub webhook_url: Option<Option<String>>,
     pub webhook_format: Option<String>,
     pub webhook_secret: Option<Option<String>>,
+    pub slack_webhook_url: Option<Option<String>>,
+    pub email_to: Option<Vec<String>>,
 }
 
 // ── PostgreSQL implementation ─────────────────────────────────────────────────
@@ -77,6 +84,9 @@ mod pg {
         pub webhook_url: Option<String>,
         pub webhook_format: String,
         pub webhook_secret: Option<String>,
+        pub slack_webhook_url: Option<String>,
+        /// NULL → empty vec; TEXT[] → Vec<String>.
+        pub email_to: Option<Vec<String>>,
         pub last_triggered: Option<DateTime<Utc>>,
         pub created_at: DateTime<Utc>,
     }
@@ -94,6 +104,8 @@ mod pg {
                 webhook_url: r.webhook_url,
                 webhook_format: r.webhook_format,
                 webhook_secret_set: r.webhook_secret.is_some(),
+                slack_webhook_url: r.slack_webhook_url,
+                email_to: r.email_to.unwrap_or_default(),
                 last_triggered: r.last_triggered,
                 created_at: r.created_at,
             }
@@ -127,7 +139,9 @@ mod pg {
 
     const SELECT_COLS: &str =
         "id, workspace_id, name, type AS alert_type, threshold, window_minutes,
-         is_active, webhook_url, webhook_format, webhook_secret, last_triggered, created_at";
+         is_active, webhook_url, webhook_format, webhook_secret,
+         slack_webhook_url, email_to,
+         last_triggered, created_at";
 
     pub(super) async fn list(pool: &DbPool) -> AppResult<Vec<Alert>> {
         let sql = format!("SELECT {SELECT_COLS} FROM alerts ORDER BY created_at DESC");
@@ -149,13 +163,21 @@ mod pg {
     pub(super) async fn create(pool: &DbPool, p: CreateAlertParams<'_>) -> AppResult<Alert> {
         let id = Uuid::new_v4();
         let now = Utc::now();
+        let email_to: Option<Vec<String>> = if p.email_to.is_empty() {
+            None
+        } else {
+            Some(p.email_to.to_vec())
+        };
         let row = sqlx::query_as::<_, AlertDbRow>(
             "INSERT INTO alerts
                  (id, name, type, threshold, window_minutes, is_active,
-                  webhook_url, webhook_format, webhook_secret, created_at)
-             VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9)
+                  webhook_url, webhook_format, webhook_secret,
+                  slack_webhook_url, email_to,
+                  created_at)
+             VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9, $10, $11)
              RETURNING id, workspace_id, name, type AS alert_type, threshold, window_minutes,
                        is_active, webhook_url, webhook_format, webhook_secret,
+                       slack_webhook_url, email_to,
                        last_triggered, created_at",
         )
         .bind(id)
@@ -166,6 +188,8 @@ mod pg {
         .bind(p.webhook_url)
         .bind(p.webhook_format)
         .bind(p.webhook_secret)
+        .bind(p.slack_webhook_url)
+        .bind(email_to)
         .bind(now)
         .fetch_one(pool)
         .await?;
@@ -208,6 +232,14 @@ mod pg {
             set_parts.push(format!("webhook_secret = ${idx}"));
             idx += 1;
         }
+        if p.slack_webhook_url.is_some() {
+            set_parts.push(format!("slack_webhook_url = ${idx}"));
+            idx += 1;
+        }
+        if p.email_to.is_some() {
+            set_parts.push(format!("email_to = ${idx}"));
+            idx += 1;
+        }
 
         if set_parts.is_empty() {
             return get(pool, id).await;
@@ -241,6 +273,13 @@ mod pg {
         }
         if let Some(v) = p.webhook_secret {
             q = q.bind(v);
+        }
+        if let Some(v) = p.slack_webhook_url {
+            q = q.bind(v);
+        }
+        if let Some(v) = p.email_to {
+            let bound: Option<Vec<String>> = if v.is_empty() { None } else { Some(v) };
+            q = q.bind(bound);
         }
         q = q.bind(id);
 
@@ -289,9 +328,6 @@ mod pg {
 
 // ── SQLite implementation ─────────────────────────────────────────────────────
 
-// SQLite stores UUIDs as TEXT, DECIMAL as TEXT, BOOLEAN as INTEGER.
-// sqlx's chrono feature decodes ISO-8601 TEXT columns as DateTime<Utc>.
-
 #[cfg(feature = "sqlite")]
 mod lite {
     use super::*;
@@ -308,12 +344,20 @@ mod lite {
         pub webhook_url: Option<String>,
         pub webhook_format: String,
         pub webhook_secret: Option<String>,
+        pub slack_webhook_url: Option<String>,
+        /// Stored as JSON text; NULL → empty vec.
+        pub email_to: Option<String>,
         pub last_triggered: Option<DateTime<Utc>>,
         pub created_at: DateTime<Utc>,
     }
 
     impl From<AlertDbRow> for Alert {
         fn from(r: AlertDbRow) -> Self {
+            let email_to = r
+                .email_to
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+                .unwrap_or_default();
             Alert {
                 id: r.id,
                 workspace_id: r.workspace_id,
@@ -325,6 +369,8 @@ mod lite {
                 webhook_url: r.webhook_url,
                 webhook_format: r.webhook_format,
                 webhook_secret_set: r.webhook_secret.is_some(),
+                slack_webhook_url: r.slack_webhook_url,
+                email_to,
                 last_triggered: r.last_triggered,
                 created_at: r.created_at,
             }
@@ -358,7 +404,9 @@ mod lite {
 
     const SELECT_COLS: &str =
         "id, workspace_id, name, type AS alert_type, threshold, window_minutes,
-         is_active, webhook_url, webhook_format, webhook_secret, last_triggered, created_at";
+         is_active, webhook_url, webhook_format, webhook_secret,
+         slack_webhook_url, email_to,
+         last_triggered, created_at";
 
     pub(super) async fn list(pool: &DbPool) -> AppResult<Vec<Alert>> {
         let sql = format!("SELECT {SELECT_COLS} FROM alerts ORDER BY created_at DESC");
@@ -381,11 +429,18 @@ mod lite {
         let id = Uuid::new_v4();
         let now = Utc::now();
         let threshold_str = p.threshold.to_string();
+        let email_to_json = if p.email_to.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(p.email_to).unwrap_or_default())
+        };
         sqlx::query(
             "INSERT INTO alerts
                  (id, name, type, threshold, window_minutes, is_active,
-                  webhook_url, webhook_format, webhook_secret, created_at)
-             VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9)",
+                  webhook_url, webhook_format, webhook_secret,
+                  slack_webhook_url, email_to,
+                  created_at)
+             VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11)",
         )
         .bind(id)
         .bind(p.name)
@@ -395,6 +450,8 @@ mod lite {
         .bind(p.webhook_url)
         .bind(p.webhook_format)
         .bind(p.webhook_secret)
+        .bind(p.slack_webhook_url)
+        .bind(email_to_json)
         .bind(now)
         .execute(pool)
         .await?;
@@ -443,6 +500,14 @@ mod lite {
             set_parts.push(format!("webhook_secret = ${idx}"));
             idx += 1;
         }
+        if p.slack_webhook_url.is_some() {
+            set_parts.push(format!("slack_webhook_url = ${idx}"));
+            idx += 1;
+        }
+        if p.email_to.is_some() {
+            set_parts.push(format!("email_to = ${idx}"));
+            idx += 1;
+        }
 
         if set_parts.is_empty() {
             return get(pool, id).await;
@@ -474,6 +539,17 @@ mod lite {
         }
         if let Some(v) = p.webhook_secret {
             q = q.bind(v);
+        }
+        if let Some(v) = p.slack_webhook_url {
+            q = q.bind(v);
+        }
+        if let Some(v) = p.email_to {
+            let json = if v.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_string(&v).unwrap_or_default())
+            };
+            q = q.bind(json);
         }
         q = q.bind(id);
         q.execute(pool).await?;
@@ -580,8 +656,6 @@ pub async fn get_history(pool: &DbPool, alert_id: Uuid) -> AppResult<Vec<AlertHi
     lite::get_history(pool, alert_id).await
 }
 
-/// Return the raw webhook secret for an alert (used by the test endpoint).
-/// The secret is omitted from `Alert` to avoid leaking it in list/get responses.
 pub async fn get_secret(pool: &DbPool, id: Uuid) -> AppResult<Option<String>> {
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT webhook_secret FROM alerts WHERE id = $1")

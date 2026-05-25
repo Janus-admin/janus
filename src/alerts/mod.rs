@@ -1,12 +1,15 @@
+pub mod email;
+pub mod slack;
 pub mod webhook;
 
-use crate::db::DbPool;
+use crate::{config::SmtpConfig, db::DbPool};
 use chrono::Utc;
+use email::EmailContext;
+use slack::SlackContext;
 use uuid::Uuid;
 use webhook::{WebhookContext, WebhookFormat};
 
 /// Internal row returned by the alert SELECT query.
-/// Extended with webhook columns added in migration 0012.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[derive(sqlx::FromRow)]
 struct AlertRow {
@@ -19,6 +22,9 @@ struct AlertRow {
     webhook_url: Option<String>,
     webhook_format: String,
     webhook_secret: Option<String>,
+    slack_webhook_url: Option<String>,
+    /// NULL in the DB maps to an empty vec (no recipients configured).
+    email_to: Option<Vec<String>>,
 }
 
 #[cfg(feature = "sqlite")]
@@ -33,25 +39,47 @@ struct AlertRow {
     webhook_url: Option<String>,
     webhook_format: String,
     webhook_secret: Option<String>,
+    slack_webhook_url: Option<String>,
+    /// Stored as JSON text (e.g. `["a@b.com"]`). NULL maps to empty vec.
+    email_to: Option<String>,
+}
+
+#[cfg(feature = "sqlite")]
+impl AlertRow {
+    fn email_recipients(&self) -> Vec<String> {
+        self.email_to
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+impl AlertRow {
+    fn email_recipients(&self) -> Vec<String> {
+        self.email_to.clone().unwrap_or_default()
+    }
 }
 
 /// Background alert evaluation engine.
 ///
 /// Runs every 60 seconds and checks all active alerts against live request data.
-/// On threshold breach: records history, delivers webhook (if configured), and
-/// updates `last_triggered`. The next run is suppressed until `window_minutes` elapses.
+/// On threshold breach: records history, delivers to all configured channels
+/// (generic webhook, Slack, and/or email), then updates `last_triggered`.
+/// Re-fire is suppressed until `window_minutes` elapses.
 pub struct AlertEngine {
     pool: DbPool,
     client: reqwest::Client,
+    smtp: SmtpConfig,
 }
 
 impl AlertEngine {
-    pub fn new(pool: DbPool) -> Self {
+    pub fn new(pool: DbPool, smtp: SmtpConfig) -> Self {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
             .expect("failed to build webhook HTTP client");
-        Self { pool, client }
+        Self { pool, client, smtp }
     }
 
     pub async fn evaluate(&self) -> anyhow::Result<()> {
@@ -62,7 +90,8 @@ impl AlertEngine {
 
         let sql = format!(
             "SELECT id, name, type AS alert_type, threshold, window_minutes, last_triggered,
-                    webhook_url, webhook_format, webhook_secret
+                    webhook_url, webhook_format, webhook_secret,
+                    slack_webhook_url, email_to
              FROM alerts {active_filter}"
         );
 
@@ -71,7 +100,6 @@ impl AlertEngine {
             .await?;
 
         for alert in alerts {
-            // Cooldown: suppress re-fire within the same window.
             if let Some(last) = alert.last_triggered {
                 let elapsed = (Utc::now() - last).num_minutes();
                 if elapsed < alert.window_minutes as i64 {
@@ -79,7 +107,6 @@ impl AlertEngine {
                 }
             }
 
-            // Normalise threshold regardless of backend storage type.
             #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
             let threshold = alert.threshold;
             #[cfg(feature = "sqlite")]
@@ -115,7 +142,7 @@ impl AlertEngine {
         Ok(())
     }
 
-    /// Fire an alert: record history, deliver webhook (if configured), update last_triggered.
+    /// Fire an alert: record history, deliver to all configured channels, update last_triggered.
     async fn fire(
         &self,
         alert: &AlertRow,
@@ -129,7 +156,6 @@ impl AlertEngine {
             alert.name, value, threshold_f64
         );
 
-        // Insert history row; delivery outcome updated after the attempt.
         let history_id = Uuid::new_v4();
 
         #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
@@ -164,8 +190,11 @@ impl AlertEngine {
             .await?;
         }
 
-        // Attempt webhook delivery (if configured).
-        let (delivered, delivery_error) = if let Some(ref url) = alert.webhook_url {
+        // Dispatch to all configured channels; collect first error encountered.
+        let mut delivery_errors: Vec<String> = Vec::new();
+
+        // Channel 1: generic HTTP webhook.
+        if let Some(ref url) = alert.webhook_url {
             let format = WebhookFormat::parse(&alert.webhook_format);
             let ctx = WebhookContext {
                 alert_id: alert.id,
@@ -176,26 +205,54 @@ impl AlertEngine {
                 threshold: threshold_f64,
                 triggered_at: now,
             };
-            match webhook::deliver(
-                &self.client,
-                url,
-                &format,
-                alert.webhook_secret.as_deref(),
-                &ctx,
-            )
-            .await
+            if let Err(e) =
+                webhook::deliver(&self.client, url, &format, alert.webhook_secret.as_deref(), &ctx)
+                    .await
             {
-                Ok(()) => (true, None),
-                Err(e) => {
-                    tracing::warn!(alert_id = %alert.id, "Webhook delivery failed: {e}");
-                    (false, Some(e.to_string()))
-                }
+                tracing::warn!(alert_id = %alert.id, "Webhook delivery failed: {e}");
+                delivery_errors.push(format!("webhook: {e}"));
             }
+        }
+
+        // Channel 2: Slack block-kit.
+        if let Some(ref url) = alert.slack_webhook_url {
+            let ctx = SlackContext {
+                alert_id: alert.id,
+                alert_name: &alert.name,
+                alert_type: &alert.alert_type,
+                value,
+                threshold: threshold_f64,
+                triggered_at: now,
+            };
+            if let Err(e) = slack::send(&self.client, url, &ctx).await {
+                tracing::warn!(alert_id = %alert.id, "Slack delivery failed: {e}");
+                delivery_errors.push(format!("slack: {e}"));
+            }
+        }
+
+        // Channel 3: email.
+        let recipients = alert.email_recipients();
+        if !recipients.is_empty() {
+            let ctx = EmailContext {
+                alert_name: &alert.name,
+                alert_type: &alert.alert_type,
+                value,
+                threshold: threshold_f64,
+                triggered_at: now,
+            };
+            if let Err(e) = email::send(&self.smtp, &recipients, &ctx).await {
+                tracing::warn!(alert_id = %alert.id, "Email delivery failed: {e}");
+                delivery_errors.push(format!("email: {e}"));
+            }
+        }
+
+        let delivered = delivery_errors.is_empty();
+        let delivery_error = if delivery_errors.is_empty() {
+            None
         } else {
-            (true, None) // no webhook configured = nothing to deliver
+            Some(delivery_errors.join("; "))
         };
 
-        // Update history row with delivery outcome.
         sqlx::query("UPDATE alert_history SET delivered = $1, error = $2 WHERE id = $3")
             .bind(delivered)
             .bind(delivery_error.as_deref())
@@ -203,7 +260,6 @@ impl AlertEngine {
             .execute(&self.pool)
             .await?;
 
-        // Mark alert as triggered.
         sqlx::query("UPDATE alerts SET last_triggered = $1 WHERE id = $2")
             .bind(now)
             .bind(alert.id)
@@ -214,7 +270,6 @@ impl AlertEngine {
         Ok(())
     }
 
-    /// Returns Some(cost_usd_as_f64) if spend threshold exceeded, else None.
     async fn check_spend_threshold(
         &self,
         window_minutes: i32,
@@ -258,7 +313,6 @@ impl AlertEngine {
         }
     }
 
-    /// Returns Some(error_rate_0_to_1) if error rate exceeds threshold, else None.
     async fn check_error_rate(
         &self,
         window_minutes: i32,
@@ -275,7 +329,6 @@ impl AlertEngine {
         .fetch_one(&self.pool)
         .await?;
 
-        // SQLite does not support FILTER — use CASE WHEN instead.
         #[cfg(feature = "sqlite")]
         let row: (Option<i64>, Option<i64>) = sqlx::query_as(
             "SELECT SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), COUNT(*)
@@ -299,7 +352,6 @@ impl AlertEngine {
         }
     }
 
-    /// Returns Some(max_latency_ms) if latency exceeds threshold, else None.
     async fn check_latency_spike(
         &self,
         window_minutes: i32,

@@ -399,7 +399,10 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Background: alert evaluation engine ──────────────────────────────────
     {
-        let alert_engine = std::sync::Arc::new(velox::alerts::AlertEngine::new(state.pool.clone()));
+        let alert_engine = std::sync::Arc::new(velox::alerts::AlertEngine::new(
+            state.pool.clone(),
+            state.config.smtp.clone(),
+        ));
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             loop {

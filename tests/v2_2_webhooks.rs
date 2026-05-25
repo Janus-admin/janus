@@ -218,7 +218,7 @@ async fn v2_2_spend_threshold_fires_when_budget_exceeded() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate should not error");
 
     let reqs = mock_server.received_requests().await.unwrap();
@@ -282,7 +282,7 @@ async fn v2_2_webhook_post_reaches_configured_url() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     assert!(
@@ -337,7 +337,7 @@ async fn v2_2_alert_does_not_fire_twice_within_cooldown_window() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     let reqs = mock_server.received_requests().await.unwrap_or_default();
@@ -392,7 +392,7 @@ async fn v2_2_alert_fires_again_after_cooldown_expires() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     let reqs = mock_server.received_requests().await.unwrap_or_default();
@@ -444,7 +444,7 @@ async fn v2_2_inactive_alert_does_not_fire() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     assert_eq!(
@@ -503,7 +503,7 @@ async fn v2_2_alert_history_recorded_after_firing() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     let history_count: (i64,) =
@@ -573,7 +573,7 @@ async fn v2_2_failed_delivery_recorded_with_error() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone());
+    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
     engine.evaluate().await.unwrap(); // engine must not propagate delivery errors
 
     let row: (bool, Option<String>) =

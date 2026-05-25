@@ -108,6 +108,10 @@ flate2 = "1"
 # PKCE S256 challenge generation (URL-safe, no-padding encoding of SHA-256 hash).
 base64 = "0.22"
 
+# ─── V5-L4: Polished Alerts (Slack + Email) ───────────────────────────────────
+# lettre: SMTP email delivery + file-transport for test-mode (writes .eml files).
+lettre = { version = "0.11", features = ["smtp-transport", "tokio1-native-tls", "file-transport", "builder"] }
+
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]
 wiremock = "0.6"
