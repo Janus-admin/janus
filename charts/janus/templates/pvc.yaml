@@ -2,8 +2,8 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "velox.fullname" . }}-models
-  labels: {{- include "velox.labels" . | nindent 4 }}
+  name: {{ include "janus.fullname" . }}-models
+  labels: {{- include "janus.labels" . | nindent 4 }}
 spec:
   accessModes: {{- toYaml .Values.models.persistence.accessModes | nindent 4 }}
   resources:

@@ -1,15 +1,15 @@
-//! V5-1: `velox` CLI.
+//! V5-1: `janus` CLI.
 //!
 //! Single binary, clap subcommands. Default subcommand is `serve` — running the
-//! binary with no args boots the server. `velox doctor` and `velox demo` cover
+//! binary with no args boots the server. `janus doctor` and `janus demo` cover
 //! the modes that used to live behind `--doctor` and `--demo`.
 //!
-//! The CLI talks to a running Velox via the admin API. It reads its endpoint
-//! and admin token from `~/.config/velox/cli.toml` (or `--url` / `--token` /
-//! `VELOX_URL` / `VELOX_ADMIN_TOKEN`).
+//! The CLI talks to a running Janus via the admin API. It reads its endpoint
+//! and admin token from `~/.config/janus/cli.toml` (or `--url` / `--token` /
+//! `JANUS_URL` / `JANUS_ADMIN_TOKEN`).
 //!
 //! Subcommands that need direct DB access (`migrate`) speak to the DB
-//! configured by `velox.toml` / `DATABASE_URL`, not the admin API.
+//! configured by `janus.toml` / `DATABASE_URL`, not the admin API.
 
 use clap::{Parser, Subcommand};
 
@@ -20,28 +20,28 @@ pub mod import;
 pub mod keys;
 pub mod migrate;
 
-/// Velox — Self-hosted AI gateway.
+/// Janus — Self-hosted AI gateway.
 ///
-/// Running with no subcommand boots the server (equivalent to `velox serve`).
+/// Running with no subcommand boots the server (equivalent to `janus serve`).
 #[derive(Parser, Debug)]
-#[command(name = "velox", version, about, long_about = None)]
+#[command(name = "janus", version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
 
-    /// Admin API base URL for CLI subcommands. Default: from cli.toml or `VELOX_URL`,
+    /// Admin API base URL for CLI subcommands. Default: from cli.toml or `JANUS_URL`,
     /// finally `http://localhost:8080`.
-    #[arg(long, global = true, env = "VELOX_URL")]
+    #[arg(long, global = true, env = "JANUS_URL")]
     pub url: Option<String>,
 
-    /// Admin JWT token used by CLI subcommands. Default: from cli.toml or `VELOX_ADMIN_TOKEN`.
-    #[arg(long, global = true, env = "VELOX_ADMIN_TOKEN")]
+    /// Admin JWT token used by CLI subcommands. Default: from cli.toml or `JANUS_ADMIN_TOKEN`.
+    #[arg(long, global = true, env = "JANUS_ADMIN_TOKEN")]
     pub token: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Run the Velox server (default if no subcommand is given).
+    /// Run the Janus server (default if no subcommand is given).
     Serve(ServeArgs),
 
     /// Run readiness checks against the configured database and providers, then exit.
@@ -69,12 +69,12 @@ pub enum Command {
     #[command(subcommand)]
     Import(import::ImportCmd),
 
-    /// Snapshot or restore the Velox installation (DB + models + config).
+    /// Snapshot or restore the Janus installation (DB + models + config).
     #[command(subcommand)]
     Backup(backup::BackupCmd),
 }
 
-/// Args mirroring the previous top-level flags so `velox serve` is a true drop-in
+/// Args mirroring the previous top-level flags so `janus serve` is a true drop-in
 /// replacement for the old behaviour.
 #[derive(clap::Args, Debug, Default)]
 pub struct ServeArgs {}

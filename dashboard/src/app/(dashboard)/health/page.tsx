@@ -68,7 +68,7 @@ export default function HealthPage() {
         <div>
           <h1 className="text-2xl font-semibold mb-1">System Health</h1>
           <p className="text-muted-foreground text-sm">
-            Velox readiness checks — auto-refreshes every 30 seconds.
+            Janus readiness checks — auto-refreshes every 30 seconds.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
@@ -163,7 +163,7 @@ export default function HealthPage() {
         <CardHeader className="pb-2">
           <CardTitle>Readiness checks</CardTitle>
           <CardDescription>
-            Each check must pass for Velox to serve traffic correctly.
+            Each check must pass for Janus to serve traffic correctly.
           </CardDescription>
         </CardHeader>
         <CardContent>

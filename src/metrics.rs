@@ -60,13 +60,13 @@ pub fn render_metrics() -> String {
     let ratio = cache_hit_ratio();
 
     output.push_str(&format!(
-        "# HELP velox_cache_size Number of entries in the in-memory cache layer\n\
-         # TYPE velox_cache_size gauge\n\
-         velox_cache_size{{layer=\"exact\"}} {exact}\n\
-         velox_cache_size{{layer=\"semantic\"}} {semantic}\n\
-         # HELP velox_cache_hit_ratio Fraction of requests served from cache since process start\n\
-         # TYPE velox_cache_hit_ratio gauge\n\
-         velox_cache_hit_ratio {ratio:.6}\n"
+        "# HELP janus_cache_size Number of entries in the in-memory cache layer\n\
+         # TYPE janus_cache_size gauge\n\
+         janus_cache_size{{layer=\"exact\"}} {exact}\n\
+         janus_cache_size{{layer=\"semantic\"}} {semantic}\n\
+         # HELP janus_cache_hit_ratio Fraction of requests served from cache since process start\n\
+         # TYPE janus_cache_hit_ratio gauge\n\
+         janus_cache_hit_ratio {ratio:.6}\n"
     ));
 
     output

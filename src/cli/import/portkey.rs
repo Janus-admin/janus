@@ -1,4 +1,4 @@
-//! Portkey → Velox importer.
+//! Portkey → Janus importer.
 //!
 //! Portkey's "Export Workspace" feature emits a JSON file shaped roughly like:
 //!
@@ -23,10 +23,10 @@
 //! }
 //! ```
 //!
-//! Mapping (matches VELOX_V5_ROADMAP.md §5.4):
-//! - virtual key  → Velox api_key (new vx-sk-…, the Portkey secret is not reused)
-//! - target / virtual key.provider → enable the matching Velox provider with that api_key
-//! - strategy.mode → Velox routing strategy (`fallback` → `priority`, `loadbalance` → `round_robin`)
+//! Mapping (matches JANUS_V5_ROADMAP.md §5.4):
+//! - virtual key  → Janus api_key (new jn-sk-…, the Portkey secret is not reused)
+//! - target / virtual key.provider → enable the matching Janus provider with that api_key
+//! - strategy.mode → Janus routing strategy (`fallback` → `priority`, `loadbalance` → `round_robin`)
 //! - cache.mode    → `PATCH /admin/config` `cache_enabled = true`
 
 use std::path::Path;
@@ -231,7 +231,7 @@ fn is_known_provider(id: &str) -> bool {
     )
 }
 
-/// Portkey strategy modes → Velox routing strategies.
+/// Portkey strategy modes → Janus routing strategies.
 pub fn map_routing_strategy(s: &str) -> &'static str {
     match s.to_ascii_lowercase().as_str() {
         "loadbalance" | "load_balance" | "weighted" => "round_robin",

@@ -113,7 +113,7 @@ async fn v4_5_simulate_priority_returns_same_cost_as_actual() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o",
             "messages": [{ "role": "user", "content": "priority strategy test unique v4_5" }]
@@ -170,7 +170,7 @@ async fn v4_5_simulate_cost_optimized_returns_lower_cost() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o",
             "messages": [{ "role": "user", "content": "cost optimized test unique v4_5" }]
@@ -227,7 +227,7 @@ async fn v4_5_simulate_model_override_applies_new_pricing() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o",
             "messages": [{ "role": "user", "content": "model override pricing test unique v4_5" }]
@@ -282,7 +282,7 @@ async fn v4_5_simulate_includes_per_model_breakdown() {
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
         // Bypass cache so the request is always logged as 'success', not 'cached'.
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o",
             "messages": [{ "role": "user", "content": "breakdown test unique v4_5" }]

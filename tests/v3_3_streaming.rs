@@ -192,7 +192,7 @@ async fn v3_3_full_channel_yields_not_drops() {
 /// This test drives the same state-machine pattern used inside pipeline.rs.
 #[tokio::test]
 async fn v3_3_mid_stream_provider_error_sets_request_status_error() {
-    use velox::providers::{ChatCompletionChunk, ChunkChoice, ChunkDelta, ProviderError};
+    use janus::providers::{ChatCompletionChunk, ChunkChoice, ChunkDelta, ProviderError};
 
     let good_chunk = ChatCompletionChunk {
         id: "id-1".to_string(),
@@ -241,7 +241,7 @@ async fn v3_3_mid_stream_provider_error_sets_request_status_error() {
 /// representation is non-empty so it can be included in the tracing log.
 #[test]
 fn v3_3_mid_stream_error_includes_error_detail_in_log() {
-    use velox::providers::ProviderError;
+    use janus::providers::ProviderError;
 
     let msg = "unexpected end of stream";
     let err = ProviderError::ParseError(msg.to_string());
@@ -300,7 +300,7 @@ async fn v3_3_normal_stream_still_works_end_to_end() {
 /// path by verifying that the cached response data type round-trips cleanly.
 #[test]
 fn v3_3_streaming_cache_hit_still_works() {
-    use velox::providers::{ChatChoice, ChatCompletionResponse, ChatMessage, UsageData};
+    use janus::providers::{ChatChoice, ChatCompletionResponse, ChatMessage, UsageData};
 
     // Build the same shape that pipeline::run_streaming returns on a cache hit.
     let resp = ChatCompletionResponse {

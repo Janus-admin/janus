@@ -1,8 +1,8 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "velox.fullname" . }}
-  labels: {{- include "velox.labels" . | nindent 4 }}
+  name: {{ include "janus.fullname" . }}
+  labels: {{- include "janus.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -10,4 +10,4 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: TCP
-  selector: {{- include "velox.selectorLabels" . | nindent 4 }}
+  selector: {{- include "janus.selectorLabels" . | nindent 4 }}

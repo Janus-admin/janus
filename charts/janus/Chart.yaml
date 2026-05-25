@@ -1,25 +1,22 @@
 apiVersion: v2
-name: velox
+name: janus
 description: |
-  Velox — self-hosted AI gateway. Proxies LLM calls (OpenAI, Anthropic,
+  Janus — self-hosted AI gateway. Proxies LLM calls (OpenAI, Anthropic,
   Bedrock, Groq, DeepSeek, Gemini) with caching, cost tracking, rate
   limiting, and an admin dashboard.
 
-  This chart assumes an EXTERNAL PostgreSQL — see VELOX_V5_ROADMAP.md
+  This chart assumes an EXTERNAL PostgreSQL — see JANUS_V5_ROADMAP.md
   decision L9. Optionally enables a Qdrant subchart for external vector
   storage (set `qdrant.enabled = true`).
 
 type: application
 # Chart version follows semver and is independent of the appVersion.
 version: 0.1.0
-# appVersion tracks the Velox container tag we default to.
+# appVersion tracks the Janus container tag we default to.
 appVersion: "0.1.0"
-home: https://github.com/farzad/velox
+home: https://github.com/Janus-admin/janus
 sources:
-  - https://github.com/farzad/velox
-maintainers:
-  - name: Farzad Alizadeh
-    email: farzad@touchzenmedia.com
+  - https://github.com/Janus-admin/janus
 keywords:
   - llm
   - gateway
@@ -29,8 +26,8 @@ keywords:
   - anthropic
   - bedrock
 # The Qdrant subchart is pulled from the official qdrant/qdrant-helm repo when
-# qdrant.enabled = true. It is disabled by default — most operators point Velox
-# at an existing Qdrant cluster via the `velox.config.qdrantUrl` value instead.
+# qdrant.enabled = true. It is disabled by default — most operators point Janus
+# at an existing Qdrant cluster via the `janus.config.qdrantUrl` value instead.
 dependencies:
   - name: qdrant
     version: "1.7.x"

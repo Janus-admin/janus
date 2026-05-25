@@ -266,7 +266,7 @@ async fn phase2_streaming_request_cost_tracked_correctly() {
     // Build a direct DB connection to query the audit log.
     // Uses the same connection string the app uses; migrations are already applied.
     common::load_env();
-    let config = velox::config::Config::load().expect("config must load");
+    let config = janus::config::Config::load().expect("config must load");
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
         .connect(&config.database_url)

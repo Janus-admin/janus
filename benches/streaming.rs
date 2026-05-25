@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use velox::providers::{ChatCompletionChunk, ChunkChoice, ChunkDelta, UsageData};
+use janus::providers::{ChatCompletionChunk, ChunkChoice, ChunkDelta, UsageData};
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

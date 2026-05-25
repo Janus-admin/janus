@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 /// Database row from the `api_keys` table.
 ///
-/// The full API key (vx-sk-...) is NEVER stored here.
+/// The full API key (jn-sk-...) is NEVER stored here.
 /// `key_hash` is the bcrypt hash (source of truth for validation).
 /// `key_prefix` is the first 12 chars shown in the dashboard.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

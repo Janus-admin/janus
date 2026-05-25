@@ -6,9 +6,7 @@
 mod common;
 
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use velox::{
+use janus::{
     gateway::strategies::{round_robin::sort_round_robin, RoutingStrategy},
     models::provider::HealthStatus,
     providers::{
@@ -16,6 +14,8 @@ use velox::{
         ProviderError, ProviderStream,
     },
 };
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
@@ -29,7 +29,7 @@ struct NamedProvider {
 }
 
 #[async_trait]
-impl velox::providers::Provider for NamedProvider {
+impl janus::providers::Provider for NamedProvider {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -66,7 +66,7 @@ impl velox::providers::Provider for NamedProvider {
 
 #[test]
 fn v2_4_round_robin_distributes_across_three_providers() {
-    let providers: Vec<Arc<dyn velox::providers::Provider>> = vec![
+    let providers: Vec<Arc<dyn janus::providers::Provider>> = vec![
         Arc::new(NamedProvider {
             name: "openai",
             priority: 1,
@@ -98,7 +98,7 @@ fn v2_4_round_robin_distributes_across_three_providers() {
 
 #[test]
 fn v2_4_round_robin_wraps_around() {
-    let providers: Vec<Arc<dyn velox::providers::Provider>> = vec![
+    let providers: Vec<Arc<dyn janus::providers::Provider>> = vec![
         Arc::new(NamedProvider {
             name: "a",
             priority: 1,
@@ -124,7 +124,7 @@ fn v2_4_round_robin_skips_disabled_providers() {
     // sort_round_robin only operates on the slice passed to it.
     // Filtering disabled providers is done by select_providers_for_strategy before calling
     // sort_round_robin. Verify an empty slice returns empty output.
-    let providers: Vec<Arc<dyn velox::providers::Provider>> = vec![];
+    let providers: Vec<Arc<dyn janus::providers::Provider>> = vec![];
     let counter = AtomicU64::new(0);
     let result = sort_round_robin(providers, &counter);
     assert!(result.is_empty(), "empty input → empty output");
@@ -330,7 +330,7 @@ async fn v2_4_round_robin_requests_all_succeed() {
         let resp = client
             .post(format!("{base}/v1/chat/completions"))
             .header("Authorization", format!("Bearer {full_key}"))
-            .header("X-Velox-Cache", "false")
+            .header("X-Janus-Cache", "false")
             .json(&common::minimal_chat_request())
             .send()
             .await
@@ -375,7 +375,7 @@ async fn v2_4_model_fallback_chain_activated_on_provider_error() {
     let base = common::spawn_app_with_openai_base(mock.uri()).await;
 
     // Directly verify the fallback config is respected: update the runtime config
-    // via PATCH to enable the fallback. We can't inject velox.toml in tests,
+    // via PATCH to enable the fallback. We can't inject janus.toml in tests,
     // so we verify the mechanism works via a request with the known-good fallback model.
     // For this test, just verify that a request with "gpt-4o-mini" (the fallback)
     // succeeds, confirming the fallback target itself is reachable.

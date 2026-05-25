@@ -7,7 +7,7 @@ use super::{PluginError, RequestPlugin};
 /// Scrubs PII from all message content fields before the request leaves the gateway.
 ///
 /// Redacts credit cards, SSNs, email addresses, bearer tokens, and API key patterns.
-/// Controlled by `plugins.pii_redaction` in velox.toml (default: true).
+/// Controlled by `plugins.pii_redaction` in janus.toml (default: true).
 pub struct PiiRedactionPlugin;
 
 #[async_trait]

@@ -1,4 +1,4 @@
-//! Shared types for `velox import`.
+//! Shared types for `janus import`.
 //!
 //! Importers translate competitor configs into a `MigrationPlan`, which is the
 //! sole DTO that drives both `--dry-run` printing and `--apply` execution. Each
@@ -37,7 +37,7 @@ pub struct ProviderPatch {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApiKeySpec {
     pub name: String,
-    /// One of `priority`, `cost`, `latency`, `round_robin` — Velox routing strategies.
+    /// One of `priority`, `cost`, `latency`, `round_robin` — Janus routing strategies.
     pub routing_strategy: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budget_limit: Option<f64>,
@@ -114,7 +114,7 @@ impl MigrationPlan {
     /// Render a human-friendly preview for `--dry-run`.
     pub fn render_preview(&self) -> String {
         let mut out = String::new();
-        out.push_str(&format!("velox import {}: dry run\n", self.source));
+        out.push_str(&format!("janus import {}: dry run\n", self.source));
         out.push_str(&format!(
             "  providers to update: {}\n",
             self.providers.len()
@@ -169,7 +169,7 @@ pub struct ApplyOutcome {
     pub errors: Vec<String>,
 }
 
-/// Push a plan to a running Velox via the admin API.
+/// Push a plan to a running Janus via the admin API.
 ///
 /// On HTTP errors the function continues (collects each into `errors`) so a
 /// partially-successful import still creates as much as it can. The caller

@@ -22,7 +22,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
-          release_name: Velox ${{ github.ref_name }}
+          release_name: Janus ${{ github.ref_name }}
           draft: false
           prerelease: false
 
@@ -37,17 +37,17 @@ jobs:
             arch: amd64
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary: velox
+            binary: janus
           - os: darwin
             arch: arm64
             runner: macos-latest
             target: aarch64-apple-darwin
-            binary: velox
+            binary: janus
           - os: darwin
             arch: amd64
             runner: macos-13
             target: x86_64-apple-darwin
-            binary: velox
+            binary: janus
     
     steps:
       - uses: actions/checkout@v4
@@ -65,13 +65,13 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ${{ matrix.binary }}
+          tar czf ../../../janus-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ${{ matrix.binary }}
       
       - name: Create archive (macOS)
         if: matrix.os == 'darwin'
         run: |
           cd target/${{ matrix.target }}/release
-          zip -q ../../../velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip ${{ matrix.binary }}
+          zip -q ../../../janus-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip ${{ matrix.binary }}
       
       - name: Upload Linux Release Asset
         if: matrix.os == 'linux'
@@ -80,8 +80,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ./velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-          asset_name: velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          asset_path: ./janus-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          asset_name: janus-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
           asset_content_type: application/gzip
       
       - name: Upload macOS Release Asset
@@ -91,6 +91,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ./velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip
-          asset_name: velox-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip
+          asset_path: ./janus-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip
+          asset_name: janus-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip
           asset_content_type: application/zip

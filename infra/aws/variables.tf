@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project" {
   description = "Project name; used as prefix for all resources"
   type        = string
-  default     = "velox"
+  default     = "janus"
 }
 
 # ── Lightsail VM sizing ──────────────────────────────────────────────────────

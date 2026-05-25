@@ -154,14 +154,14 @@ export default function PlaygroundPage() {
 
       const data = await res.json();
       const meta: PlaygroundMeta = {
-        requestId: res.headers.get("x-velox-request-id") ?? "",
-        provider: res.headers.get("x-velox-provider") ?? "",
-        model: res.headers.get("x-velox-model") ?? effectiveModel,
-        latencyMs: parseInt(res.headers.get("x-velox-latency-ms") ?? "0", 10),
-        promptTokens: parseInt(res.headers.get("x-velox-prompt-tokens") ?? "0", 10),
-        completionTokens: parseInt(res.headers.get("x-velox-completion-tokens") ?? "0", 10),
-        costUsd: res.headers.get("x-velox-cost-usd"),
-        cacheHit: res.headers.get("x-velox-cache-hit") ?? "none",
+        requestId: res.headers.get("x-janus-request-id") ?? "",
+        provider: res.headers.get("x-janus-provider") ?? "",
+        model: res.headers.get("x-janus-model") ?? effectiveModel,
+        latencyMs: parseInt(res.headers.get("x-janus-latency-ms") ?? "0", 10),
+        promptTokens: parseInt(res.headers.get("x-janus-prompt-tokens") ?? "0", 10),
+        completionTokens: parseInt(res.headers.get("x-janus-completion-tokens") ?? "0", 10),
+        costUsd: res.headers.get("x-janus-cost-usd"),
+        cacheHit: res.headers.get("x-janus-cache-hit") ?? "none",
       };
 
       const text =

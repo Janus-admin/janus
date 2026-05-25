@@ -91,7 +91,7 @@ pub async fn run(
     downgrade_triggered: bool,
     // When Some, only the provider with this string ID is tried (replay override).
     only_provider: Option<&str>,
-    // V5-L3: tags extracted from request metadata + X-Velox-Tags header.
+    // V5-L3: tags extracted from request metadata + X-Janus-Tags header.
     tags: &serde_json::Value,
     // V5-0: route this request is being served on, written to requests.endpoint.
     endpoint: &str,
@@ -116,10 +116,10 @@ pub async fn run(
 
     if !bypass_cache {
         let cached =
-            tracing::info_span!("velox.cache.exact_lookup").in_scope(|| cache.lookup(&hash));
+            tracing::info_span!("janus.cache.exact_lookup").in_scope(|| cache.lookup(&hash));
         if let Some(cached) = cached {
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
-            counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
+            counter!("janus_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
             let _ = db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
             crate::metrics::record_request(true);
@@ -146,13 +146,13 @@ pub async fn run(
 
     if !bypass_cache && !bypass_semantic {
         if let Some(ref emb) = embedding {
-            let semantic_hit = tracing::info_span!("velox.cache.semantic_lookup")
+            let semantic_hit = tracing::info_span!("janus.cache.semantic_lookup")
                 .in_scope(|| cache.semantic_lookup(emb));
             if let Some((hit_hash, score)) = semantic_hit {
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
-                    counter!("velox_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
+                    counter!("janus_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
                     let _ = db::cache::record_hit(pool, &hit_hash, tokens, Decimal::ZERO).await;
                     crate::metrics::record_request(true);
                     let mut resp = (*cached).clone();
@@ -279,12 +279,12 @@ pub async fn run(
             loop {
                 let start = Instant::now();
                 let provider_span = tracing::info_span!(
-                    "velox.provider.call",
-                    velox.provider = provider.name(),
-                    velox.model = %effective_request.model,
-                    velox.prompt_tokens = tracing::field::Empty,
-                    velox.completion_tokens = tracing::field::Empty,
-                    velox.cost_usd = tracing::field::Empty,
+                    "janus.provider.call",
+                    janus.provider = provider.name(),
+                    janus.model = %effective_request.model,
+                    janus.prompt_tokens = tracing::field::Empty,
+                    janus.completion_tokens = tracing::field::Empty,
+                    janus.cost_usd = tracing::field::Empty,
                 );
                 // Clone before move into .instrument() so we can record attributes
                 // on the span after the future completes (Span is cheaply Clone).
@@ -318,29 +318,29 @@ pub async fn run(
 
                         // Record token and cost attributes on the provider call span.
                         provider_span_ref
-                            .record("velox.prompt_tokens", usage.prompt_tokens)
-                            .record("velox.completion_tokens", usage.completion_tokens);
+                            .record("janus.prompt_tokens", usage.prompt_tokens)
+                            .record("janus.completion_tokens", usage.completion_tokens);
 
                         // Record metrics
-                        counter!("velox_requests_total", "provider" => provider.name(), "model" => resp.model.clone(), "status" => "success", "cache_type" => "none").increment(1);
-                        histogram!("velox_request_duration_seconds", "provider" => provider.name(), "model" => resp.model.clone()).record(elapsed_secs);
-                        counter!("velox_tokens_total", "provider" => provider.name(), "model" => resp.model.clone(), "direction" => "prompt").increment(usage.prompt_tokens as u64);
-                        counter!("velox_tokens_total", "provider" => provider.name(), "model" => resp.model.clone(), "direction" => "completion").increment(usage.completion_tokens as u64);
+                        counter!("janus_requests_total", "provider" => provider.name(), "model" => resp.model.clone(), "status" => "success", "cache_type" => "none").increment(1);
+                        histogram!("janus_request_duration_seconds", "provider" => provider.name(), "model" => resp.model.clone()).record(elapsed_secs);
+                        counter!("janus_tokens_total", "provider" => provider.name(), "model" => resp.model.clone(), "direction" => "prompt").increment(usage.prompt_tokens as u64);
+                        counter!("janus_tokens_total", "provider" => provider.name(), "model" => resp.model.clone(), "direction" => "completion").increment(usage.completion_tokens as u64);
 
                         if let Some(cost_value) = cost {
                             if cost_value > Decimal::ZERO {
                                 let cost_microdollars =
                                     (cost_value.to_f64().unwrap_or(0.0) * 1_000_000.0) as u64;
-                                counter!("velox_cost_usd_total", "provider" => provider.name(), "model" => resp.model.clone()).increment(cost_microdollars);
+                                counter!("janus_cost_usd_total", "provider" => provider.name(), "model" => resp.model.clone()).increment(cost_microdollars);
                                 provider_span_ref
-                                    .record("velox.cost_usd", cost_value.to_f64().unwrap_or(0.0));
+                                    .record("janus.cost_usd", cost_value.to_f64().unwrap_or(0.0));
                             }
                         }
 
                         // Only cache responses for the primary (non-fallback) model so
                         // the cache key (hash of original request) remains coherent.
                         if !bypass_cache && is_primary_model {
-                            tracing::info_span!("velox.cache.insert").in_scope(|| {
+                            tracing::info_span!("janus.cache.insert").in_scope(|| {
                                 cache.insert_with_ttl(
                                     hash.clone(),
                                     Arc::new(resp.clone()),
@@ -481,9 +481,9 @@ pub async fn run(
                         }
 
                         // Record error metrics
-                        counter!("velox_requests_total", "provider" => provider.name(), "model" => effective_request.model.clone(), "status" => status, "cache_type" => "none").increment(1);
+                        counter!("janus_requests_total", "provider" => provider.name(), "model" => effective_request.model.clone(), "status" => status, "cache_type" => "none").increment(1);
                         let elapsed_secs = start.elapsed().as_secs_f64();
-                        histogram!("velox_request_duration_seconds", "provider" => provider.name(), "model" => effective_request.model.clone()).record(elapsed_secs);
+                        histogram!("janus_request_duration_seconds", "provider" => provider.name(), "model" => effective_request.model.clone()).record(elapsed_secs);
 
                         {
                             let pool = pool.clone();
@@ -591,7 +591,7 @@ pub async fn run_streaming(
     // reserved for future use when streaming cache writes are added.
     _cache_ttl_secs: u64,
     downgrade_triggered: bool,
-    // V5-L3: tags extracted from request metadata + X-Velox-Tags header.
+    // V5-L3: tags extracted from request metadata + X-Janus-Tags header.
     tags: serde_json::Value,
     // V5-0: route this stream is being served on, written to requests.endpoint.
     endpoint: &str,
@@ -610,10 +610,10 @@ pub async fn run_streaming(
 
     if !bypass_cache {
         let cached =
-            tracing::info_span!("velox.cache.exact_lookup").in_scope(|| cache.lookup(&hash));
+            tracing::info_span!("janus.cache.exact_lookup").in_scope(|| cache.lookup(&hash));
         if let Some(cached) = cached {
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
-            counter!("velox_requests_total", "cache_type" => "exact", "status" => "success")
+            counter!("janus_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
             let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
             crate::metrics::record_request(true);
@@ -633,13 +633,13 @@ pub async fn run_streaming(
 
     if !bypass_cache && !bypass_semantic {
         if let Some(ref emb) = embedding {
-            let semantic_hit = tracing::info_span!("velox.cache.semantic_lookup")
+            let semantic_hit = tracing::info_span!("janus.cache.semantic_lookup")
                 .in_scope(|| cache.semantic_lookup(emb));
             if let Some((hit_hash, score)) = semantic_hit {
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
-                    counter!("velox_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
+                    counter!("janus_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
                     let _ = db::cache::record_hit(&pool, &hit_hash, tokens, Decimal::ZERO).await;
                     crate::metrics::record_request(true);
                     let sse = synthesize_sse_from_cached(&cached);
@@ -837,10 +837,10 @@ pub async fn run_streaming(
                             let total_tokens = prompt_tokens + completion_tokens;
 
                             // Record streaming metrics
-                            counter!("velox_requests_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "status" => stream_status, "cache_type" => "none").increment(1);
-                            histogram!("velox_request_duration_seconds", "provider" => provider_name.to_string(), "model" => final_model.clone()).record(elapsed_secs);
-                            counter!("velox_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "prompt").increment(prompt_tokens as u64);
-                            counter!("velox_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "completion").increment(completion_tokens as u64);
+                            counter!("janus_requests_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "status" => stream_status, "cache_type" => "none").increment(1);
+                            histogram!("janus_request_duration_seconds", "provider" => provider_name.to_string(), "model" => final_model.clone()).record(elapsed_secs);
+                            counter!("janus_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "prompt").increment(prompt_tokens as u64);
+                            counter!("janus_tokens_total", "provider" => provider_name.to_string(), "model" => final_model.clone(), "direction" => "completion").increment(completion_tokens as u64);
 
                             let provider_for_metrics = provider_name.to_string();
                             let model_for_metrics = final_model.clone();
@@ -866,7 +866,7 @@ pub async fn run_streaming(
                                         let cost_microdollars = (cost_value.to_f64().unwrap_or(0.0)
                                             * 1_000_000.0)
                                             as u64;
-                                        counter!("velox_cost_usd_total", "provider" => provider_for_metrics.clone(), "model" => model_for_metrics.clone()).increment(cost_microdollars);
+                                        counter!("janus_cost_usd_total", "provider" => provider_for_metrics.clone(), "model" => model_for_metrics.clone()).increment(cost_microdollars);
                                     }
                                 }
 

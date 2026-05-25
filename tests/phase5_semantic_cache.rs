@@ -63,7 +63,7 @@ async fn phase5_semantically_similar_prompt_returns_cache_hit() {
 
     assert_eq!(resp1.status(), 200, "request 1 must succeed");
     assert!(
-        resp1.headers().get("x-velox-cache-hit").is_none(),
+        resp1.headers().get("x-janus-cache-hit").is_none(),
         "first request must be a cache miss"
     );
 
@@ -82,7 +82,7 @@ async fn phase5_semantically_similar_prompt_returns_cache_hit() {
     assert_eq!(resp2.status(), 200, "request 2 must succeed");
     let hit = resp2
         .headers()
-        .get("x-velox-cache-hit")
+        .get("x-janus-cache-hit")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     assert_eq!(
@@ -135,20 +135,20 @@ async fn phase5_semantic_hit_includes_similarity_header() {
 
     let hit = resp
         .headers()
-        .get("x-velox-cache-hit")
+        .get("x-janus-cache-hit")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert_eq!(hit, "semantic", "X-Velox-Cache-Hit must be 'semantic'");
+    assert_eq!(hit, "semantic", "X-Janus-Cache-Hit must be 'semantic'");
 
     let similarity_str = resp
         .headers()
-        .get("x-velox-cache-similarity")
+        .get("x-janus-cache-similarity")
         .and_then(|v| v.to_str().ok())
-        .expect("X-Velox-Cache-Similarity header must be present on semantic hits");
+        .expect("X-Janus-Cache-Similarity header must be present on semantic hits");
 
     let score: f32 = similarity_str
         .parse()
-        .expect("X-Velox-Cache-Similarity must be a float");
+        .expect("X-Janus-Cache-Similarity must be a float");
     assert!(
         score >= 0.90,
         "similarity score {score} must be >= 0.90 for these two prompts"
@@ -200,7 +200,7 @@ async fn phase5_different_prompts_do_not_return_cache_hit() {
     assert_eq!(resp2.status(), 200);
 
     assert!(
-        resp2.headers().get("x-velox-cache-hit").is_none(),
+        resp2.headers().get("x-janus-cache-hit").is_none(),
         "different prompts must not return a cache hit"
     );
 }
@@ -253,7 +253,7 @@ async fn phase5_semantic_cache_survives_restart() {
     assert_eq!(resp.status(), 200);
     let hit = resp
         .headers()
-        .get("x-velox-cache-hit")
+        .get("x-janus-cache-hit")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     assert_eq!(

@@ -72,7 +72,7 @@ fn tools_call(id: u32, tool: &str, args: serde_json::Value) -> serde_json::Value
 
 #[test]
 fn v2_7_all_tools_have_valid_json_schema() {
-    let tools = velox::mcp::tools::tool_list();
+    let tools = janus::mcp::tools::tool_list();
     assert!(!tools.is_empty(), "tool list must not be empty");
 
     for tool in &tools {
@@ -92,7 +92,7 @@ fn v2_7_all_tools_have_valid_json_schema() {
 
 #[test]
 fn v2_7_tool_inputs_correctly_validated() {
-    let tools = velox::mcp::tools::tool_list();
+    let tools = janus::mcp::tools::tool_list();
 
     let proxy = tools
         .iter()
@@ -208,7 +208,7 @@ async fn v2_7_create_api_key_returns_new_key() {
     let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
     assert!(parsed["id"].is_string(), "response must contain 'id'");
     let key = parsed["key"].as_str().unwrap();
-    assert!(key.starts_with("vx-sk-"), "key must start with 'vx-sk-'");
+    assert!(key.starts_with("jn-sk-"), "key must start with 'jn-sk-'");
 }
 
 // ── Tool execution: get_cache_stats ──────────────────────────────────────────
@@ -362,7 +362,7 @@ async fn v2_7_unauthenticated_request_rejected() {
     assert!(err.is_object(), "response must have an 'error' field");
     assert_eq!(
         err["code"],
-        velox::mcp::UNAUTHORIZED,
+        janus::mcp::UNAUTHORIZED,
         "error code must be UNAUTHORIZED (-32001)"
     );
 }
@@ -404,7 +404,7 @@ async fn v2_7_invalid_method_returns_error_response() {
     assert!(err.is_object(), "must have 'error' field");
     assert_eq!(
         err["code"],
-        velox::mcp::METHOD_NOT_FOUND,
+        janus::mcp::METHOD_NOT_FOUND,
         "code must be METHOD_NOT_FOUND (-32601)"
     );
 }
@@ -427,7 +427,7 @@ async fn v2_7_initialize_accepts_token_in_params() {
         "valid token in params must succeed, got: {body}"
     );
     assert_eq!(body["result"]["protocolVersion"], "2024-11-05");
-    assert_eq!(body["result"]["serverInfo"]["name"], "velox");
+    assert_eq!(body["result"]["serverInfo"]["name"], "janus");
 }
 
 // ── Regression ────────────────────────────────────────────────────────────────

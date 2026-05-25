@@ -24,7 +24,10 @@ async fn create_alert(base_url: &str, body: Value) -> Value {
         .await
         .expect("create alert request failed");
     assert_eq!(resp.status(), 201, "create alert must return 201");
-    let body: Value = resp.json().await.expect("create alert response must be JSON");
+    let body: Value = resp
+        .json()
+        .await
+        .expect("create alert response must be JSON");
     body["data"].clone()
 }
 
@@ -87,10 +90,7 @@ async fn v5_l4_slack_webhook_sends_block_payload() {
         "Slack payload must contain 'blocks' key (block-kit format), got: {payload}"
     );
     let blocks = payload["blocks"].as_array().unwrap();
-    assert!(
-        !blocks.is_empty(),
-        "Slack blocks array must be non-empty"
-    );
+    assert!(!blocks.is_empty(), "Slack blocks array must be non-empty");
     // First block must be a header.
     assert_eq!(blocks[0]["type"], json!("header"));
 }

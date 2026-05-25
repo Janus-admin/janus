@@ -1,4 +1,4 @@
-# Render Blueprint for Velox.
+# Render Blueprint for Janus.
 #
 # Usage:
 #   1. Push your fork to GitHub.
@@ -8,7 +8,7 @@
 
 services:
   - type: web
-    name: velox
+    name: janus
     runtime: docker
     plan: starter                       # bump to standard+ for production traffic
     dockerfilePath: ./Dockerfile
@@ -33,7 +33,7 @@ services:
         value: "1"
       - key: DATABASE_URL
         fromDatabase:
-          name: velox-pg
+          name: janus-pg
           property: connectionString
       - key: JWT_SECRET
         generateValue: true             # Render generates a 32-byte random value
@@ -57,8 +57,8 @@ services:
         value: "us-east-1"
 
 databases:
-  - name: velox-pg
+  - name: janus-pg
     plan: starter                       # 256 MB, fine for evaluation
-    databaseName: velox
-    user: velox
+    databaseName: janus
+    user: janus
     ipAllowList: []                     # private network only

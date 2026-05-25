@@ -6,14 +6,14 @@
 // Test areas:
 //   8.1  mTLS config validation (startup checks)
 //   8.2  API key rotation (new key valid immediately, old valid during grace, rejected after)
-//   8.3  Audit log API (extended filters + X-Velox-Audit-Hash header)
+//   8.3  Audit log API (extended filters + X-Janus-Audit-Hash header)
 
 use chrono::Utc;
+use janus::{config::ProviderTlsConfig, db::api_keys as db_api_keys, models::api_key::ApiKey};
 use rust_decimal::Decimal;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
-use velox::{config::ProviderTlsConfig, db::api_keys as db_api_keys, models::api_key::ApiKey};
 
 mod common;
 
@@ -27,7 +27,7 @@ fn make_api_key(key_sha256: Option<&str>) -> ApiKey {
         key_sha256: key_sha256.map(str::to_string),
         previous_key_sha256: None,
         rotation_expires_at: None,
-        key_prefix: "vx-sk-test".to_string(),
+        key_prefix: "jn-sk-test".to_string(),
         workspace_id: None,
         budget_limit: None,
         budget_used: Decimal::ZERO,
@@ -140,8 +140,8 @@ async fn v3_5_rotate_returns_new_key() {
     let rotate_body: serde_json::Value = rotate_resp.json().await.unwrap();
     let new_key = rotate_body["data"]["key"].as_str().unwrap();
     assert!(
-        new_key.starts_with("vx-sk-"),
-        "rotated key must follow vx-sk- format"
+        new_key.starts_with("jn-sk-"),
+        "rotated key must follow jn-sk- format"
     );
     assert!(
         rotate_body["data"]["rotation_expires_at"]
@@ -252,16 +252,16 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
     use dashmap::DashMap;
 
     common::load_env();
-    let config = velox::config::Config::load().expect("config");
-    let pool = velox::db::pool::connect(&config.database_url)
+    let config = janus::config::Config::load().expect("config");
+    let pool = janus::db::pool::connect(&config.database_url)
         .await
         .expect("db");
 
     let key_cache: Arc<DashMap<[u8; 32], ApiKey>> = Arc::new(DashMap::new());
 
     // Fabricate a key that is already past its rotation grace period.
-    let old_key_str = "vx-sk-OldKeyExpiredGrace000000000000000000000000000";
-    let new_key_sha256_str = sha256_hex("vx-sk-NewKeyAfterRotation00000000000000000000000000");
+    let old_key_str = "jn-sk-OldKeyExpiredGrace000000000000000000000000000";
+    let new_key_sha256_str = sha256_hex("jn-sk-NewKeyAfterRotation00000000000000000000000000");
     let old_key_bytes = db_api_keys::sha256_bytes(old_key_str);
 
     let expired_key = ApiKey {
@@ -273,7 +273,7 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
         previous_key_sha256: Some(sha256_hex(old_key_str)),
         // Grace period already expired (1 second ago).
         rotation_expires_at: Some(Utc::now() - chrono::Duration::seconds(1)),
-        key_prefix: "vx-sk-Old".to_string(),
+        key_prefix: "jn-sk-Old".to_string(),
         workspace_id: None,
         budget_limit: None,
         budget_used: Decimal::ZERO,
@@ -291,19 +291,19 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
     };
     key_cache.insert(old_key_bytes, expired_key);
 
-    let providers: Vec<Arc<dyn velox::providers::Provider>> = vec![];
-    let registry = Arc::new(velox::gateway::ProviderRegistry::new(
+    let providers: Vec<Arc<dyn janus::providers::Provider>> = vec![];
+    let registry = Arc::new(janus::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
     ));
-    let rate_limiter = velox::middleware::rate_limit::RateLimiter::new(60);
-    let cache = Arc::new(velox::cache::CacheEngine::new());
+    let rate_limiter = janus::middleware::rate_limit::RateLimiter::new(60);
+    let cache = Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
     let runtime_config = Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
 
-    let state = Arc::new(velox::state::AppState {
+    let state = Arc::new(janus::state::AppState {
         pool,
         config: config.clone(),
         runtime_config,
@@ -312,18 +312,18 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
         rate_limiter,
         cluster_rate_limiter: None,
         cache,
-        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
+        semantic_policy: janus::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: Arc::new(vec![]),
-        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
-        time_guard: std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+        dedup: std::sync::Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard: std::sync::Arc::new(janus::cache::time_guard::TimeGuard::new(
             &config.time_sensitive_patterns,
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
     });
 
-    let app = velox::routes::create_router(state);
+    let app = janus::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move {
@@ -388,8 +388,8 @@ async fn v3_5_audit_log_response_includes_hash_header() {
 
     assert_eq!(resp.status(), 200);
     assert!(
-        resp.headers().contains_key("x-velox-audit-hash"),
-        "response must include X-Velox-Audit-Hash header"
+        resp.headers().contains_key("x-janus-audit-hash"),
+        "response must include X-Janus-Audit-Hash header"
     );
 }
 
@@ -410,7 +410,7 @@ async fn v3_5_audit_log_hash_matches_body_sha256() {
     assert_eq!(resp.status(), 200);
     let reported_hash = resp
         .headers()
-        .get("x-velox-audit-hash")
+        .get("x-janus-audit-hash")
         .unwrap()
         .to_str()
         .unwrap()
@@ -425,7 +425,7 @@ async fn v3_5_audit_log_hash_matches_body_sha256() {
 
     assert_eq!(
         reported_hash, computed_hash,
-        "X-Velox-Audit-Hash must equal SHA-256 of the response body"
+        "X-Janus-Audit-Hash must equal SHA-256 of the response body"
     );
 }
 
@@ -517,7 +517,7 @@ async fn v3_5_audit_log_filters_by_api_key_id() {
 fn v3_5_regression_existing_key_auth_unaffected() {
     // Keys with no rotation state (previous_key_sha256 = None) should be authenticated
     // exactly as before: key_sha256 matches the presented token's hash → accepted.
-    let key_str = "vx-sk-NormalKeyNoRotation0000000000000000000000000";
+    let key_str = "jn-sk-NormalKeyNoRotation0000000000000000000000000";
     let hex = sha256_hex(key_str);
     let api_key = make_api_key(Some(&hex));
 

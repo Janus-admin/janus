@@ -2,17 +2,17 @@
 # Provides automatic HTTPS via the default *.cloudfront.net certificate.
 # Origin is the public IP over HTTP (port 80); viewer connection is forced to HTTPS.
 
-resource "aws_cloudfront_distribution" "velox" {
+resource "aws_cloudfront_distribution" "janus" {
   enabled         = true
   is_ipv6_enabled = true
-  comment         = "Velox dashboard + API (origin: Lightsail VM)"
+  comment         = "Janus dashboard + API (origin: Lightsail VM)"
   price_class     = "PriceClass_100" # US/EU only - cheapest
 
   # CloudFront rejects IP origins, so route via sslip.io (free wildcard DNS that
   # resolves a-b-c-d.sslip.io to a.b.c.d). No AWS hosted zone needed.
   origin {
-    domain_name = "${replace(aws_lightsail_static_ip.velox.ip_address, ".", "-")}.sslip.io"
-    origin_id   = "velox-lightsail"
+    domain_name = "${replace(aws_lightsail_static_ip.janus.ip_address, ".", "-")}.sslip.io"
+    origin_id   = "janus-lightsail"
 
     custom_origin_config {
       http_port              = 80
@@ -25,7 +25,7 @@ resource "aws_cloudfront_distribution" "velox" {
   }
 
   default_cache_behavior {
-    target_origin_id       = "velox-lightsail"
+    target_origin_id       = "janus-lightsail"
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods         = ["GET", "HEAD"]
@@ -55,5 +55,5 @@ resource "aws_cloudfront_distribution" "velox" {
 
 output "https_url" {
   description = "HTTPS dashboard URL (takes 5-15 min to propagate after first apply)"
-  value       = "https://${aws_cloudfront_distribution.velox.domain_name}"
+  value       = "https://${aws_cloudfront_distribution.janus.domain_name}"
 }

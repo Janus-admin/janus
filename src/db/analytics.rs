@@ -775,11 +775,7 @@ fn decimal_to_f64(d: Decimal) -> f64 {
 /// `tag_key` is a simple string (e.g. `"team"`). Rows where the tag is absent
 /// are reported with `tag_value = null`.
 /// `days` is clamped to 1–365 by the caller.
-pub async fn cost_by_tag(
-    pool: &DbPool,
-    tag_key: &str,
-    days: i32,
-) -> AppResult<serde_json::Value> {
+pub async fn cost_by_tag(pool: &DbPool, tag_key: &str, days: i32) -> AppResult<serde_json::Value> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
         let interval = format!("{} days", days);

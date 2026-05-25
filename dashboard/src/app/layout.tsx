@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Velox Dashboard",
-  description: "Admin dashboard for the Velox AI gateway",
+  title: "Janus Dashboard",
+  description: "Admin dashboard for the Janus AI gateway",
 };
 
 export default function RootLayout({

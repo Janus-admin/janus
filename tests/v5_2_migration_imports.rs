@@ -12,8 +12,8 @@
 
 use std::path::PathBuf;
 
-use velox::cli::backup::{self, ArchiveContents, VersionStamp, CURRENT_SCHEMA_VERSION};
-use velox::cli::import::{litellm, openrouter, portkey};
+use janus::cli::backup::{self, ArchiveContents, VersionStamp, CURRENT_SCHEMA_VERSION};
+use janus::cli::import::{litellm, openrouter, portkey};
 
 fn fixture(name: &str) -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -77,7 +77,7 @@ fn v5_2_litellm_routing_strategy_maps_correctly() {
     assert_eq!(m(Some("usage-based-routing")), "cost");
     assert_eq!(m(Some("usage-based-routing-v2")), "cost");
     assert_eq!(m(Some("lowest-cost")), "cost");
-    // Unknown strategies fall back to priority (Velox default).
+    // Unknown strategies fall back to priority (Janus default).
     assert_eq!(m(Some("never-heard-of-it")), "priority");
     assert_eq!(m(None), "priority");
 }
@@ -181,7 +181,7 @@ fn v5_2_openrouter_import_creates_model_aliases() {
         .iter()
         .find(|a| a.openrouter_id == "openai/gpt-4o")
         .expect("gpt-4o alias present");
-    assert_eq!(gpt4o.velox_provider.as_deref(), Some("openai"));
+    assert_eq!(gpt4o.janus_provider.as_deref(), Some("openai"));
     assert_eq!(gpt4o.prompt_price.as_deref(), Some("0.000005"));
 }
 
@@ -195,11 +195,11 @@ fn sample_archive() -> ArchiveContents {
     ArchiveContents {
         version: VersionStamp {
             schema_version: CURRENT_SCHEMA_VERSION,
-            velox_version: env!("CARGO_PKG_VERSION").to_string(),
+            janus_version: env!("CARGO_PKG_VERSION").to_string(),
             created_at: "2026-05-25T00:00:00Z".to_string(),
         },
         db_sql: b"CREATE TABLE t (x INT); INSERT INTO t VALUES (1);".to_vec(),
-        velox_toml: Some(b"[server]\nport = 8080\n".to_vec()),
+        janus_toml: Some(b"[server]\nport = 8080\n".to_vec()),
         models,
     }
 }
@@ -219,7 +219,7 @@ fn v5_2_backup_produces_complete_archive() {
     let back = backup::read_archive(&path).expect("read_archive");
     assert_eq!(back.version.schema_version, CURRENT_SCHEMA_VERSION);
     assert_eq!(back.db_sql, archive.db_sql);
-    assert_eq!(back.velox_toml, archive.velox_toml);
+    assert_eq!(back.janus_toml, archive.janus_toml);
     assert_eq!(back.models.len(), 2);
     assert!(back.models.contains_key("all-MiniLM-L6-v2.onnx"));
     assert!(back.models.contains_key("tokenizer.json"));
@@ -271,7 +271,7 @@ fn helm_on_path() -> bool {
 fn chart_dir() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.push("charts");
-    p.push("velox");
+    p.push("janus");
     p
 }
 
@@ -304,7 +304,7 @@ fn v5_2_helm_template_produces_valid_k8s_yaml() {
     }
     let output = std::process::Command::new("helm")
         .arg("template")
-        .arg("velox-test")
+        .arg("janus-test")
         .arg(chart_dir())
         .arg("-f")
         .arg(fixture("helm-minimal-values.yaml"))

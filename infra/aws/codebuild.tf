@@ -79,7 +79,7 @@ data "aws_iam_policy_document" "codebuild" {
       "ecr:UploadLayerPart",
       "ecr:BatchGetImage",
     ]
-    resources = [aws_ecr_repository.velox.arn]
+    resources = [aws_ecr_repository.janus.arn]
   }
 }
 
@@ -89,7 +89,7 @@ resource "aws_iam_role_policy" "codebuild" {
 }
 
 # ── CodeBuild project ────────────────────────────────────────────────────────
-resource "aws_codebuild_project" "velox" {
+resource "aws_codebuild_project" "janus" {
   name         = "${var.project}-image-build"
   service_role = aws_iam_role.codebuild.arn
 
@@ -117,7 +117,7 @@ resource "aws_codebuild_project" "velox" {
     }
     environment_variable {
       name  = "IMAGE_REPO_NAME"
-      value = aws_ecr_repository.velox.name
+      value = aws_ecr_repository.janus.name
     }
     environment_variable {
       name  = "IMAGE_TAG"
@@ -139,7 +139,7 @@ resource "aws_codebuild_project" "velox" {
 }
 
 output "codebuild_project_name" {
-  value = aws_codebuild_project.velox.name
+  value = aws_codebuild_project.janus.name
 }
 
 output "source_bucket" {

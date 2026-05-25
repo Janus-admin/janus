@@ -1,14 +1,14 @@
-//! `velox import` — pull config from competing gateways.
+//! `janus import` — pull config from competing gateways.
 //!
 //! V5-2 implementation. Each subcommand reads a competitor's config file (or
 //! hits a public API) and emits a `MigrationPlan`. The plan can be:
 //!
 //! - **previewed** (`--dry-run`, the default): printed to stdout so the user
 //!   can sanity-check what will change before any side-effect.
-//! - **applied** (`--apply`): pushed to the configured Velox via the admin API
+//! - **applied** (`--apply`): pushed to the configured Janus via the admin API
 //!   (`PATCH /admin/providers/:id`, `POST /admin/keys`, `PATCH /admin/config`).
 //!
-//! The mappings are documented in VELOX_V5_ROADMAP.md §5.4. Subcommands that
+//! The mappings are documented in JANUS_V5_ROADMAP.md §5.4. Subcommands that
 //! cannot create the underlying resource (e.g. OpenRouter has no matching
 //! pre-seeded provider) emit suggestions only.
 
@@ -30,7 +30,7 @@ pub enum ImportCmd {
     Litellm {
         /// Path to the LiteLLM YAML config.
         path: PathBuf,
-        /// Apply the plan to a running Velox via the admin API.
+        /// Apply the plan to a running Janus via the admin API.
         /// Without this flag the import runs as a dry-run preview.
         #[arg(long)]
         apply: bool,
@@ -39,7 +39,7 @@ pub enum ImportCmd {
     Portkey {
         /// Path to the Portkey export JSON.
         path: PathBuf,
-        /// Apply the plan to a running Velox via the admin API.
+        /// Apply the plan to a running Janus via the admin API.
         #[arg(long)]
         apply: bool,
     },

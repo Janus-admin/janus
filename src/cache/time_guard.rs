@@ -4,7 +4,7 @@ use regex::Regex;
 /// Detects prompts that are inherently time-bound (e.g. "current price", "today").
 ///
 /// When a request matches, it is excluded from both cache lookup and cache write.
-/// The set of patterns is configured via `time_sensitive_patterns` in velox.toml.
+/// The set of patterns is configured via `time_sensitive_patterns` in janus.toml.
 pub struct TimeGuard {
     patterns: Vec<Regex>,
 }

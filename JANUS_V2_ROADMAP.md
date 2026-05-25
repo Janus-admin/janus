@@ -1,4 +1,4 @@
-# VELOX V2 — Engineering Roadmap
+# JANUS V2 — Engineering Roadmap
 > Built on v0.1.0 (commit 97b4c2a). All phases are feature-complete.
 > This document is the single source of truth for all v2 work.
 > **If you are Claude: read CLAUDE.md first, then this file.**
@@ -25,7 +25,7 @@
 
 ## 1. V1 Gap Analysis
 
-Before v2 features, the following gaps exist between the v1 specification (VELOX_ROADMAP.md)
+Before v2 features, the following gaps exist between the v1 specification (JANUS_ROADMAP.md)
 and what was actually built. These are closed in **Phase V2-0** first.
 
 | Gap | Spec Location | Status |
@@ -228,7 +228,7 @@ The estimate doesn't need to be perfect — it's a guard, not billing.
 |---|---|---|
 | `GET /v1/models` | `src/handlers/gateway.rs` | Aggregate from all enabled providers |
 | `GET /admin/requests/export` | `src/handlers/admin/requests.rs` | CSV, `Content-Disposition: attachment` |
-| `PATCH /admin/config` | `src/handlers/admin/velox_config.rs` | Update runtime-safe config fields |
+| `PATCH /admin/config` | `src/handlers/admin/janus_config.rs` | Update runtime-safe config fields |
 | `DELETE /admin/cache/entries/:id` | `src/handlers/admin/cache.rs` | Remove single cache entry |
 
 ### New Migrations
@@ -288,8 +288,8 @@ cargo clippy -- -D warnings
 
 ## 4. Phase V2-1: SQLite Support
 
-**Goal**: Run Velox with zero external dependencies.
-`./velox` on a fresh machine with no PostgreSQL works out of the box.
+**Goal**: Run Janus with zero external dependencies.
+`./janus` on a fresh machine with no PostgreSQL works out of the box.
 This closes **Decision D-002** which explicitly deferred SQLite to v2.
 
 ### Architecture Decision
@@ -348,11 +348,11 @@ Strategy: wrap affected queries in `#[cfg(feature = "postgres")]` / `#[cfg(featu
 #### 4.4 Config Changes
 
 ```toml
-# velox.toml — SQLite usage (auto-detected from URL prefix)
-database_url = "sqlite:velox.db"
+# janus.toml — SQLite usage (auto-detected from URL prefix)
+database_url = "sqlite:janus.db"
 
 # PostgreSQL (existing)
-database_url = "postgres://user:pass@localhost/velox"
+database_url = "postgres://user:pass@localhost/janus"
 ```
 
 No other config change needed.
@@ -414,7 +414,7 @@ cargo clippy --features sqlite -- -D warnings
 
 ## 5. Phase V2-2: Webhook Alerts
 
-**Goal**: When a configured threshold is breached, Velox POSTs a notification to a
+**Goal**: When a configured threshold is breached, Janus POSTs a notification to a
 Slack, Discord, or generic HTTP webhook. Zero manual monitoring required.
 
 This extends the `alerts` table (exists since Phase 0) and the `AlertEngine`
@@ -436,12 +436,12 @@ Payload formats:
 
 **Slack:**
 ```json
-{ "text": "🚨 Velox Alert: spend_threshold exceeded. Cost: $45.20 / limit: $40.00" }
+{ "text": "🚨 Janus Alert: spend_threshold exceeded. Cost: $45.20 / limit: $40.00" }
 ```
 
 **Discord:**
 ```json
-{ "content": "🚨 Velox Alert: spend_threshold exceeded. Cost: $45.20 / limit: $40.00" }
+{ "content": "🚨 Janus Alert: spend_threshold exceeded. Cost: $45.20 / limit: $40.00" }
 ```
 
 **Generic:**
@@ -547,7 +547,7 @@ cargo clippy -- -D warnings
 ## 6. Phase V2-3: Extended API Compatibility
 
 **Goal**: Expand OpenAI-compatible surface area. Users can point their embedding
-workflows, tool-use apps, and vision pipelines at Velox without code changes.
+workflows, tool-use apps, and vision pipelines at Janus without code changes.
 
 ### What to Build
 
@@ -707,7 +707,7 @@ The pipeline passes `api_key.routing_strategy` to `select_provider()`.
 
 #### 7.3 Model Fallback Chains
 
-New config section in `velox.toml`:
+New config section in `janus.toml`:
 ```toml
 [routing.fallbacks]
 "gpt-4o"     = ["claude-3-5-sonnet-20241022", "gpt-4o-mini"]
@@ -824,17 +824,17 @@ CREATE INDEX idx_prompt_versions_prompt ON prompt_versions(prompt_id, version DE
 
 ```rust
 /// Interpolate {{variable}} placeholders in a template string.
-/// Variables come from the `X-Velox-Variables: {"key": "value"}` header or
+/// Variables come from the `X-Janus-Variables: {"key": "value"}` header or
 /// from an explicit `variables` field in the request body extension.
 pub fn render(template: &str, variables: &HashMap<String, String>) -> String;
 ```
 
 #### 8.3 Gateway Integration
 
-When a request includes `X-Velox-Prompt: {prompt_id}`:
+When a request includes `X-Janus-Prompt: {prompt_id}`:
 1. Load the active `prompt_version` for the prompt
 2. For A/B: select version by weighted random draw
-3. Render the template with variables from `X-Velox-Variables` header
+3. Render the template with variables from `X-Janus-Variables` header
 4. Inject the rendered content as the user message (or prepend to messages array)
 5. Record `prompt_version_id` in the `requests` row
 
@@ -884,7 +884,7 @@ async fn v2p5_activate_version_deactivates_previous()
 async fn v2p5_delete_prompt_cascades_to_versions()
 
 // Gateway integration
-async fn v2p5_x_velox_prompt_header_loads_active_version()
+async fn v2p5_x_janus_prompt_header_loads_active_version()
 async fn v2p5_template_variables_rendered_before_send_to_provider()
 async fn v2p5_prompt_version_id_recorded_in_request_log()
 async fn v2p5_unknown_prompt_id_returns_404()
@@ -911,7 +911,7 @@ cargo clippy -- -D warnings
 
 ## 9. Phase V2-6: Multi-Node Clustering
 
-**Goal**: Run multiple Velox instances behind a load balancer with shared state.
+**Goal**: Run multiple Janus instances behind a load balancer with shared state.
 Rate limits and budgets are enforced globally, not per-node.
 
 This is the most architecturally significant v2 phase. It changes fundamental
@@ -1043,8 +1043,8 @@ cargo clippy -- -D warnings
 
 ## 10. Phase V2-7: MCP Server
 
-**Goal**: Expose Velox as an MCP (Model Context Protocol) server so LLMs like Claude
-can call Velox tools directly — proxy requests, query analytics, manage API keys.
+**Goal**: Expose Janus as an MCP (Model Context Protocol) server so LLMs like Claude
+can call Janus tools directly — proxy requests, query analytics, manage API keys.
 
 ### What to Build
 
@@ -1060,7 +1060,7 @@ Both follow the MCP spec: JSON-RPC 2.0 framing over the transport.
 
 | Tool | Description | Input | Output |
 |---|---|---|---|
-| `proxy_llm_request` | Send a chat completion via Velox | `{model, messages, stream?}` | completion or stream |
+| `proxy_llm_request` | Send a chat completion via Janus | `{model, messages, stream?}` | completion or stream |
 | `get_usage_stats` | Summary of requests + cost | `{period: "today"\|"7d"\|"30d"}` | stats object |
 | `list_api_keys` | List all API keys | none | keys array |
 | `create_api_key` | Create a new API key | `{name, budget_limit?}` | `{key, id}` |
@@ -1075,7 +1075,7 @@ GET /mcp/sse     → SSE transport for MCP (HTTP-based clients)
 
 Stdio transport is started as a separate binary mode:
 ```bash
-velox --mcp-stdio     # reads JSON-RPC from stdin, writes to stdout
+janus --mcp-stdio     # reads JSON-RPC from stdin, writes to stdout
 ```
 
 #### 10.4 Auth

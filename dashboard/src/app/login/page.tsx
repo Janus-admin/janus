@@ -47,7 +47,7 @@ export default function LoginPage() {
             : err.message
         );
       } else {
-        setServerError("Could not reach the server. Is Velox running?");
+        setServerError("Could not reach the server. Is Janus running?");
       }
     }
   }
@@ -60,7 +60,7 @@ export default function LoginPage() {
             <Zap className="h-5 w-5" />
           </div>
           <h1 className="text-xl font-semibold tracking-tight">
-            Velox Admin
+            Janus Admin
           </h1>
         </div>
 

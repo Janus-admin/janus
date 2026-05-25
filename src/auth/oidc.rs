@@ -186,14 +186,16 @@ pub async fn exchange_code(
         .ok_or_else(|| anyhow!("Token response missing id_token"))?;
 
     // ── Step 2: decode header (need kid + alg before fetching JWKS) ──────────
-    let header = decode_header(&id_token)
-        .map_err(|e| anyhow!("Failed to decode ID token header: {e}"))?;
+    let header =
+        decode_header(&id_token).map_err(|e| anyhow!("Failed to decode ID token header: {e}"))?;
 
     let alg = match header.alg {
         jsonwebtoken::Algorithm::RS256 => Algorithm::RS256,
         jsonwebtoken::Algorithm::RS384 => Algorithm::RS384,
         jsonwebtoken::Algorithm::RS512 => Algorithm::RS512,
-        other => bail!("Unsupported ID token algorithm: {other:?} — only RS256/384/512 are supported"),
+        other => {
+            bail!("Unsupported ID token algorithm: {other:?} — only RS256/384/512 are supported")
+        }
     };
 
     // ── Step 3: fetch JWKS and find matching key ──────────────────────────────
@@ -212,9 +214,7 @@ pub async fn exchange_code(
     let key_obj = if kid.is_empty() {
         jwks.keys.first()
     } else {
-        jwks.keys
-            .iter()
-            .find(|k| k["kid"].as_str() == Some(kid))
+        jwks.keys.iter().find(|k| k["kid"].as_str() == Some(kid))
     }
     .ok_or_else(|| anyhow!("No matching key in JWKS for kid='{kid}'"))?;
 

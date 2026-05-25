@@ -1,4 +1,4 @@
-# VELOX — Complete Engineering Roadmap
+# JANUS — Complete Engineering Roadmap
 ### Self-Hosted AI Gateway. Built in Rust.
 > Version 1.0 — Reference Document
 
@@ -7,7 +7,7 @@
 ## Table of Contents
 
 1. [Vision & Core Principles](#1-vision--core-principles)
-2. [What Velox Is and Is Not](#2-what-velox-is-and-is-not)
+2. [What Janus Is and Is Not](#2-what-janus-is-and-is-not)
 3. [Full System Architecture](#3-full-system-architecture)
 4. [Technology Stack with Rationale](#4-technology-stack-with-rationale)
 5. [Database Schema](#5-database-schema)
@@ -30,7 +30,7 @@
 ### The One-Line Vision
 > Drop one binary in front of your LLM calls. Get streaming, caching, routing, and full observability instantly.
 
-### Why Velox Exists
+### Why Janus Exists
 Every team building AI products faces the same operational problems:
 - They have no visibility into which models cost the most and why
 - Identical or semantically similar prompts are sent to LLMs repeatedly, wasting money
@@ -40,18 +40,18 @@ Every team building AI products faces the same operational problems:
 
 LiteLLM (Python) is the current open-source standard. It works. But it requires a Python environment, Redis, PostgreSQL, and a Docker Compose file with 4+ containers. Running it on a small server is painful. Scaling it is painful.
 
-Velox is one binary. Start it. Done.
+Janus is one binary. Start it. Done.
 
 ### Core Principles
 
 **1. Single Binary First**
 The entire system — gateway, dashboard, database — ships as one compiled binary.
 No Docker required. No Redis required. No Python environment. SQLite is embedded by default.
-A developer should be able to run Velox on a $5 Hetzner server in under 2 minutes.
+A developer should be able to run Janus on a $5 Hetzner server in under 2 minutes.
 
 **2. OpenAI-Compatible API**
 The gateway API is a drop-in replacement for OpenAI's API format.
-Developers change one line of code (the base URL) and Velox works immediately.
+Developers change one line of code (the base URL) and Janus works immediately.
 No SDK changes. No prompt changes. Zero migration friction.
 
 **3. Semantic Caching as the Killer Feature**
@@ -60,7 +60,7 @@ Exact-match caching is table stakes. Semantic caching — understanding that
 is the moat. This is what reduces costs 40-70% in practice.
 
 **4. Rust Performance is a Means, Not the Message**
-Velox is faster than Python-based alternatives because of Rust + Tokio.
+Janus is faster than Python-based alternatives because of Rust + Tokio.
 But the message to users is: "production-scale streaming and reliability."
 Performance is the foundation that enables the promise, not the promise itself.
 
@@ -75,9 +75,9 @@ No telemetry is sent anywhere. Self-hosted means truly self-hosted.
 
 ---
 
-## 2. What Velox Is and Is Not
+## 2. What Janus Is and Is Not
 
-### Velox IS:
+### Janus IS:
 - A reverse proxy specifically designed for LLM API calls
 - A semantic caching layer that reduces costs
 - A streaming infrastructure layer (SSE, WebSocket)
@@ -86,7 +86,7 @@ No telemetry is sent anywhere. Self-hosted means truly self-hosted.
 - A provider failover and retry engine
 - A single-binary deployment tool
 
-### Velox IS NOT:
+### Janus IS NOT:
 - A replacement for your existing backend (it sits in front of LLM calls only)
 - A vector database (it has an embedded vector index for caching only)
 - A model training platform
@@ -98,15 +98,15 @@ No telemetry is sent anywhere. Self-hosted means truly self-hosted.
 ```
 Your Application
       ↓
-   [Velox]          ← This is what you are building
+   [Janus]          ← This is what you are building
       ↓
   ┌───┴───┐
   │  LLM  │ OpenAI / Anthropic / AWS Bedrock / Others
   └───────┘
 ```
 
-Your app talks to Velox exactly like it talks to OpenAI.
-Velox handles everything in between.
+Your app talks to Janus exactly like it talks to OpenAI.
+Janus handles everything in between.
 
 ---
 
@@ -114,7 +114,7 @@ Velox handles everything in between.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           VELOX SYSTEM                                   │
+│                           JANUS SYSTEM                                   │
 │                                                                          │
 │  ┌──────────────┐    ┌──────────────────────────────────────────────┐   │
 │  │   Dashboard  │    │              GATEWAY CORE (Rust)             │   │
@@ -244,7 +244,7 @@ CREATE TABLE api_keys (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            VARCHAR(255) NOT NULL,
     key_hash        VARCHAR(255) NOT NULL UNIQUE,  -- bcrypt hash
-    key_prefix      VARCHAR(12) NOT NULL,           -- first 8 chars for display: "vx-sk-abc12..."
+    key_prefix      VARCHAR(12) NOT NULL,           -- first 8 chars for display: "jn-sk-abc12..."
     workspace_id    UUID REFERENCES workspaces(id) ON DELETE CASCADE,
     budget_limit    DECIMAL(10,6),                  -- optional USD spend limit
     budget_used     DECIMAL(10,6) NOT NULL DEFAULT 0,
@@ -452,10 +452,10 @@ GET    /v1/models                    → List available models (aggregated from 
 
 Every request requires:
 ```
-Authorization: Bearer vx-sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Authorization: Bearer jn-sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 Content-Type: application/json
-X-Velox-Provider: openai              (optional — override automatic routing)
-X-Velox-Cache: false                  (optional — bypass cache for this request)
+X-Janus-Provider: openai              (optional — override automatic routing)
+X-Janus-Cache: false                  (optional — bypass cache for this request)
 ```
 
 ### Admin API
@@ -537,10 +537,10 @@ Error:
 
 ### API Key Format
 ```
-vx-sk-[48 random alphanumeric characters]
+jn-sk-[48 random alphanumeric characters]
 
-Example: vx-sk-a8Kd92nPqRx4mTvL7wYjBc3hEiZsNfGu5oQpAb1Cy6Xk
-Prefix stored in DB: vx-sk-a8Kd92n...
+Example: jn-sk-a8Kd92nPqRx4mTvL7wYjBc3hEiZsNfGu5oQpAb1Cy6Xk
+Prefix stored in DB: jn-sk-a8Kd92n...
 Full key shown only once at creation time.
 ```
 
@@ -598,7 +598,7 @@ Incoming HTTP Request
 │   └─ HIT → return cached response (log as cache_type='semantic', cache_similarity=0.97)
 │
 ├─ 8. PROVIDER ROUTING
-│   ├─ If X-Velox-Provider header set: use that provider
+│   ├─ If X-Janus-Provider header set: use that provider
 │   ├─ Else: select by priority order
 │   ├─ Check provider health status
 │   ├─ If primary provider degraded: select next by priority
@@ -649,7 +649,7 @@ Incoming HTTP Request
 
 ## 8. Semantic Caching Architecture
 
-This is the most technically sophisticated component and Velox's primary value differentiator.
+This is the most technically sophisticated component and Janus's primary value differentiator.
 
 ### How It Works
 
@@ -723,7 +723,7 @@ struct SemanticCache {
 **Step 3: Persistence**
 
 HNSW index is in-memory for speed. Persistence strategy:
-- On graceful shutdown: serialize index to `velox_cache.idx` file
+- On graceful shutdown: serialize index to `janus_cache.idx` file
 - On startup: deserialize from file (fast, seconds not minutes)
 - Database stores embeddings as BYTEA for recovery if index file is lost
 - Periodic snapshots every 5 minutes (async background task)
@@ -758,11 +758,11 @@ Cache Performance
 
 ## 9. Configuration System
 
-### velox.toml (complete example)
+### janus.toml (complete example)
 
 ```toml
 # ─────────────────────────────────────────
-# VELOX CONFIGURATION
+# JANUS CONFIGURATION
 # ─────────────────────────────────────────
 
 [server]
@@ -773,10 +773,10 @@ request_timeout_ms = 60000
 
 [database]
 # SQLite (default — zero config)
-url = "velox.db"
+url = "janus.db"
 
 # PostgreSQL (optional — uncomment to use)
-# url = "postgres://user:pass@localhost:5432/velox"
+# url = "postgres://user:pass@localhost:5432/janus"
 # max_connections = 20
 
 [auth]
@@ -785,7 +785,7 @@ admin_password_hash = "$2b$12$..."   # bcrypt hash
 jwt_secret = "change-this-in-production"
 jwt_expiration_hours = 24
 # Encryption key for storing provider API keys
-# Generate with: velox generate-key
+# Generate with: janus generate-key
 encryption_key = "base64-encoded-32-byte-key"
 
 [cache]
@@ -841,9 +841,9 @@ path = "/"                      # serve dashboard at root
 ### Environment Variable Support
 Every config value can be overridden with env vars:
 ```bash
-VELOX_SERVER_PORT=9090
-VELOX_DATABASE_URL=postgres://...
-VELOX_PROVIDERS_OPENAI_API_KEY=sk-...
+JANUS_SERVER_PORT=9090
+JANUS_DATABASE_URL=postgres://...
+JANUS_PROVIDERS_OPENAI_API_KEY=sk-...
 ```
 
 This follows the 12-factor app methodology and makes Docker/Kubernetes deployment clean.
@@ -856,7 +856,7 @@ This follows the 12-factor app methodology and makes Docker/Kubernetes deploymen
 ```
 Creation:
   1. Generate 48 random bytes (cryptographically secure: ring::rand)
-  2. Encode as base62: "vx-sk-[48chars]"
+  2. Encode as base62: "jn-sk-[48chars]"
   3. Hash with bcrypt (cost factor 12) for storage
   4. Store ONLY the hash in database
   5. Return FULL key to user ONCE — never shown again
@@ -882,7 +882,7 @@ Provider API keys (OpenAI sk-..., etc.) are stored encrypted:
 
 ### Transport Security
 - TLS termination should happen at the load balancer/reverse proxy (nginx, Caddy)
-- Velox itself speaks HTTP internally
+- Janus itself speaks HTTP internally
 - Admin API should be on a separate port, not exposed publicly
 
 ### Request Body Privacy
@@ -930,14 +930,14 @@ and `k6` or `oha` for load tests.
 ```bash
 # HTTP load test
 oha -n 10000 -c 100 http://localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer vx-sk-test" \
+  -H "Authorization: Bearer jn-sk-test" \
   -m POST -d @test_request.json
 
 # Criterion benchmarks
 cargo bench
 
 # Memory profiling
-heaptrack ./target/release/velox
+heaptrack ./target/release/janus
 ```
 
 ---
@@ -1027,10 +1027,10 @@ Each phase has: goal, tasks, deliverable, and definition of done.
 ---
 
 ### Phase 0: Foundation (Week 1)
-**Goal**: Restructure the existing Rust backend into the Velox project structure.
+**Goal**: Restructure the existing Rust backend into the Janus project structure.
 
 #### Tasks
-- [ ] Rename project from `rust-backend` to `velox` in Cargo.toml
+- [ ] Rename project from `rust-backend` to `janus` in Cargo.toml
 - [ ] Redesign directory structure (see Section 16)
 - [ ] Add new dependencies: `reqwest`, `dashmap`, `clap`, `config`, `tiktoken-rs`
 - [ ] Implement `Config` system using `config` crate (TOML + ENV)
@@ -1046,7 +1046,7 @@ Each phase has: goal, tasks, deliverable, and definition of done.
 ---
 
 ### Phase 1: Core Proxy (Weeks 2–4)
-**Goal**: Route requests through Velox to OpenAI. Non-streaming only. No caching.
+**Goal**: Route requests through Janus to OpenAI. Non-streaming only. No caching.
 
 #### Tasks
 - [ ] Implement API key model: create, hash, store, validate
@@ -1062,14 +1062,14 @@ Each phase has: goal, tasks, deliverable, and definition of done.
 - [ ] Write unit tests for each provider adapter
 - [ ] Write integration tests with wiremock mocks
 
-**Deliverable**: Can send a request to Velox using an OpenAI SDK with base_url changed. 
+**Deliverable**: Can send a request to Janus using an OpenAI SDK with base_url changed. 
 Request is proxied to OpenAI (or Anthropic or Bedrock). Cost is tracked. Request is logged.
 
 **Proof of Phase 1 completion**:
 ```python
 # User's application code — UNCHANGED except base_url
 from openai import OpenAI
-client = OpenAI(api_key="vx-sk-...", base_url="http://localhost:8080/v1")
+client = OpenAI(api_key="jn-sk-...", base_url="http://localhost:8080/v1")
 response = client.chat.completions.create(model="gpt-4o", messages=[...])
 ```
 
@@ -1108,7 +1108,7 @@ All three providers stream correctly. Costs are tracked accurately for streaming
 - [ ] Update `providers` table health_status from health check results
 - [ ] Write tests for retry logic, failover, circuit breaker
 
-**Deliverable**: Velox survives provider outages. Rate limits enforced accurately. 
+**Deliverable**: Janus survives provider outages. Rate limits enforced accurately. 
 Failover is transparent to the client.
 
 ---
@@ -1123,7 +1123,7 @@ Failover is transparent to the client.
 - [ ] Cache warmup on startup (load recent entries from DB into dashmap)
 - [ ] Implement cache TTL with background cleanup task
 - [ ] Store cache stats (hit_count, tokens_saved, cost_saved)
-- [ ] Implement cache bypass via `X-Velox-Cache: false` header
+- [ ] Implement cache bypass via `X-Janus-Cache: false` header
 - [ ] Add `GET /admin/cache/stats` endpoint
 - [ ] Add `POST /admin/cache/flush` endpoint
 
@@ -1146,7 +1146,7 @@ Dashboard shows cache hit rate and cost savings.
 - [ ] Implement periodic index snapshotting (async background task)
 - [ ] Store embeddings as BYTEA in SQLite for recovery
 - [ ] Add semantic cache stats to `/admin/cache/stats`
-- [ ] Configurable threshold in `velox.toml`
+- [ ] Configurable threshold in `janus.toml`
 - [ ] Benchmark embedding generation latency (target: < 10ms)
 - [ ] Benchmark HNSW search latency (target: < 5ms for 50K entries)
 
@@ -1237,7 +1237,7 @@ use include_dir::{include_dir, Dir};
 static DASHBOARD: Dir = include_dir!("$CARGO_MANIFEST_DIR/dashboard/out");
 ```
 
-**Deliverable**: `./velox` starts server. Open browser at `http://localhost:8080` → 
+**Deliverable**: `./janus` starts server. Open browser at `http://localhost:8080` → 
 fully functional dashboard. No separate process. No npm serve.
 
 ---
@@ -1249,12 +1249,12 @@ fully functional dashboard. No separate process. No npm serve.
 - [ ] Request size limits (reject bodies > 1MB)
 - [ ] Graceful shutdown (finish in-flight requests, flush cache snapshot)
 - [ ] Prometheus metrics endpoint (`/metrics`)
-  - `velox_requests_total` (labels: provider, model, status, cache_type)
-  - `velox_request_duration_seconds` (histogram)
-  - `velox_tokens_total` (labels: provider, model, type)
-  - `velox_cost_usd_total` (labels: provider, model)
-  - `velox_cache_size` (gauge)
-  - `velox_cache_hit_ratio` (gauge)
+  - `janus_requests_total` (labels: provider, model, status, cache_type)
+  - `janus_request_duration_seconds` (histogram)
+  - `janus_tokens_total` (labels: provider, model, type)
+  - `janus_cost_usd_total` (labels: provider, model)
+  - `janus_cache_size` (gauge)
+  - `janus_cache_hit_ratio` (gauge)
 - [ ] CORS configuration for dashboard
 - [ ] PII scrubber for request body logging
 - [ ] Database connection pool tuning
@@ -1263,7 +1263,7 @@ fully functional dashboard. No separate process. No npm serve.
 - [ ] Create `docs/` directory with deployment guides
 - [ ] Docker multi-stage build (single binary → minimal image)
 - [ ] GitHub Actions: test → build → release binary for linux/amd64, darwin/arm64, darwin/amd64, windows/amd64
-- [ ] Write `velox.toml.example` with full documentation
+- [ ] Write `janus.toml.example` with full documentation
 - [ ] Benchmark suite: run and document results
 
 **Deliverable**: Binary available for download. Works on Linux and macOS.
@@ -1286,7 +1286,7 @@ README with 5-minute quickstart. Benchmarks published.
 - [ ] Published benchmarks page (compare with LiteLLM, raw provider latency)
 
 #### Launch Sequence
-1. **Hacker News: Show HN** — "Show HN: Velox — Self-hosted AI gateway in Rust, single binary"
+1. **Hacker News: Show HN** — "Show HN: Janus — Self-hosted AI gateway in Rust, single binary"
 2. **Reddit: r/rust** — Technical post about the HNSW semantic cache implementation
 3. **Reddit: r/selfhosted** — Focus on single binary, no dependencies angle
 4. **Dev.to** — Technical blog post: "Building a semantic cache for LLMs in Rust"
@@ -1305,7 +1305,7 @@ README with 5-minute quickstart. Benchmarks published.
 - [ ] **Live Feed** — Real-time request stream (WebSocket), filterable
 - [ ] **Cost Trends** — 30-day cost chart, breakdown by model
 - [ ] **Alerts** — Configure spend thresholds, push notifications
-- [ ] **Settings** — Connect to Velox instance (URL, admin token)
+- [ ] **Settings** — Connect to Janus instance (URL, admin token)
 
 #### Technical
 - [ ] Expo setup with TypeScript
@@ -1314,7 +1314,7 @@ README with 5-minute quickstart. Benchmarks published.
 - [ ] Secure credential storage (Expo SecureStore)
 - [ ] iOS + Android support
 
-**Deliverable**: App works on iOS and Android. Connects to your Velox instance.
+**Deliverable**: App works on iOS and Android. Connects to your Janus instance.
 Real-time spend monitoring on your phone.
 
 ---
@@ -1327,7 +1327,7 @@ Real-time spend monitoring on your phone.
 3. **Tertiary**: Companies wanting to avoid LiteLLM's Python overhead
 
 ### Positioning Statement
-> Velox is the simplest way to get observability, caching, and reliability 
+> Janus is the simplest way to get observability, caching, and reliability 
 > for your LLM calls — without vendor lock-in. One binary. Zero dependencies.
 
 ### What Will Get GitHub Stars
@@ -1339,15 +1339,15 @@ Based on the research (PocketBase, Tauri, uv pattern):
 
 ### The README Formula
 ```markdown
-# Velox
+# Janus
 **Self-hosted AI gateway. Single binary. Built in Rust.**
 
 [Screenshot of dashboard]
 
 ## Install
-curl -L https://github.com/you/velox/releases/latest/download/velox-linux-amd64 -o velox
-chmod +x velox
-./velox
+curl -L https://github.com/you/janus/releases/latest/download/janus-linux-amd64 -o janus
+chmod +x janus
+./janus
 
 ## Use
 Change one line in your app:
@@ -1369,9 +1369,9 @@ These are intentionally NOT in v1. They are the natural evolution after real use
 - **Model playground** — Compare model outputs side by side in the dashboard
 - **Cost budgets per team/feature** — Budget envelopes for different parts of your product
 - **Webhook alerts** — POST to Slack/Discord/email when thresholds hit
-- **Multi-node clustering** — Run multiple Velox instances with shared state
+- **Multi-node clustering** — Run multiple Janus instances with shared state
 - **Plugin system** — Let community add providers via WASM plugins
-- **MCP server** — Let Claude/GPT use Velox as a tool directly
+- **MCP server** — Let Claude/GPT use Janus as a tool directly
 
 ### Potential Business Model (if you choose to commercialize)
 ```
@@ -1384,14 +1384,14 @@ Enterprise:    SSO, audit logs, SLA, dedicated support
 
 ## 16. Project File Structure
 
-This is the target structure for the complete Velox project.
+This is the target structure for the complete Janus project.
 
 ```
-velox/
+janus/
 │
 ├── Cargo.toml                     ← Add new dependencies here
 ├── Cargo.lock
-├── velox.toml.example             ← Full documented config example
+├── janus.toml.example             ← Full documented config example
 ├── README.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -1531,7 +1531,7 @@ velox/
 │       └── feature_request.md
 │
 ├── Dockerfile                     ← Update to use new structure
-├── docker-compose.yml             ← Update for Velox
+├── docker-compose.yml             ← Update for Janus
 └── .gitignore
 ```
 
@@ -1556,6 +1556,6 @@ Day 26+:  Hardening, docs, launch
 
 ---
 
-*This document is the single source of truth for the Velox project.*
+*This document is the single source of truth for the Janus project.*
 *Update it as decisions change. Never let it go stale.*
 *Version all changes with dates in the CHANGELOG.*

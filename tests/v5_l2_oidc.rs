@@ -16,11 +16,7 @@ mod common;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use rsa::{
-    pkcs8::EncodePrivateKey,
-    traits::PublicKeyParts,
-    RsaPrivateKey,
-};
+use rsa::{pkcs8::EncodePrivateKey, traits::PublicKeyParts, RsaPrivateKey};
 use serde_json::{json, Value};
 use wiremock::{
     matchers::{method, path},
@@ -90,12 +86,7 @@ fn sign_id_token(
         "nonce": nonce,
         "groups": groups,
     });
-    encode(
-        &Header::new(Algorithm::RS256),
-        &claims,
-        &key.encoding_key,
-    )
-    .expect("JWT signing failed")
+    encode(&Header::new(Algorithm::RS256), &claims, &key.encoding_key).expect("JWT signing failed")
 }
 
 // ── Mock IdP server helpers ───────────────────────────────────────────────────
@@ -207,10 +198,8 @@ async fn run_oidc_start(base_url: &str, idp_id: &str) -> (String, String) {
         .and_then(|v| v.to_str().ok())
         .expect("redirect must have Location header");
 
-    let state = extract_param(location, "state")
-        .expect("Location URL must contain state param");
-    let nonce = extract_param(location, "nonce")
-        .expect("Location URL must contain nonce param");
+    let state = extract_param(location, "state").expect("Location URL must contain state param");
+    let nonce = extract_param(location, "nonce").expect("Location URL must contain nonce param");
 
     (state, nonce)
 }
@@ -305,10 +294,7 @@ async fn v5_l2_oidc_second_login_reuses_existing_user() {
 
     let resp1 = run_oidc_callback(&base_url, &idp_id, "code-first", &state1).await;
     assert_eq!(resp1.status(), 200, "first login must succeed");
-    let user_id_first = resp1
-        .json::<Value>()
-        .await
-        .unwrap()["user"]["id"]
+    let user_id_first = resp1.json::<Value>().await.unwrap()["user"]["id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -330,10 +316,7 @@ async fn v5_l2_oidc_second_login_reuses_existing_user() {
     let status2 = resp2.status();
     let body2: Value = resp2.json().await.unwrap_or_default();
     assert_eq!(status2, 200, "second login must succeed — body: {body2}");
-    let user_id_second = body2["user"]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let user_id_second = body2["user"]["id"].as_str().unwrap().to_string();
 
     assert_eq!(
         user_id_first, user_id_second,
@@ -519,7 +502,11 @@ async fn v5_l2_idp_crud_endpoints_require_admin() {
         .send()
         .await
         .expect("GET /admin/idp failed");
-    assert_eq!(resp.status(), 401, "GET /admin/idp without auth must be 401");
+    assert_eq!(
+        resp.status(),
+        401,
+        "GET /admin/idp without auth must be 401"
+    );
 
     // POST without token → 401
     let resp = client
@@ -528,11 +515,17 @@ async fn v5_l2_idp_crud_endpoints_require_admin() {
         .send()
         .await
         .expect("POST /admin/idp failed");
-    assert_eq!(resp.status(), 401, "POST /admin/idp without auth must be 401");
+    assert_eq!(
+        resp.status(),
+        401,
+        "POST /admin/idp without auth must be 401"
+    );
 
     // DELETE without token → 401
     let resp = client
-        .delete(format!("{base_url}/admin/idp/00000000-0000-0000-0000-000000000000"))
+        .delete(format!(
+            "{base_url}/admin/idp/00000000-0000-0000-0000-000000000000"
+        ))
         .send()
         .await
         .expect("DELETE /admin/idp/:id failed");

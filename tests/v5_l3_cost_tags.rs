@@ -90,7 +90,7 @@ async fn v5_l3_metadata_field_tags_stored_in_requests() {
     );
 }
 
-/// Tags from the `X-Velox-Tags` header are stored in `requests.tags`.
+/// Tags from the `X-Janus-Tags` header are stored in `requests.tags`.
 #[tokio::test]
 async fn v5_l3_header_tags_stored_in_requests() {
     let (base_url, _mock) = setup().await;
@@ -99,7 +99,7 @@ async fn v5_l3_header_tags_stored_in_requests() {
     let resp = client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Tags", "team=ml,env=prod")
+        .header("X-Janus-Tags", "team=ml,env=prod")
         .json(&json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "tag test via header" }]
@@ -134,7 +134,7 @@ async fn v5_l3_header_tags_stored_in_requests() {
     );
 }
 
-/// When both `metadata` and `X-Velox-Tags` are present, header values win on collision.
+/// When both `metadata` and `X-Janus-Tags` are present, header values win on collision.
 #[tokio::test]
 async fn v5_l3_header_overrides_body_when_both_present() {
     let (base_url, _mock) = setup().await;
@@ -143,7 +143,7 @@ async fn v5_l3_header_overrides_body_when_both_present() {
     let resp = client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Tags", "team=infra")
+        .header("X-Janus-Tags", "team=infra")
         .json(&json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "override test" }],
@@ -191,7 +191,7 @@ async fn v5_l3_cost_breakdown_by_tag_endpoint() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Tags", "team=frontend")
+        .header("X-Janus-Tags", "team=frontend")
         .json(&json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "tag breakdown test" }]
@@ -218,10 +218,7 @@ async fn v5_l3_cost_breakdown_by_tag_endpoint() {
 
     assert!(body["data"].is_object(), "response must have data object");
     assert_eq!(body["data"]["tag_key"], "team");
-    assert!(
-        body["data"]["groups"].is_array(),
-        "groups must be an array"
-    );
+    assert!(body["data"]["groups"].is_array(), "groups must be an array");
     let groups = body["data"]["groups"].as_array().unwrap();
     assert!(
         groups.iter().any(|g| g["tag_value"] == "frontend"),

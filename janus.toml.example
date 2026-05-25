@@ -1,5 +1,5 @@
-# Velox Configuration File
-# Copy this to velox.toml and customize for your environment.
+# Janus Configuration File
+# Copy this to janus.toml and customize for your environment.
 # All values here are optional — defaults will be used if not specified.
 # Environment variables always override file values.
 
@@ -23,7 +23,7 @@ request_timeout_ms = 60000
 # PostgreSQL connection string. Required.
 # Format: postgres://user:password@host:port/database
 # Can also be set via DATABASE_URL environment variable.
-database_url = "postgres://velox:velox_dev_password@localhost:5432/velox"
+database_url = "postgres://janus:janus_dev_password@localhost:5432/janus"
 
 # Maximum database connection pool size. Default: 5
 db_pool_max_connections = 5

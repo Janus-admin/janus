@@ -1,4 +1,4 @@
-# Velox on Railway
+# Janus on Railway
 
 One-click deploy. Railway provisions an external Postgres add-on and points
 `DATABASE_URL` at it automatically.

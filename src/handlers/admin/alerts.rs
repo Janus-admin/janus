@@ -36,7 +36,7 @@ pub struct CreateAlertRequest {
     pub webhook_secret: Option<String>,
     /// Native Slack incoming-webhook URL. Receives block-kit payloads.
     pub slack_webhook_url: Option<String>,
-    /// Recipient email addresses. Requires SMTP configured in velox.toml.
+    /// Recipient email addresses. Requires SMTP configured in janus.toml.
     #[serde(default)]
     pub email_to: Vec<String>,
 }
@@ -281,7 +281,7 @@ pub async fn test_alert(
             alert_id: alert.id,
             alert_type: &alert.alert_type,
             alert_name: &alert.name,
-            message: "Test webhook delivery from Velox",
+            message: "Test webhook delivery from Janus",
             value: 0.0,
             threshold: alert.threshold,
             triggered_at: now,

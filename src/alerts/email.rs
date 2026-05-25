@@ -26,7 +26,7 @@ pub async fn send(cfg: &SmtpConfig, to: &[String], ctx: &EmailContext<'_>) -> Re
         return Ok(());
     }
 
-    let subject = format!("Velox Alert: {}", ctx.alert_name);
+    let subject = format!("Janus Alert: {}", ctx.alert_name);
     let body = build_body(ctx);
 
     if !cfg.file_dir.is_empty() {
@@ -41,7 +41,7 @@ pub async fn send(cfg: &SmtpConfig, to: &[String], ctx: &EmailContext<'_>) -> Re
 fn build_body(ctx: &EmailContext<'_>) -> String {
     let time_str = ctx.triggered_at.format("%Y-%m-%d %H:%M UTC");
     format!(
-        "Velox Alert Triggered\n\
+        "Janus Alert Triggered\n\
          ═══════════════════════════════\n\
          Alert:     {}\n\
          Type:      {}\n\
@@ -50,7 +50,7 @@ fn build_body(ctx: &EmailContext<'_>) -> String {
          Time:      {}\n\
          ═══════════════════════════════\n\
          \n\
-         Visit your Velox dashboard for details and history.\n",
+         Visit your Janus dashboard for details and history.\n",
         ctx.alert_name, ctx.alert_type, ctx.value, ctx.threshold, time_str
     )
 }
@@ -58,9 +58,9 @@ fn build_body(ctx: &EmailContext<'_>) -> String {
 fn from_address(cfg: &SmtpConfig) -> String {
     if cfg.from_address.is_empty() {
         if cfg.host.is_empty() {
-            "velox@localhost".to_string()
+            "janus@localhost".to_string()
         } else {
-            format!("velox@{}", cfg.host)
+            format!("janus@{}", cfg.host)
         }
     } else {
         cfg.from_address.clone()
@@ -96,8 +96,7 @@ async fn send_via_smtp(cfg: &SmtpConfig, to: &[String], subject: &str, body: &st
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&cfg.host)?.port(cfg.port);
 
     if !cfg.username.is_empty() {
-        builder =
-            builder.credentials(Credentials::new(cfg.username.clone(), cfg.password.clone()));
+        builder = builder.credentials(Credentials::new(cfg.username.clone(), cfg.password.clone()));
     }
     let transport = builder.build();
 

@@ -398,7 +398,7 @@ async fn v2_3_identical_tool_call_request_returns_cache_hit() {
     assert_eq!(r2.status(), 200);
     assert_eq!(
         r2.headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .and_then(|v| v.to_str().ok()),
         Some("exact"),
         "second identical tool-call request must be a cache hit"

@@ -205,9 +205,14 @@ impl AlertEngine {
                 threshold: threshold_f64,
                 triggered_at: now,
             };
-            if let Err(e) =
-                webhook::deliver(&self.client, url, &format, alert.webhook_secret.as_deref(), &ctx)
-                    .await
+            if let Err(e) = webhook::deliver(
+                &self.client,
+                url,
+                &format,
+                alert.webhook_secret.as_deref(),
+                &ctx,
+            )
+            .await
             {
                 tracing::warn!(alert_id = %alert.id, "Webhook delivery failed: {e}");
                 delivery_errors.push(format!("webhook: {e}"));

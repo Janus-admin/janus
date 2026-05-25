@@ -4,7 +4,7 @@
 // Implements JSON-RPC 2.0 framing over two transports:
 //   - HTTP POST /mcp/rpc  (stateless request/response)
 //   - HTTP GET  /mcp/sse  (SSE stream)
-//   - Stdio               (velox --mcp-stdio)
+//   - Stdio               (janus --mcp-stdio)
 //
 // Auth: admin JWT via Authorization: Bearer <token> header,
 //       or params.token in the initialize message.
@@ -148,7 +148,7 @@ impl McpServer {
                     serde_json::json!({
                         "protocolVersion": "2024-11-05",
                         "capabilities": { "tools": {} },
-                        "serverInfo": { "name": "velox", "version": "0.1.0" }
+                        "serverInfo": { "name": "janus", "version": "0.1.0" }
                     }),
                 ))
             }

@@ -14,7 +14,7 @@
 
 mod common;
 
-use velox::cache::index::{qdrant::QdrantIndex, EmbeddingIndex};
+use janus::cache::index::{qdrant::QdrantIndex, EmbeddingIndex};
 
 const DEFAULT_QDRANT_URL: &str = "http://localhost:6334";
 
@@ -23,7 +23,7 @@ fn qdrant_test_url() -> String {
 }
 
 fn test_collection(suffix: &str) -> String {
-    format!("velox_test_{}", suffix)
+    format!("janus_test_{}", suffix)
 }
 
 /// Try to connect to Qdrant. Returns `None` and prints a skip notice if unreachable.
@@ -143,7 +143,7 @@ async fn v4_9_qdrant_clear_empties_collection() {
 /// The HNSW backend must be unaffected by the Qdrant feature.
 #[test]
 fn v4_9_regression_hnsw_backend_unchanged() {
-    use velox::cache::index::{hnsw::HnswIndex, EmbeddingIndex};
+    use janus::cache::index::{hnsw::HnswIndex, EmbeddingIndex};
 
     let index = HnswIndex::new(16, 200);
     assert_eq!(index.len(), 0);

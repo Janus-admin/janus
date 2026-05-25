@@ -31,7 +31,7 @@ pub async fn send(client: &reqwest::Client, url: &str, ctx: &SlackContext<'_>) -
 fn build_blocks(ctx: &SlackContext<'_>) -> serde_json::Value {
     use serde_json::json;
 
-    let header_text = format!("⚠️ Velox Alert: {}", ctx.alert_name);
+    let header_text = format!("⚠️ Janus Alert: {}", ctx.alert_name);
     let time_str = ctx.triggered_at.format("%Y-%m-%d %H:%M UTC").to_string();
     let alert_type_display = ctx.alert_type.replace('_', " ");
 

@@ -1,4 +1,4 @@
-# Velox — Self-Hosted AI Gateway
+# Janus — Self-Hosted AI Gateway
 
 **Proxy for LLM calls with caching, cost tracking, and observability.**
 
@@ -7,16 +7,16 @@ docker run -p 8080:8080 \
   -e DATABASE_URL=postgres://... \
   -e JWT_SECRET=$(openssl rand -base64 32) \
   -e OPENAI_API_KEY=$YOUR_KEY \
-  ghcr.io/alizadehafpn/velox:latest
+  ghcr.io/alizadehafpn/janus:latest
 ```
 
 Or run locally: `cargo run` (requires Postgres and `models/`)
 
 ---
 
-## What Is Velox?
+## What Is Janus?
 
-Velox is a **self-hosted proxy** that sits between your applications and LLM providers (OpenAI, Anthropic, Google Gemini, Groq, DeepSeek, AWS Bedrock). It:
+Janus is a **self-hosted proxy** that sits between your applications and LLM providers (OpenAI, Anthropic, Google Gemini, Groq, DeepSeek, AWS Bedrock). It:
 
 - ✅ **Caches responses** — exact + semantic similarity (ONNX embeddings)
 - 💰 **Tracks costs** — per-token pricing, per-API-key budgets
@@ -27,7 +27,7 @@ Velox is a **self-hosted proxy** that sits between your applications and LLM pro
 
 ### What It's NOT
 
-Velox is **not** a database, a BaaS, a Firebase clone, or a generic ML platform. It's specifically designed for LLM gateway use cases.
+Janus is **not** a database, a BaaS, a Firebase clone, or a generic ML platform. It's specifically designed for LLM gateway use cases.
 
 ---
 
@@ -37,9 +37,9 @@ Velox is **not** a database, a BaaS, a Firebase clone, or a generic ML platform.
 
 ```bash
 docker run -d \
-  --name velox-postgres \
-  -e POSTGRES_PASSWORD=velox_dev \
-  -e POSTGRES_DB=velox \
+  --name janus-postgres \
+  -e POSTGRES_PASSWORD=janus_dev \
+  -e POSTGRES_DB=janus \
   -p 5432:5432 \
   postgres:16
 ```
@@ -47,7 +47,7 @@ docker run -d \
 ### 2. Set environment variables
 
 ```bash
-export DATABASE_URL=postgres://postgres:velox_dev@localhost:5432/velox
+export DATABASE_URL=postgres://postgres:janus_dev@localhost:5432/janus
 export JWT_SECRET=$(openssl rand -base64 32)
 export ENCRYPTION_KEY=$(openssl rand -base64 32)
 
@@ -64,10 +64,10 @@ export DEEPSEEK_API_KEY=...         # DeepSeek
 ```bash
 mkdir -p models
 # Download all-MiniLM-L6-v2 from HuggingFace (ONNX + tokenizer)
-# Or run without — Velox degrades gracefully to exact-only caching
+# Or run without — Janus degrades gracefully to exact-only caching
 ```
 
-### 4. Run Velox
+### 4. Run Janus
 
 ```bash
 cargo run --release
@@ -85,7 +85,7 @@ curl -X POST http://localhost:8080/admin/keys \
 
 # Use it to proxy LLM calls (OpenAI-compatible)
 curl -X POST http://localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer vx-sk-..." \
+  -H "Authorization: Bearer jn-sk-..." \
   -H "Content-Type: application/json" \
   -d '{
     "model":"gpt-4o",
@@ -109,13 +109,13 @@ Full API docs: `http://localhost:8080/admin/docs` (Swagger UI, no auth required)
 | **Failover** | Automatic retry + provider switching on error |
 | **RBAC** | ReadOnly / BillingViewer / ApiManager / Admin roles per workspace |
 | **Observability** | Prometheus `/metrics`, structured request log, web dashboard |
-| **Deployment** | Docker, Helm chart (`charts/velox/`), Railway, Fly.io, Render one-click configs |
+| **Deployment** | Docker, Helm chart (`charts/janus/`), Railway, Fly.io, Render one-click configs |
 
 ---
 
 ## Configuration
 
-Copy `velox.toml.example` to `velox.toml` and customize:
+Copy `janus.toml.example` to `janus.toml` and customize:
 
 ```toml
 host = "0.0.0.0"
@@ -152,12 +152,12 @@ Full reference: [`docs/configuration.md`](docs/configuration.md)
 ```
 
 Response headers on cache hits:
-- `X-Velox-Cache-Hit: exact` or `semantic`
-- `X-Velox-Cache-Similarity: 0.9542` (semantic only)
+- `X-Janus-Cache-Hit: exact` or `semantic`
+- `X-Janus-Cache-Similarity: 0.9542` (semantic only)
 
 Skip cache for a single request:
 ```bash
-curl ... -H "X-Velox-Cache: false"
+curl ... -H "X-Janus-Cache: false"
 ```
 
 ### Admin API
@@ -170,24 +170,24 @@ curl ... -H "X-Velox-Cache: false"
 - `GET  /admin/docs` — Interactive Swagger UI (OpenAPI 3.1)
 - `GET  /admin/openapi.json` — Raw OpenAPI spec
 
-### `velox` CLI
+### `janus` CLI
 
 ```bash
 # Key management
-velox keys list
-velox keys create --name production --budget 500
+janus keys list
+janus keys create --name production --budget 500
 
 # Migrations
-velox migrate up
-velox migrate status
+janus migrate up
+janus migrate status
 
 # Import from competitors
-velox import litellm --file litellm_config.yaml
-velox import portkey --file portkey.json
+janus import litellm --file litellm_config.yaml
+janus import portkey --file portkey.json
 
 # Backup / restore
-velox backup create --out backup.tar.gz
-velox backup restore --file backup.tar.gz
+janus backup create --out backup.tar.gz
+janus backup restore --file backup.tar.gz
 ```
 
 ---
@@ -197,10 +197,10 @@ velox backup restore --file backup.tar.gz
 Available at `GET /metrics`:
 
 ```
-velox_requests_total{provider="openai",model="gpt-4o",status="success",cache_type="exact"} 142
-velox_request_duration_seconds_bucket{provider="openai",model="gpt-4o",le="5ms"} 45
-velox_tokens_total{provider="openai",model="gpt-4o",direction="prompt"} 2840
-velox_cost_usd_total{provider="openai",model="gpt-4o"} 0.142857
+janus_requests_total{provider="openai",model="gpt-4o",status="success",cache_type="exact"} 142
+janus_request_duration_seconds_bucket{provider="openai",model="gpt-4o",le="5ms"} 45
+janus_tokens_total{provider="openai",model="gpt-4o",direction="prompt"} 2840
+janus_cost_usd_total{provider="openai",model="gpt-4o"} 0.142857
 ```
 
 ---
@@ -226,13 +226,13 @@ velox_cost_usd_total{provider="openai",model="gpt-4o"} 0.142857
 ### Docker
 
 ```bash
-docker build -t velox:latest .
+docker build -t janus:latest .
 docker run -p 8080:8080 \
   -e DATABASE_URL=postgres://... \
   -e JWT_SECRET=... \
   -e ENCRYPTION_KEY=... \
   -e OPENAI_API_KEY=... \
-  velox:latest
+  janus:latest
 ```
 
 Full Docker Compose setup: [`docs/deployment/docker.md`](docs/deployment/docker.md)
@@ -240,8 +240,8 @@ Full Docker Compose setup: [`docs/deployment/docker.md`](docs/deployment/docker.
 ### Kubernetes (Helm)
 
 ```bash
-helm repo add velox https://github.com/AlizadehAFPN/Velox
-helm install velox charts/velox \
+helm repo add janus https://github.com/Janus-admin/janus
+helm install janus charts/janus \
   --set secrets.jwtSecret=$(openssl rand -base64 32) \
   --set secrets.encryptionKey=$(openssl rand -base64 32) \
   --set secrets.openaiApiKey=$OPENAI_API_KEY \
@@ -281,7 +281,7 @@ ORDER BY created_at DESC;
 
 ## Contributing
 
-Velox is open source (MIT). PRs welcome!
+Janus is source-available (Elastic License 2.0). PRs welcome!
 
 **Before submitting:**
 
@@ -293,10 +293,10 @@ Velox is open source (MIT). PRs welcome!
 **Development setup:**
 
 ```bash
-git clone https://github.com/AlizadehAFPN/Velox.git
-cd Velox
-cp velox.toml.example velox.toml
-# Edit velox.toml with your Postgres + provider API keys
+git clone https://github.com/Janus-admin/janus.git
+cd Janus
+cp janus.toml.example janus.toml
+# Edit janus.toml with your Postgres + provider API keys
 cargo test
 cargo run
 ```
@@ -305,16 +305,16 @@ cargo run
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+[Elastic License 2.0 (ELv2)](LICENSE) — free to self-host, modify, and contribute. You may not offer Janus as a hosted managed service to third parties.
 
 ---
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/AlizadehAFPN/Velox/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/AlizadehAFPN/Velox/discussions)
+- **Issues:** [GitHub Issues](https://github.com/Janus-admin/janus/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/Janus-admin/janus/discussions)
 - **Security:** Open a GitHub issue with the `security` label
 
 ---
 
-**Built by [Farzad Alizadeh](https://github.com/AlizadehAFPN). Self-host your AI gateway.**
+**Self-host your AI gateway.**

@@ -4,12 +4,12 @@
 // Run with: cargo test v3_0
 // These are pure unit tests — no DB, no HTTP, no spawned app required.
 
-use serde_json::json;
-use std::sync::Arc;
-use velox::cache::{exact::compute_hash, semantic::SemanticCache, CacheEngine};
-use velox::providers::{
+use janus::cache::{exact::compute_hash, semantic::SemanticCache, CacheEngine};
+use janus::providers::{
     ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData,
 };
+use serde_json::json;
+use std::sync::Arc;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

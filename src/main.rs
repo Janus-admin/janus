@@ -1,8 +1,6 @@
 use clap::Parser;
 use dashmap::DashMap;
-use std::sync::Arc;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use velox::{
+use janus::{
     cache::{
         embedding::EmbeddingModel, index::qdrant::QdrantIndex, policy::SemanticCachePolicy,
         CacheEngine,
@@ -22,6 +20,8 @@ use velox::{
     routes::create_router,
     state::AppState,
 };
+use std::sync::Arc;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Resolved server mode after CLI parsing.
 struct ServeMode {
@@ -59,19 +59,19 @@ async fn main() -> anyhow::Result<()> {
             demo: false,
         },
         Some(Command::Keys(sub)) => {
-            return velox::cli::keys::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
+            return janus::cli::keys::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
         }
         Some(Command::Migrate(sub)) => {
-            return velox::cli::migrate::run(sub).await;
+            return janus::cli::migrate::run(sub).await;
         }
         Some(Command::Config(sub)) => {
-            return velox::cli::config::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
+            return janus::cli::config::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
         }
         Some(Command::Import(sub)) => {
-            return velox::cli::import::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
+            return janus::cli::import::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
         }
         Some(Command::Backup(sub)) => {
-            return velox::cli::backup::run(sub).await;
+            return janus::cli::backup::run(sub).await;
         }
     };
 
@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Initialise OTel tracer.
-    let otel_provider = velox::telemetry::init_tracer(&config.tracing)?;
+    let otel_provider = janus::telemetry::init_tracer(&config.tracing)?;
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -94,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .with(otel_provider.as_ref().map(|p| {
             use opentelemetry::trace::TracerProvider as _;
-            let tracer = p.tracer("velox");
+            let tracer = p.tracer("janus");
             tracing_opentelemetry::layer().with_tracer(tracer)
         }))
         .init();
@@ -108,15 +108,15 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Doctor mode ───────────────────────────────────────────────────────────
     if args.doctor {
-        let report = velox::doctor::run_checks(&pool, &config).await;
-        velox::doctor::print_report(&report);
+        let report = janus::doctor::run_checks(&pool, &config).await;
+        janus::doctor::print_report(&report);
         std::process::exit(if report.healthy { 0 } else { 1 });
     }
 
     // ── Read provider base_urls from DB (V4-0) ────────────────────────────────
     // This makes custom endpoints (Ollama, vLLM, LM Studio) configurable via a
     // single DB UPDATE rather than a code change.
-    let db_base_urls = velox::db::providers::load_base_urls(&pool).await;
+    let db_base_urls = janus::db::providers::load_base_urls(&pool).await;
 
     fn resolve_base_url(
         db_urls: &std::collections::HashMap<String, String>,
@@ -131,11 +131,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Build providers ───────────────────────────────────────────────────────
-    let mut providers: Vec<Arc<dyn velox::providers::Provider>> = Vec::new();
+    let mut providers: Vec<Arc<dyn janus::providers::Provider>> = Vec::new();
 
     if args.demo {
         // Demo mode: use the canned DemoProvider, skip all real LLM adapters.
-        providers.push(Arc::new(velox::demo::DemoProvider));
+        providers.push(Arc::new(janus::demo::DemoProvider));
         tracing::info!("Demo mode: using DemoProvider (no real API keys required)");
     } else {
         if !config.openai_api_key.is_empty() {
@@ -217,10 +217,10 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Demo mode: seed data ──────────────────────────────────────────────────
     if args.demo {
-        if let Err(e) = velox::demo::seed_demo_data(&pool).await {
+        if let Err(e) = janus::demo::seed_demo_data(&pool).await {
             tracing::warn!("Demo seed failed (non-fatal): {e}");
         } else {
-            tracing::info!("Demo data seeded — login: admin@velox.local / demo-password");
+            tracing::info!("Demo data seeded — login: admin@janus.local / demo-password");
         }
     }
 
@@ -341,10 +341,10 @@ async fn main() -> anyhow::Result<()> {
     let (event_tx, _) = tokio::sync::broadcast::channel(1_000);
 
     let runtime_config = Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
 
-    let time_guard = Arc::new(velox::cache::time_guard::TimeGuard::new(
+    let time_guard = Arc::new(janus::cache::time_guard::TimeGuard::new(
         &config.time_sensitive_patterns,
     ));
     tracing::info!(
@@ -364,7 +364,7 @@ async fn main() -> anyhow::Result<()> {
         semantic_policy,
         event_tx,
         plugins,
-        dedup: Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        dedup: Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
         time_guard,
         models_cache: Arc::new(std::sync::Mutex::new(None)),
         oidc_states: Arc::new(dashmap::DashMap::new()),
@@ -381,7 +381,7 @@ async fn main() -> anyhow::Result<()> {
             loop {
                 interval.tick().await;
                 let evicted_hot = cache_for_prune.evict_expired();
-                match velox::db::cache::prune_expired(&pool_for_prune).await {
+                match janus::db::cache::prune_expired(&pool_for_prune).await {
                     Ok(n) => {
                         if n > 0 || evicted_hot > 0 {
                             tracing::info!(
@@ -399,7 +399,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Background: alert evaluation engine ──────────────────────────────────
     {
-        let alert_engine = std::sync::Arc::new(velox::alerts::AlertEngine::new(
+        let alert_engine = std::sync::Arc::new(janus::alerts::AlertEngine::new(
             state.pool.clone(),
             state.config.smtp.clone(),
         ));
@@ -424,7 +424,7 @@ async fn main() -> anyhow::Result<()> {
                 interval.tick().await;
                 for provider in &providers_for_hc {
                     let status = provider.health_check().await;
-                    let _ = velox::db::providers::set_health_status(
+                    let _ = janus::db::providers::set_health_status(
                         &pool,
                         provider.name(),
                         status.as_str(),
@@ -441,12 +441,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Background: provider quality scores ──────────────────────────────────
-    velox::analytics::quality_score::start(state.pool.clone());
+    janus::analytics::quality_score::start(state.pool.clone());
 
     // ── Background: cluster tasks ─────────────────────────────────────────────
     #[cfg(not(feature = "sqlite"))]
     if state.config.cluster.enabled {
-        match velox::cluster::key_sync::start(state.pool.clone(), state.key_cache.clone()).await {
+        match janus::cluster::key_sync::start(state.pool.clone(), state.key_cache.clone()).await {
             Ok(()) => tracing::info!("Cluster key-sync listener started"),
             Err(e) => tracing::warn!("Failed to start cluster key-sync listener: {e}"),
         }
@@ -468,15 +468,15 @@ async fn main() -> anyhow::Result<()> {
     // ── MCP stdio mode ────────────────────────────────────────────────────────
     if args.mcp_stdio {
         tracing::info!("Starting MCP stdio transport");
-        return velox::mcp::transport::stdio::run(state).await;
+        return janus::mcp::transport::stdio::run(state).await;
     }
 
     let app = create_router(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     if args.demo {
-        tracing::info!("🎮 Velox demo mode at http://{}", addr);
-        tracing::info!("   Login: admin@velox.local / demo-password");
+        tracing::info!("🎮 Janus demo mode at http://{}", addr);
+        tracing::info!("   Login: admin@janus.local / demo-password");
     } else {
         tracing::info!("Server listening on {}", addr);
     }
@@ -513,7 +513,7 @@ async fn main() -> anyhow::Result<()> {
     drop(state);
 
     if let Some(provider) = otel_provider {
-        velox::telemetry::shutdown(provider);
+        janus::telemetry::shutdown(provider);
     }
 
     tracing::info!("Server shutdown complete");

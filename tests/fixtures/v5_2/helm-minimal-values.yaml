@@ -1,7 +1,7 @@
 # Minimal values used by tests/v5_2_migration_imports.rs to drive
-# `helm lint` and `helm template` against charts/velox.
+# `helm lint` and `helm template` against charts/janus.
 postgresql:
-  externalUrl: postgres://velox:test@pg.test:5432/velox
+  externalUrl: postgres://janus:test@pg.test:5432/janus
 
 secrets:
   jwtSecret: "test-jwt-secret-do-not-use-in-prod"
@@ -12,7 +12,7 @@ ingress:
   enabled: true
   className: nginx
   hosts:
-    - host: velox.test
+    - host: janus.test
       paths:
         - path: /
           pathType: Prefix

@@ -1,7 +1,7 @@
 // tests/v2_5_prompts.rs — V2-5 Prompt Management tests
 //
 // Template unit tests run without a live server.
-// Integration tests spin up a real Velox instance with a wiremock OpenAI stub.
+// Integration tests spin up a real Janus instance with a wiremock OpenAI stub.
 
 mod common;
 mod v2 {
@@ -11,9 +11,9 @@ mod v2 {
 }
 use v2::common::*;
 
+use janus::prompts::template;
 use serde_json::json;
 use std::collections::HashMap;
-use velox::prompts::template;
 
 // ── Template unit tests (no DB / server) ─────────────────────────────────────
 
@@ -206,7 +206,7 @@ async fn v2_5_unknown_prompt_id_returns_404() {
     let resp = client
         .post(format!("{base_url}/v1/chat/completions"))
         .header("Authorization", auth_header())
-        .header("X-Velox-Prompt", fake_id.to_string())
+        .header("X-Janus-Prompt", fake_id.to_string())
         .json(&minimal_chat_request())
         .send()
         .await
@@ -214,9 +214,9 @@ async fn v2_5_unknown_prompt_id_returns_404() {
     assert_eq!(resp.status(), 404);
 }
 
-/// X-Velox-Prompt header loads the active version and injects it into the request.
+/// X-Janus-Prompt header loads the active version and injects it into the request.
 #[tokio::test]
-async fn v2_5_x_velox_prompt_header_loads_active_version() {
+async fn v2_5_x_janus_prompt_header_loads_active_version() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
     let client = reqwest::Client::new();
     let jwt = admin_auth_header(&base_url).await;
@@ -239,7 +239,7 @@ async fn v2_5_x_velox_prompt_header_loads_active_version() {
     let resp = client
         .post(format!("{base_url}/v1/chat/completions"))
         .header("Authorization", auth_header())
-        .header("X-Velox-Prompt", &prompt_id)
+        .header("X-Janus-Prompt", &prompt_id)
         .json(&minimal_chat_request())
         .send()
         .await
@@ -290,8 +290,8 @@ async fn v2_5_template_variables_rendered_before_send_to_provider() {
     let resp = client
         .post(format!("{base_url}/v1/chat/completions"))
         .header("Authorization", auth_header())
-        .header("X-Velox-Prompt", &prompt_id)
-        .header("X-Velox-Variables", r#"{"topic":"Rust"}"#)
+        .header("X-Janus-Prompt", &prompt_id)
+        .header("X-Janus-Variables", r#"{"topic":"Rust"}"#)
         .json(&minimal_chat_request())
         .send()
         .await
@@ -322,7 +322,7 @@ async fn v2_5_prompt_version_id_recorded_in_request_log() {
     client
         .post(format!("{base_url}/v1/chat/completions"))
         .header("Authorization", auth_header())
-        .header("X-Velox-Prompt", &prompt_id)
+        .header("X-Janus-Prompt", &prompt_id)
         .json(&minimal_chat_request())
         .send()
         .await
@@ -382,7 +382,7 @@ async fn v2_5_ab_test_distributes_traffic_by_weight() {
         let resp = client
             .post(format!("{base_url}/v1/chat/completions"))
             .header("Authorization", auth_header())
-            .header("X-Velox-Prompt", &prompt_id)
+            .header("X-Janus-Prompt", &prompt_id)
             .json(&minimal_chat_request())
             .send()
             .await
@@ -421,7 +421,7 @@ async fn v2_5_weight_zero_version_never_selected() {
     let resp = client
         .post(format!("{base_url}/v1/chat/completions"))
         .header("Authorization", auth_header())
-        .header("X-Velox-Prompt", &prompt_id)
+        .header("X-Janus-Prompt", &prompt_id)
         .json(&minimal_chat_request())
         .send()
         .await
@@ -430,7 +430,7 @@ async fn v2_5_weight_zero_version_never_selected() {
     assert_eq!(resp.status(), 200);
 }
 
-/// Requests without the X-Velox-Prompt header work exactly as before.
+/// Requests without the X-Janus-Prompt header work exactly as before.
 #[tokio::test]
 async fn v2_5_regression_requests_without_prompt_header_work_unchanged() {
     let (base_url, mock) = spawn_app_with_wiremock().await;
@@ -482,7 +482,7 @@ async fn v2_5_regression_cache_still_works_for_non_prompt_requests() {
     assert_eq!(
         resp2
             .headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .map(|v| v.to_str().unwrap()),
         Some("exact"),
         "Second identical request should be an exact cache hit"

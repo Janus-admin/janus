@@ -10,7 +10,7 @@
 //   7.2  Plugin chain ordering and error short-circuiting
 //   7.3  Built-in plugins: PiiRedactionPlugin, ContentLengthPlugin
 
-use velox::{
+use janus::{
     models::api_key::ApiKey,
     plugins::{
         content_length::ContentLengthPlugin, pii::PiiRedactionPlugin, run_after, run_before,
@@ -35,7 +35,7 @@ fn make_key() -> ApiKey {
         key_sha256: None,
         previous_key_sha256: None,
         rotation_expires_at: None,
-        key_prefix: "vx-sk-test".to_string(),
+        key_prefix: "jn-sk-test".to_string(),
         is_active: true,
         budget_limit: None,
         budget_used: Decimal::ZERO,
@@ -87,7 +87,7 @@ fn make_response() -> ChatCompletionResponse {
         object: "chat.completion".to_string(),
         created: 1_716_000_000,
         model: "gpt-4o-mini".to_string(),
-        choices: vec![velox::providers::ChatChoice {
+        choices: vec![janus::providers::ChatChoice {
             index: 0,
             message: ChatMessage {
                 role: "assistant".to_string(),

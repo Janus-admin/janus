@@ -163,8 +163,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // ── Admin — Config ───────────────────────────────────────────────────
         .route(
             "/admin/config",
-            get(handlers::admin::velox_config::get_config)
-                .patch(handlers::admin::velox_config::patch_config),
+            get(handlers::admin::janus_config::get_config)
+                .patch(handlers::admin::janus_config::patch_config),
         )
         // ── Admin — System Readiness (V4-0) ──────────────────────────────────
         .route(
@@ -195,10 +195,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/admin/idp",
             get(handlers::admin::idp::list_idps).post(handlers::admin::idp::create_idp),
         )
-        .route(
-            "/admin/idp/:id",
-            delete(handlers::admin::idp::delete_idp),
-        )
+        .route("/admin/idp/:id", delete(handlers::admin::idp::delete_idp))
         .route_layer(axum::middleware::from_extractor_with_state::<
             AuthUser,
             Arc<AppState>,
@@ -223,6 +220,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/auth/register", post(handlers::auth::register))
         .route("/api/v1/auth/login", post(handlers::auth::login))
         .route("/api/v1/auth/me", get(handlers::auth::me))
+        .route(
+            "/api/v1/auth/tour-complete",
+            post(handlers::auth::tour_complete),
+        )
         // ── V5-L2: OIDC SSO ──────────────────────────────────────────────────
         .route(
             "/auth/oidc/:idp_id/start",

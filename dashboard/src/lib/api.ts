@@ -1,5 +1,5 @@
 /**
- * Velox Admin API client.
+ * Janus Admin API client.
  *
  * Base URL resolution:
  *   - In development (Next.js dev server on :3000, Rust on :8080):
@@ -17,15 +17,15 @@ const BASE =
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("velox_token");
+  return localStorage.getItem("janus_token");
 }
 
 export function setToken(token: string) {
-  localStorage.setItem("velox_token", token);
+  localStorage.setItem("janus_token", token);
 }
 
 export function clearToken() {
-  localStorage.removeItem("velox_token");
+  localStorage.removeItem("janus_token");
 }
 
 // ── Core fetch wrapper ────────────────────────────────────────────────────────
@@ -90,6 +90,7 @@ export interface LoginResponse {
     id: string;
     email: string;
     name: string;
+    tour_completed_at: string | null;
   };
 }
 
@@ -99,7 +100,15 @@ export const auth = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  me: () => apiFetch<{ data: LoginResponse["user"] }>("/api/v1/auth/me"),
+  me: () => apiFetch<LoginResponse["user"]>("/api/v1/auth/me"),
+  tourComplete: () =>
+    fetch(`${BASE}/api/v1/auth/tour-complete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+    }),
 };
 
 // ── API Keys ──────────────────────────────────────────────────────────────────
@@ -315,7 +324,7 @@ export const analytics = {
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
-export interface VeloxProvider {
+export interface JanusProvider {
   id: string;
   display_name: string;
   is_enabled: boolean;
@@ -348,9 +357,9 @@ export interface TestProviderResult {
 
 export const providers = {
   list: () =>
-    apiFetch<{ data: VeloxProvider[] }>("/admin/providers"),
+    apiFetch<{ data: JanusProvider[] }>("/admin/providers"),
   update: (id: string, body: UpdateProviderRequest) =>
-    apiFetch<{ data: VeloxProvider }>(`/admin/providers/${id}`, {
+    apiFetch<{ data: JanusProvider }>(`/admin/providers/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
@@ -381,7 +390,7 @@ export const cache = {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-export interface VeloxConfig {
+export interface JanusConfig {
   host: string;
   port: number;
   request_timeout_ms: number;
@@ -411,9 +420,9 @@ export interface PatchConfigRequest {
 }
 
 export const config = {
-  get: () => apiFetch<{ data: VeloxConfig }>("/admin/config"),
+  get: () => apiFetch<{ data: JanusConfig }>("/admin/config"),
   patch: (body: PatchConfigRequest) =>
-    apiFetch<{ data: Partial<VeloxConfig> }>("/admin/config", {
+    apiFetch<{ data: Partial<JanusConfig> }>("/admin/config", {
       method: "PATCH",
       body: JSON.stringify(body),
     }),

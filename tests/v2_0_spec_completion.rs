@@ -19,7 +19,7 @@ use wiremock::{
 
 async fn test_pool() -> sqlx::PgPool {
     common::load_env();
-    let config = velox::config::Config::load().expect("config load failed");
+    let config = janus::config::Config::load().expect("config load failed");
     sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
         .connect(&config.database_url)
@@ -150,7 +150,7 @@ async fn v2_0_daily_costs_cache_hits_counted_separately() {
     assert_eq!(
         second
             .headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .map(|v| v.to_str().unwrap_or("")),
         Some("exact")
     );
@@ -187,7 +187,8 @@ async fn v2_0_spend_threshold_alert_fires_when_exceeded() {
     )
     .bind(Uuid::new_v4()).execute(&pool).await.expect("insert request");
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate failed");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -240,7 +241,8 @@ async fn v2_0_error_rate_alert_evaluates_over_window() {
         .expect("insert request");
     }
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate failed");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -285,7 +287,8 @@ async fn v2_0_latency_spike_alert_fires_on_high_p95() {
     .await
     .expect("insert request");
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate failed");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -327,7 +330,8 @@ async fn v2_0_alert_last_triggered_updated_when_fired() {
     )
     .bind(Uuid::new_v4()).execute(&pool).await.ok();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -373,7 +377,8 @@ async fn v2_0_inactive_alert_does_not_fire() {
     )
     .bind(Uuid::new_v4()).execute(&pool).await.ok();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate");
 
     let last_triggered: (Option<chrono::DateTime<chrono::Utc>>,) =
@@ -396,7 +401,7 @@ async fn v2_0_inactive_alert_does_not_fire() {
 
 #[test]
 fn v2_0_circuit_opens_after_consecutive_provider_failures() {
-    let cb = velox::gateway::circuit_breaker::CircuitBreaker::new(3, 30);
+    let cb = janus::gateway::circuit_breaker::CircuitBreaker::new(3, 30);
     assert!(!cb.is_open(), "should start closed");
     cb.record_failure();
     cb.record_failure();
@@ -408,7 +413,7 @@ fn v2_0_circuit_opens_after_consecutive_provider_failures() {
 #[test]
 fn v2_0_circuit_closes_on_successful_half_open_probe() {
     // Use 0-second recovery timeout so is_open() immediately transitions to HalfOpen.
-    let cb = velox::gateway::circuit_breaker::CircuitBreaker::new(1, 0);
+    let cb = janus::gateway::circuit_breaker::CircuitBreaker::new(1, 0);
     cb.record_failure(); // → Open
                          // After 0s timeout, is_open() transitions to HalfOpen and returns false.
     assert!(
@@ -422,7 +427,7 @@ fn v2_0_circuit_closes_on_successful_half_open_probe() {
 
 #[test]
 fn v2_0_circuit_transitions_to_half_open_after_recovery_timeout() {
-    let cb = velox::gateway::circuit_breaker::CircuitBreaker::new(1, 0);
+    let cb = janus::gateway::circuit_breaker::CircuitBreaker::new(1, 0);
     cb.record_failure(); // → Open
                          // With 0s timeout, the first is_open() call should see elapsed >= timeout and move to HalfOpen.
     let open = cb.is_open();
@@ -454,7 +459,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
 
     use crate::common::load_env;
     load_env();
-    let mut config = velox::config::Config::load().unwrap();
+    let mut config = janus::config::Config::load().unwrap();
     config.max_retries = 0;
 
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -464,12 +469,12 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         .unwrap();
     sqlx::migrate!("./migrations").run(&pool).await.ok();
 
-    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
     let api_key_str = common::test_api_key();
-    let key_bytes = velox::db::api_keys::sha256_bytes(api_key_str);
-    let key_entry = velox::models::api_key::ApiKey {
+    let key_bytes = janus::db::api_keys::sha256_bytes(api_key_str);
+    let key_entry = janus::models::api_key::ApiKey {
         id: Uuid::new_v4(),
         name: "circuit-test".into(),
         key_hash: "placeholder".into(),
@@ -509,20 +514,20 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
     let primary_url = primary.uri();
     let secondary_url = secondary.uri();
 
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![
-        std::sync::Arc::new(velox::providers::openai::OpenAIProvider::with_base_url(
+    let providers: Vec<std::sync::Arc<dyn janus::providers::Provider>> = vec![
+        std::sync::Arc::new(janus::providers::openai::OpenAIProvider::with_base_url(
             "test-key".into(),
             primary_url,
             1,
         )),
-        std::sync::Arc::new(velox::providers::openai::OpenAIProvider::with_base_url(
+        std::sync::Arc::new(janus::providers::openai::OpenAIProvider::with_base_url(
             "test-key".into(),
             secondary_url,
             2,
         )),
     ];
 
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+    let registry = std::sync::Arc::new(janus::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
     ));
@@ -537,13 +542,13 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
     }
 
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
-    let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
-    let rate_limiter = velox::middleware::rate_limit::RateLimiter::new(60);
+    let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
+    let rate_limiter = janus::middleware::rate_limit::RateLimiter::new(60);
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
-    let state = std::sync::Arc::new(velox::state::AppState {
+    let state = std::sync::Arc::new(janus::state::AppState {
         pool,
         config: config.clone(),
         runtime_config,
@@ -552,18 +557,18 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         rate_limiter,
         cluster_rate_limiter: None,
         cache,
-        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
+        semantic_policy: janus::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
-        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
-        time_guard: std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+        dedup: std::sync::Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard: std::sync::Arc::new(janus::cache::time_guard::TimeGuard::new(
             &config.time_sensitive_patterns,
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
     });
 
-    let app = velox::routes::create_router(state);
+    let app = janus::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -591,7 +596,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
 async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
     use crate::common::load_env;
     load_env();
-    let mut config = velox::config::Config::load().unwrap();
+    let mut config = janus::config::Config::load().unwrap();
     config.rate_limit_window_secs = 60;
 
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -601,12 +606,12 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         .unwrap();
     sqlx::migrate!("./migrations").run(&pool).await.ok();
 
-    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
-    let api_key_str = "vx-sk-TpmTestKey000000000000000000000000000000000000000";
-    let key_bytes = velox::db::api_keys::sha256_bytes(api_key_str);
-    let key_entry = velox::models::api_key::ApiKey {
+    let api_key_str = "jn-sk-TpmTestKey000000000000000000000000000000000000000";
+    let key_bytes = janus::db::api_keys::sha256_bytes(api_key_str);
+    let key_entry = janus::models::api_key::ApiKey {
         id: Uuid::new_v4(),
         name: "tpm-test".into(),
         key_hash: "placeholder".into(),
@@ -646,26 +651,26 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         .mount(&mock_server)
         .await;
 
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
-        velox::providers::openai::OpenAIProvider::with_base_url(
+    let providers: Vec<std::sync::Arc<dyn janus::providers::Provider>> = vec![std::sync::Arc::new(
+        janus::providers::openai::OpenAIProvider::with_base_url(
             "test-key".into(),
             mock_server.uri(),
             1,
         ),
     )];
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+    let registry = std::sync::Arc::new(janus::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
     ));
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
-    let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
+    let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
     let rate_limiter =
-        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+        janus::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
-    let state = std::sync::Arc::new(velox::state::AppState {
+    let state = std::sync::Arc::new(janus::state::AppState {
         pool,
         config: config.clone(),
         runtime_config,
@@ -674,18 +679,18 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         rate_limiter,
         cluster_rate_limiter: None,
         cache,
-        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
+        semantic_policy: janus::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
-        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
-        time_guard: std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+        dedup: std::sync::Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
+        time_guard: std::sync::Arc::new(janus::cache::time_guard::TimeGuard::new(
             &config.time_sensitive_patterns,
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
     });
 
-    let app = velox::routes::create_router(state);
+    let app = janus::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -996,7 +1001,7 @@ async fn v2_0_regression_exact_cache_still_hits() {
     assert_eq!(
         second
             .headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .and_then(|v| v.to_str().ok()),
         Some("exact"),
         "second identical request must return exact cache hit"

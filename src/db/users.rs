@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 pub async fn find_by_email(pool: &DbPool, email: &str) -> AppResult<Option<User>> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, email, password_hash, name, created_at, updated_at
+        "SELECT id, email, password_hash, name, created_at, updated_at, tour_completed_at
          FROM users WHERE email = $1",
     )
     .bind(email)
@@ -17,7 +17,7 @@ pub async fn find_by_email(pool: &DbPool, email: &str) -> AppResult<Option<User>
 
 pub async fn find_by_id(pool: &DbPool, id: Uuid) -> AppResult<Option<User>> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, email, password_hash, name, created_at, updated_at
+        "SELECT id, email, password_hash, name, created_at, updated_at, tour_completed_at
          FROM users WHERE id = $1",
     )
     .bind(id)
@@ -35,7 +35,7 @@ pub async fn create(
     let user = sqlx::query_as::<_, User>(
         "INSERT INTO users (id, email, password_hash, name)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, email, password_hash, name, created_at, updated_at",
+         RETURNING id, email, password_hash, name, created_at, updated_at, tour_completed_at",
     )
     .bind(Uuid::new_v4())
     .bind(email)
@@ -53,7 +53,7 @@ pub async fn update(pool: &DbPool, id: Uuid, req: &UpdateUserRequest) -> AppResu
              email = COALESCE($2, email),
              updated_at = $3
          WHERE id = $4
-         RETURNING id, email, password_hash, name, created_at, updated_at",
+         RETURNING id, email, password_hash, name, created_at, updated_at, tour_completed_at",
     )
     .bind(&req.name)
     .bind(&req.email)
@@ -79,7 +79,7 @@ pub async fn delete(pool: &DbPool, id: Uuid) -> AppResult<()> {
 
 pub async fn list(pool: &DbPool, page: i64, per_page: i64) -> AppResult<Vec<User>> {
     let users = sqlx::query_as::<_, User>(
-        "SELECT id, email, password_hash, name, created_at, updated_at
+        "SELECT id, email, password_hash, name, created_at, updated_at, tour_completed_at
          FROM users
          ORDER BY created_at DESC
          LIMIT $1 OFFSET $2",
@@ -89,4 +89,14 @@ pub async fn list(pool: &DbPool, page: i64, per_page: i64) -> AppResult<Vec<User
     .fetch_all(pool)
     .await?;
     Ok(users)
+}
+
+pub async fn mark_tour_complete(pool: &DbPool, id: Uuid) -> AppResult<()> {
+    sqlx::query(
+        "UPDATE users SET tour_completed_at = NOW() WHERE id = $1 AND tour_completed_at IS NULL",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

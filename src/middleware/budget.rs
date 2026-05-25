@@ -3,7 +3,7 @@ use rust_decimal::prelude::ToPrimitive;
 
 /// Decision returned alongside a passing budget check.
 ///
-/// Use `header_value()` to get the string for the `X-Velox-Downgraded` header.
+/// Use `header_value()` to get the string for the `X-Janus-Downgraded` header.
 ///
 /// When budget spend crosses the downgrade threshold the pipeline should
 /// override either the routing strategy or the target model.  `None` means
@@ -19,7 +19,7 @@ pub enum DowngradeDecision {
 }
 
 impl DowngradeDecision {
-    /// Value for the `X-Velox-Downgraded` response header.
+    /// Value for the `X-Janus-Downgraded` response header.
     pub fn header_value(&self) -> &str {
         match self {
             DowngradeDecision::None => "",

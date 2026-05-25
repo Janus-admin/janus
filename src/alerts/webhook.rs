@@ -36,7 +36,7 @@ pub struct WebhookContext<'a> {
 
 /// POST the alert payload to `url` using the given format.
 ///
-/// When `secret` is provided, a `X-Velox-Signature` HMAC-SHA256 header is added.
+/// When `secret` is provided, a `X-Janus-Signature` HMAC-SHA256 header is added.
 /// Returns `Err` if the HTTP request fails or the server returns a non-2xx status.
 pub async fn deliver(
     client: &reqwest::Client,
@@ -54,7 +54,7 @@ pub async fn deliver(
         .body(body_str.clone());
 
     if let Some(s) = secret {
-        builder = builder.header("X-Velox-Signature", sign(s, &body_str));
+        builder = builder.header("X-Janus-Signature", sign(s, &body_str));
     }
 
     builder.send().await?.error_for_status()?;
@@ -64,7 +64,7 @@ pub async fn deliver(
 fn build_payload(format: &WebhookFormat, ctx: &WebhookContext<'_>) -> serde_json::Value {
     use serde_json::json;
     let summary = format!(
-        "Velox Alert: {} exceeded. Value: {:.4} / threshold: {:.4}",
+        "Janus Alert: {} exceeded. Value: {:.4} / threshold: {:.4}",
         ctx.alert_type, ctx.value, ctx.threshold
     );
     match format {

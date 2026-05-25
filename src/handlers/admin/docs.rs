@@ -13,14 +13,14 @@ use axum::Router;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::{openapi::VeloxApiDoc, state::AppState};
+use crate::{openapi::JanusApiDoc, state::AppState};
 
 /// Build the sub-router for OpenAPI + Swagger UI.
 ///
 /// Mount with `.merge(docs::router())` in the main router. No state is needed —
-/// the spec is generated at compile time from `VeloxApiDoc::openapi()`.
+/// the spec is generated at compile time from `JanusApiDoc::openapi()`.
 pub fn router() -> Router<Arc<AppState>> {
     SwaggerUi::new("/admin/docs")
-        .url("/admin/openapi.json", VeloxApiDoc::openapi())
+        .url("/admin/openapi.json", JanusApiDoc::openapi())
         .into()
 }

@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use janus::{cache::exact::compute_hash, pii::scrub, providers::ChatCompletionRequest};
 use serde_json::json;
-use velox::{cache::exact::compute_hash, pii::scrub, providers::ChatCompletionRequest};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

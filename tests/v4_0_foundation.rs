@@ -5,7 +5,7 @@
 //
 // Coverage:
 //   3.1  Configurable provider base_url — loaded from DB at startup
-//   3.2  velox doctor — readiness checks (JWT, providers, embedding model)
+//   3.2  janus doctor — readiness checks (JWT, providers, embedding model)
 //   3.3  Demo mode — DemoProvider mock
 //   Regression: existing provider adapters unaffected
 
@@ -13,13 +13,13 @@
 
 mod common;
 
-use serial_test::serial;
-use velox::{
+use janus::{
     config::Config,
     demo::DemoProvider,
     doctor::{self, CheckStatus},
     providers::{ChatCompletionRequest, Provider},
 };
+use serial_test::serial;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
@@ -30,7 +30,7 @@ use wiremock::{
 async fn test_pool() -> sqlx::PgPool {
     common::load_env();
     let config = Config::load().expect("Config load failed");
-    velox::db::pool::connect(&config.database_url)
+    janus::db::pool::connect(&config.database_url)
         .await
         .expect("DB connect failed")
 }
@@ -50,7 +50,7 @@ fn make_request(content: &str) -> ChatCompletionRequest {
 async fn v4_0_load_base_urls_returns_db_values() {
     let pool = test_pool().await;
 
-    let urls = velox::db::providers::load_base_urls(&pool).await;
+    let urls = janus::db::providers::load_base_urls(&pool).await;
     // Seed data in migration 0004 sets openai base_url; must be present.
     assert!(urls.contains_key("openai"), "openai provider must be in DB");
     let openai_url = urls.get("openai").unwrap();
@@ -79,7 +79,7 @@ async fn v4_0_provider_uses_custom_base_url_when_set() {
         .await
         .expect("UPDATE failed");
 
-    let urls = velox::db::providers::load_base_urls(&pool).await;
+    let urls = janus::db::providers::load_base_urls(&pool).await;
     assert_eq!(
         urls.get("openai").map(String::as_str),
         Some(custom_url),
@@ -112,7 +112,7 @@ async fn v4_0_provider_falls_back_to_hardcoded_default_when_base_url_empty() {
         .await
         .expect("UPDATE failed");
 
-    let urls = velox::db::providers::load_base_urls(&pool).await;
+    let urls = janus::db::providers::load_base_urls(&pool).await;
     let url = urls
         .get("openai")
         .map(String::as_str)
@@ -192,7 +192,7 @@ async fn v4_0_provider_request_routed_to_custom_base_url() {
     assert_eq!(mock_server.received_requests().await.unwrap().len(), 1);
 }
 
-// ─── 3.2 velox doctor — readiness checks ─────────────────────────────────────
+// ─── 3.2 janus doctor — readiness checks ─────────────────────────────────────
 
 #[test]
 fn v4_0_doctor_fails_when_jwt_secret_too_short() {
@@ -202,7 +202,7 @@ fn v4_0_doctor_fails_when_jwt_secret_too_short() {
     });
     config.jwt_secret = "short".to_string(); // 5 chars < 32
 
-    let check = velox::doctor::CheckStatus::Fail;
+    let check = janus::doctor::CheckStatus::Fail;
     // Inline the check logic (same as doctor::check_jwt_secret).
     let status = if config.jwt_secret.len() >= 32 {
         CheckStatus::Pass

@@ -42,7 +42,7 @@ fn default_per_page() -> i64 {
 
 /// POST /admin/keys — create a new API key (JWT-protected admin route).
 ///
-/// The full `vx-sk-...` key is returned ONCE here and never again.
+/// The full `jn-sk-...` key is returned ONCE here and never again.
 /// The dashboard should instruct users to copy it immediately.
 #[utoipa::path(
     post,
@@ -71,7 +71,7 @@ pub async fn create_key(
     // SHA-256 hex for fast dashmap lookup
     let key_sha256 = db_api_keys::sha256_hex(&raw_key);
 
-    // Display prefix (first 12 chars after the "vx-sk-" prefix = "vx-sk-" + 6 chars)
+    // Display prefix (first 12 chars after the "jn-sk-" prefix = "jn-sk-" + 6 chars)
     let key_prefix: String = raw_key.chars().take(12).collect();
 
     let id = Uuid::new_v4();

@@ -1,7 +1,7 @@
 // src/mcp/transport/stdio.rs
 // Stdio transport: read newline-delimited JSON-RPC from stdin, write responses to stdout.
 //
-// Usage: velox --mcp-stdio
+// Usage: janus --mcp-stdio
 //
 // The first message must be an `initialize` request containing the admin JWT in
 // `params.token`.  Subsequent messages are processed without re-authentication.

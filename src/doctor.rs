@@ -1,6 +1,6 @@
 // src/doctor.rs — V4-0 system readiness checks
 //
-// Run as `velox --doctor` (CLI output) or via `GET /admin/system/readiness`
+// Run as `janus --doctor` (CLI output) or via `GET /admin/system/readiness`
 // (JSON response). Every check is self-contained so they can be unit-tested
 // without a running server.
 
@@ -64,7 +64,7 @@ pub async fn run_checks(pool: &DbPool, config: &Config) -> DoctorReport {
     }
 }
 
-/// Print the doctor report to stdout in the `velox --doctor` style.
+/// Print the doctor report to stdout in the `janus --doctor` style.
 pub fn print_report(report: &DoctorReport) {
     for check in &report.checks {
         let icon = match check.status {

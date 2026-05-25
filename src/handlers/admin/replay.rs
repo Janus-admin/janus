@@ -239,26 +239,26 @@ pub async fn replay_request(
     let mut response = Json(body_val).into_response();
     let headers = response.headers_mut();
     headers.insert(
-        "x-velox-request-id",
+        "x-janus-request-id",
         new_id
             .to_string()
             .parse()
             .unwrap_or_else(|_| HeaderValue::from_static("")),
     );
     headers.insert(
-        "x-velox-replay-of",
+        "x-janus-replay-of",
         id.to_string()
             .parse()
             .unwrap_or_else(|_| HeaderValue::from_static("")),
     );
     headers.insert(
-        "x-velox-latency-ms",
+        "x-janus-latency-ms",
         latency_ms
             .to_string()
             .parse()
             .unwrap_or_else(|_| HeaderValue::from_static("")),
     );
-    headers.insert("x-velox-cache-hit", HeaderValue::from_static(cache_hit_str));
+    headers.insert("x-janus-cache-hit", HeaderValue::from_static(cache_hit_str));
     Ok(response)
 }
 
@@ -414,27 +414,27 @@ pub async fn playground(
     let headers = response.headers_mut();
 
     headers.insert(
-        "x-velox-request-id",
+        "x-janus-request-id",
         new_id
             .to_string()
             .parse()
             .unwrap_or_else(|_| HeaderValue::from_static("")),
     );
     if let Ok(v) = provider_used.parse() {
-        headers.insert("x-velox-provider", v);
+        headers.insert("x-janus-provider", v);
     }
     if let Ok(v) = resp.model.parse() {
-        headers.insert("x-velox-model", v);
+        headers.insert("x-janus-model", v);
     }
     headers.insert(
-        "x-velox-latency-ms",
+        "x-janus-latency-ms",
         latency_ms
             .to_string()
             .parse()
             .unwrap_or_else(|_| HeaderValue::from_static("")),
     );
     headers.insert(
-        "x-velox-prompt-tokens",
+        "x-janus-prompt-tokens",
         resp.usage
             .prompt_tokens
             .to_string()
@@ -442,7 +442,7 @@ pub async fn playground(
             .unwrap_or_else(|_| HeaderValue::from_static("")),
     );
     headers.insert(
-        "x-velox-completion-tokens",
+        "x-janus-completion-tokens",
         resp.usage
             .completion_tokens
             .to_string()
@@ -451,11 +451,11 @@ pub async fn playground(
     );
     if let Some(ref c) = cost_str {
         if let Ok(v) = c.parse() {
-            headers.insert("x-velox-cost-usd", v);
+            headers.insert("x-janus-cost-usd", v);
         }
     }
-    headers.insert("x-velox-cache-hit", HeaderValue::from_static(cache_hit_str));
-    headers.insert("x-velox-playground", HeaderValue::from_static("true"));
+    headers.insert("x-janus-cache-hit", HeaderValue::from_static(cache_hit_str));
+    headers.insert("x-janus-playground", HeaderValue::from_static("true"));
 
     Ok(response)
 }

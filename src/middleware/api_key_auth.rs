@@ -10,10 +10,10 @@ use axum::{
 };
 use std::sync::Arc;
 
-/// Axum extractor that authenticates a gateway request via `Authorization: Bearer vx-sk-...`.
+/// Axum extractor that authenticates a gateway request via `Authorization: Bearer jn-sk-...`.
 ///
 /// On success, injects the validated `ApiKey` into the handler. On failure, returns
-/// `401 Unauthorized` with a JSON error body matching the Velox admin API format.
+/// `401 Unauthorized` with a JSON error body matching the Janus admin API format.
 ///
 /// Key rotation (V3-5): if a key has been rotated, the DashMap contains entries for
 /// both the new hash and the previous hash (pointing to the same ApiKey record).
@@ -43,7 +43,7 @@ where
             AppError::Unauthorized("Authorization header must use Bearer scheme".to_string())
         })?;
 
-        if !token.starts_with("vx-sk-") {
+        if !token.starts_with("jn-sk-") {
             return Err(AppError::Unauthorized("Invalid API key format".to_string()));
         }
 

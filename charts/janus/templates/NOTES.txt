@@ -1,8 +1,8 @@
-Velox {{ .Chart.AppVersion }} is being deployed.
+Janus {{ .Chart.AppVersion }} is being deployed.
 
 1. Wait for pods to become ready:
 
-   kubectl --namespace {{ .Release.Namespace }} rollout status deployment/{{ include "velox.fullname" . }}
+   kubectl --namespace {{ .Release.Namespace }} rollout status deployment/{{ include "janus.fullname" . }}
 
 2. Hit the gateway:
 
@@ -14,7 +14,7 @@ Velox {{ .Chart.AppVersion }} is being deployed.
 {{- else }}
    Local port-forward:
 
-   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "velox.fullname" . }} 8080:{{ .Values.service.port }}
+   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "janus.fullname" . }} 8080:{{ .Values.service.port }}
    curl http://localhost:8080/health
 {{- end }}
 
@@ -25,10 +25,10 @@ Velox {{ .Chart.AppVersion }} is being deployed.
 
 4. Bootstrap an admin user and an API key via the CLI:
 
-   velox keys create --name "first-prod-key"
+   janus keys create --name "first-prod-key"
 
 5. Operator playbooks:
    - HA setup:        docs/deployment/ha.md
    - Helm reference:  docs/deployment/helm.md
 
-Need help? https://github.com/farzad/velox/issues
+Need help? https://github.com/farzad/janus/issues

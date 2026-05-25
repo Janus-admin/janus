@@ -47,14 +47,14 @@ fn default_per_page() -> i64 {
 /// GET /admin/requests — list requests with optional filters.
 ///
 /// V3-5: adds start_time, end_time, has_cache_hit filters and returns
-/// `X-Velox-Audit-Hash: <sha256-of-response-body>` for tamper detection.
+/// `X-Janus-Audit-Hash: <sha256-of-response-body>` for tamper detection.
 #[utoipa::path(
     get,
     path = "/admin/requests",
     tag = "Requests",
     params(ListRequestsQuery),
     responses(
-        (status = 200, description = "Paginated requests with X-Velox-Audit-Hash header", body = serde_json::Value),
+        (status = 200, description = "Paginated requests with X-Janus-Audit-Hash header", body = serde_json::Value),
         (status = 403, description = "Forbidden — requires BillingViewer role or higher"),
     ),
     security(("bearer_jwt" = [])),
@@ -104,7 +104,7 @@ pub async fn list_requests(
     let mut response = Json(body).into_response();
     response
         .headers_mut()
-        .insert("X-Velox-Audit-Hash", audit_hash.parse().unwrap());
+        .insert("X-Janus-Audit-Hash", audit_hash.parse().unwrap());
 
     Ok(response)
 }
@@ -182,7 +182,7 @@ pub async fn export_requests(
             (header::CONTENT_TYPE, "text/csv"),
             (
                 header::CONTENT_DISPOSITION,
-                "attachment; filename=\"velox_requests.csv\"",
+                "attachment; filename=\"janus_requests.csv\"",
             ),
         ],
         csv,

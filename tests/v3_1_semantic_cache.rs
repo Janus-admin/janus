@@ -4,13 +4,13 @@
 // Run with: cargo test v3_1
 // Pure unit tests — no DB, no HTTP, no spawned app required.
 
-use std::time::Instant;
-use velox::cache::{
+use janus::cache::{
     index::{hnsw::HnswIndex, linear::LinearIndex, EmbeddingIndex},
     policy::SemanticCachePolicy,
     semantic::SemanticCache,
     CacheEngine,
 };
+use std::time::Instant;
 
 // ─── Embedding helpers ────────────────────────────────────────────────────────
 
@@ -288,12 +288,12 @@ fn v3_1_hnsw_lookup_faster_than_linear_at_1000_entries() {
 
 #[test]
 fn v3_1_regression_exact_cache_unaffected() {
-    use serde_json::json;
-    use std::sync::Arc;
-    use velox::cache::exact::compute_hash;
-    use velox::providers::{
+    use janus::cache::exact::compute_hash;
+    use janus::providers::{
         ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData,
     };
+    use serde_json::json;
+    use std::sync::Arc;
 
     let engine = CacheEngine::new();
     let req: ChatCompletionRequest = serde_json::from_value(json!({

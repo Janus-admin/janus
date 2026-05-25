@@ -82,11 +82,11 @@ This would break every deployment.
 
 ## D-004: API Key Design
 
-**What**: Gateway API keys have the format `vx-sk-[48 alphanumeric chars]`.
+**What**: Gateway API keys have the format `jn-sk-[48 alphanumeric chars]`.
 Two hashes are maintained: bcrypt (storage) and SHA-256 (fast lookup).
 
 **Why**:
-- Prefix `vx-sk-` makes keys identifiable (users know it's a Velox key)
+- Prefix `jn-sk-` makes keys identifiable (users know it's a Janus key)
 - bcrypt hash in DB: if DB is compromised, keys cannot be reversed
 - SHA-256 hash in dashmap: bcrypt is intentionally slow (cost 12 = ~300ms).
   We cannot run bcrypt on every API request. SHA-256 of the key is stored in
@@ -101,7 +101,7 @@ Two hashes are maintained: bcrypt (storage) and SHA-256 (fast lookup).
 **Consequences**:
 ```rust
 // At key creation:
-let key = format!("vx-sk-{}", generate_random_alphanumeric(48));
+let key = format!("jn-sk-{}", generate_random_alphanumeric(48));
 let bcrypt_hash = bcrypt::hash(&key, 12)?;        // stored in DB
 let sha256_hash = sha256(&key);                    // stored in dashmap
 
@@ -122,7 +122,7 @@ check_budget(key_record)?;
 Request and response shapes match OpenAI exactly.
 
 **Why**: This is the single most important adoption decision. If a developer can
-switch from OpenAI to Velox by changing one line (base_url), adoption is frictionless.
+switch from OpenAI to Janus by changing one line (base_url), adoption is frictionless.
 Any deviation forces users to change their application code.
 
 **Rejected alternatives**:
@@ -261,14 +261,14 @@ async fn handler(...) -> Result<Json<...>, AppError> {
 **What**: Use the `config` crate with TOML file + environment variable override.
 
 ```toml
-# velox.toml
+# janus.toml
 [server]
 port = 8080
 ```
 
 ```bash
-# Environment variable overrides: VELOX_{SECTION}_{KEY}
-VELOX_SERVER_PORT=9090
+# Environment variable overrides: JANUS_{SECTION}_{KEY}
+JANUS_SERVER_PORT=9090
 ```
 
 **Why**: 
@@ -282,7 +282,7 @@ VELOX_SERVER_PORT=9090
 - Command-line flags only: Too verbose for large configuration
 
 **Consequences**:
-- Config file is `velox.toml` in the working directory
+- Config file is `janus.toml` in the working directory
 - All sensitive values (API keys) can be set via environment variables
 - The `Config` struct in `src/config.rs` must have `serde::Deserialize` derived
 
@@ -387,7 +387,7 @@ async-trait = "0.1"
 futures = "0.3"
 futures-util = "0.3"
 bytes = "1"
-rand = "0.8"      # secure random key generation (48-char vx-sk- suffix)
+rand = "0.8"      # secure random key generation (48-char jn-sk- suffix)
 ```
 
 ### Phase 2

@@ -73,3 +73,11 @@ pub async fn me(
 
     Ok(Json(UserResponse::from(user)))
 }
+
+pub async fn tour_complete(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+) -> AppResult<axum::http::StatusCode> {
+    db::users::mark_tour_complete(&state.pool, auth.0.sub).await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}

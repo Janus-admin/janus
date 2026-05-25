@@ -1,4 +1,4 @@
-# CLAUDE.md — Velox Project Master Context
+# CLAUDE.md — Janus Project Master Context
 > This file is the single source of truth for every Claude session.
 > **If you are Claude: read this file completely before touching any code.**
 
@@ -29,14 +29,14 @@ cargo test 2>&1 | tail -20
 
 | Key | Value |
 |---|---|
-| Project name | Velox |
+| Project name | Janus |
 | What it is | Self-hosted AI gateway — proxy for LLM calls with caching, cost tracking, streaming |
 | What it is NOT | A Firebase clone, a BaaS, a database replacement |
 | Primary language | Rust |
 | Web framework | axum 0.7 |
 | Database | PostgreSQL (docker-compose) + SQLite (`--no-default-features --features sqlite`) |
 | Repository | /Users/wallex/rust-backend |
-| Roadmap | VELOX_ROADMAP.md (v1), VELOX_V2_ROADMAP.md (v2), VELOX_V3_ROADMAP.md (v3), VELOX_V4_ROADMAP.md (v4), **VELOX_V5_ROADMAP.md (v5 — current)** |
+| Roadmap | JANUS_ROADMAP.md (v1), JANUS_V2_ROADMAP.md (v2), JANUS_V3_ROADMAP.md (v3), JANUS_V4_ROADMAP.md (v4), **JANUS_V5_ROADMAP.md (v5 — current)** |
 | Decisions | DECISIONS.md |
 
 ---
@@ -56,12 +56,12 @@ Phase 8: Open Source Launch  → [SKIPPED] — marketing/launch work, not techni
 Phase 9: Mobile App          → [SKIPPED] — out of scope for v1
 ```
 
-**VELOX v0.1.0 IS FEATURE-COMPLETE. V2 is also complete (all 8 phases, 2026-05-23).**
+**JANUS v0.1.0 IS FEATURE-COMPLETE. V2 is also complete (all 8 phases, 2026-05-23).**
 
 **V4 is fully complete — all 10 phases done (2026-05-24). No remaining V4 work.**
-See **VELOX_V4_ROADMAP.md §16** for the full phase history.
+See **JANUS_V4_ROADMAP.md §16** for the full phase history.
 
-**V5 — Launch Readiness — is IN PROGRESS. See VELOX_V5_ROADMAP.md.**
+**V5 — Launch Readiness — is IN PROGRESS. See JANUS_V5_ROADMAP.md.**
 The roadmap was revised on 2026-05-25 to focus on the first 10 customers (not full enterprise).
 Read that file's Phase Status Tracker, Locked Decisions, and Session Start Ritual sections
 before touching any code on a V5 phase.
@@ -73,11 +73,11 @@ V5-L1: Brand & First Impression  → [x] COMPLETE — README rewritten, Docker p
 V5-L2: OIDC Login                → [x] COMPLETE — migration 0028, 7 acceptance tests
 V5-L3: Cost Tags                 → [x] COMPLETE — migration 0029, tags on requests, GET /admin/analytics/cost-by-tag, 6 acceptance tests
 V5-L4: Polished Alerts           → [x] COMPLETE — migration 0030, Slack block-kit + SMTP email, multi-channel test endpoint, 5 acceptance tests
-V5-L5: Onboarding & Docs Polish  → [ ] NOT STARTED — migration 0031, license switch to ELv2
+V5-L5: Onboarding & Docs Polish  → [x] COMPLETE — migration 0031, 4-step onboarding tour, ELv2 license, docs polish, 5 acceptance tests
 ```
 
 Everything beyond these 5 (SAML, SCIM, SOC2, policy engine, FinOps, APM, GTM) is in
-VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks.
+JANUS_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks.
 
 ---
 
@@ -86,10 +86,10 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 > This section is updated at the end of every phase. It is the ground truth.
 > Never assume something is built. Check here first.
 
-### Database Tables (existing from before Velox)
+### Database Tables (existing from before Janus)
 - [x] `users` — admin user accounts (email, password_hash, name)
 
-### API Endpoints (existing from before Velox)
+### API Endpoints (existing from before Janus)
 - [x] `GET  /health` — returns status, version, database ping, providers list, cache config
 - [x] `POST /api/v1/auth/register` — create user
 - [x] `POST /api/v1/auth/login` — login, get JWT
@@ -99,7 +99,7 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `PUT  /api/v1/users/:id` — update user (JWT protected)
 - [x] `DELETE /api/v1/users/:id` — delete user (JWT protected)
 
-### Velox-Specific Tables (Phase 0 — all created via migrations)
+### Janus-Specific Tables (Phase 0 — all created via migrations)
 - [x] `workspaces` — multi-tenancy (migration 0002)
 - [x] `api_keys` — gateway API keys with budget/rate limits (migration 0003)
 - [x] `providers` — OpenAI/Anthropic/Bedrock configs + health status (migration 0004, seeded)
@@ -109,14 +109,14 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `daily_costs` — pre-aggregated daily cost rollups (migration 0008)
 - [x] `alerts` — threshold-based spend/error/latency alerts (migration 0009)
 
-### Velox-Specific Rust Modules (Phase 0)
+### Janus-Specific Rust Modules (Phase 0)
 - [x] `src/config.rs` — Config struct via `config` crate (TOML + ENV, with defaults); extended in Phase 1 with `openai_api_key`, `anthropic_api_key`
 - [x] `src/models/api_key.rs` — ApiKey, CreateApiKeyRequest/Response, ApiKeyView
 - [x] `src/models/provider.rs` — Provider, ProviderView, HealthStatus, UpdateProviderRequest
 - [x] `src/models/request.rs` — Request, RequestStatus, CacheType, RequestSummary, RequestFilter
 - [x] `src/models/cache_entry.rs` — CacheEntry, CacheStats, FlushCacheRequest
 
-### Velox-Specific Rust Modules (Phase 1)
+### Janus-Specific Rust Modules (Phase 1)
 - [x] `src/crypto.rs` — AES-256-GCM encrypt/decrypt for provider API keys at rest
 - [x] `src/providers/mod.rs` — `Provider` trait, `ChatCompletionRequest/Response`, `ProviderError`
 - [x] `src/providers/openai.rs` — OpenAI adapter (passthrough via reqwest)
@@ -133,7 +133,7 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `src/state.rs` — Extended with `providers: Arc<ProviderRegistry>`, `key_cache: Arc<DashMap<...>>`
 - [x] `migrations/0010_add_api_key_sha256.sql` — Added `key_sha256` column for fast dashmap lookup
 
-### Velox-Specific Rust Modules (Phase 3)
+### Janus-Specific Rust Modules (Phase 3)
 - [x] `src/config.rs` — Added `rate_limit_window_secs: u64` (default 60) and `max_retries: u32` (default 1)
 - [x] `src/middleware/rate_limit.rs` — `RateLimiter` struct: sliding window per API key (`DashMap<Uuid, VecDeque<i64>>`); `check_and_record()` returns `Err(retry_after_secs)` when limit exceeded
 - [x] `src/gateway/router.rs` — Added `select_all_providers()` returning all enabled providers sorted by priority (used by failover loop)
@@ -142,7 +142,7 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `src/errors.rs` — `RateLimitExceeded(Option<u64>)` with `Retry-After` header injected in `into_response()` when payload is `Some`
 - [x] `src/state.rs` — Added `rate_limiter: Arc<RateLimiter>` field
 
-### Velox-Specific Rust Modules (Phase 2)
+### Janus-Specific Rust Modules (Phase 2)
 - [x] `src/providers/mod.rs` — Extended with `ChunkDelta`, `ChunkChoice`, `ChatCompletionChunk`, `ProviderStream` type alias; `Provider` trait now has `chat_completion_stream`
 - [x] `src/providers/openai.rs` — `chat_completion_stream` via `eventsource-stream` passthrough; adds `stream_options: {include_usage: true}` to get usage in final chunk
 - [x] `src/providers/anthropic.rs` — `chat_completion_stream` via channel+task; stateful SSE parsing (`message_start`→id/prompt tokens, `content_block_delta`→text, `message_delta`→output tokens)
@@ -151,36 +151,36 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `src/handlers/gateway.rs` — `chat_completions` now branches on `request.stream == Some(true)` → SSE response vs JSON response
 - [x] `src/db/requests.rs` — `insert_request` extended with `is_stream: bool` and `ttfb_ms: Option<i32>` parameters; uses existing `ttfb_ms` column in `requests` table
 
-### Velox-Specific Rust Modules (Phase 4)
+### Janus-Specific Rust Modules (Phase 4)
 - [x] `src/cache/exact.rs` — `compute_hash()`: SHA-256 of normalized request (stream field excluded)
 - [x] `src/cache/mod.rs` — `CacheEngine`: DashMap hot layer; `lookup`, `insert`, `clear`, `check` helpers
 - [x] `src/db/cache.rs` — `upsert_entry`, `record_hit`, `get_stats`, `flush_all` DB queries
 - [x] `src/handlers/admin/cache.rs` — `GET /admin/cache/stats` + `DELETE /admin/cache` handlers
 - [x] `src/gateway/pipeline.rs` — `run()` and `run_streaming()` extended: cache lookup before provider, cache write after success, SSE synthesis for streaming cache hits; return `(response, cache_hit: bool)`
-- [x] `src/handlers/gateway.rs` — `X-Velox-Cache: false` bypass header; `X-Velox-Cache-Hit: exact` response header on hits
+- [x] `src/handlers/gateway.rs` — `X-Janus-Cache: false` bypass header; `X-Janus-Cache-Hit: exact` response header on hits
 - [x] `src/state.rs` — Added `cache: Arc<CacheEngine>` field
 - [x] `src/models/api_key.rs` — Fixed `ApiKeyView` Decimal serialization (`serde-float` feature)
 
-### Velox-Specific Endpoints (Phase 1)
+### Janus-Specific Endpoints (Phase 1)
 - [x] `POST /v1/chat/completions` — OpenAI-compatible gateway proxy (streaming + non-streaming)
 - [x] `POST /admin/keys` — Create API key (returns full key once, never again)
 - [x] `GET  /admin/keys` — List API keys (safe view: prefixes only, no hashes)
 
-### Velox-Specific Endpoints (Phase 4)
+### Janus-Specific Endpoints (Phase 4)
 - [x] `GET  /admin/cache/stats` — Aggregate cache stats (entries, hits, tokens saved, cost saved)
 - [x] `DELETE /admin/cache` — Flush all cache entries (DashMap + DB)
 
-### Velox-Specific Rust Modules (Phase 5)
+### Janus-Specific Rust Modules (Phase 5)
 - [x] `src/cache/embedding.rs` — `EmbeddingModel`: ONNX Runtime session (Mutex) + HuggingFace tokenizer; `embed()` → mean-pool + L2-normalize → 384-dim unit vector
 - [x] `src/cache/semantic.rs` — `SemanticCache`: `RwLock<Vec<SemanticEntry>>` with linear cosine scan; `f32_vec_to_bytes` / `bytes_to_f32_vec` for PostgreSQL BYTEA storage
 - [x] `src/cache/mod.rs` — Extended: `CacheHit` enum (`None`, `Exact`, `Semantic(f32)`); `CacheEngine::new_with_semantic(model, threshold)`; `warm_from_db()` loads hot layer + semantic index from DB
 - [x] `src/config.rs` — Added `embedding_model_path` (default `models/all-MiniLM-L6-v2.onnx`), `embedding_tokenizer_path` (default `models/tokenizer.json`), `semantic_cache_threshold` (default 0.90)
 - [x] `src/db/cache.rs` — Added `save_embedding(pool, hash, bytes)`, `load_all_entries(pool) -> Vec<CacheEntryRow>` for startup warm-up
 - [x] `src/gateway/pipeline.rs` — `run()` and `run_streaming()` return `CacheHit` instead of `bool`; semantic lookup before provider call; semantic insert + DB persist after provider success
-- [x] `src/handlers/gateway.rs` — `attach_cache_headers()` sets `X-Velox-Cache-Hit: semantic` + `X-Velox-Cache-Similarity: {score:.4}` on semantic hits
+- [x] `src/handlers/gateway.rs` — `attach_cache_headers()` sets `X-Janus-Cache-Hit: semantic` + `X-Janus-Cache-Similarity: {score:.4}` on semantic hits
 - [x] `src/main.rs` — Tries to load `EmbeddingModel` at startup; graceful degradation if model missing; `warm_from_db()` called after pool init
 
-### Velox-Specific Rust Modules (Phase 7 — finalized)
+### Janus-Specific Rust Modules (Phase 7 — finalized)
 - [x] `src/pii.rs` — PII scrubber: redacts credit cards, SSNs, emails, bearer tokens, API keys using compiled regex patterns; applied to request bodies before `cache_entries` DB storage and before `tracing::debug!` body logs
 - [x] `src/handlers/gateway.rs` — Extended: config-gated `tracing::debug!` for request bodies (`log_request_bodies`) and response bodies (`log_response_bodies`); PII-scrubbed before emission
 - [x] `src/metrics.rs` — Prometheus endpoint with native atomic gauges (exact cache size, semantic cache size, hit ratio); bypasses `metrics::gauge!()` naming conflict
@@ -192,25 +192,25 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `docs/deployment/systemd.md` — Linux system service (hardened unit file + nginx proxy)
 - [x] `docs/deployment/kubernetes.md` — Kubernetes manifests, ServiceMonitor, persistent volume for models
 
-### Velox-Specific Rust Modules (V4-8 — RBAC / True Multi-tenancy)
+### Janus-Specific Rust Modules (V4-8 — RBAC / True Multi-tenancy)
 - [x] `migrations/0024_rbac.sql` — Creates `roles` (4 roles) and `workspace_members` tables; seeds existing users as admin on all workspaces via cross-join INSERT
 - [x] `src/db/rbac.rs` — DB queries: `get_user_highest_role`, `get_role_in_workspace`, `list_members`, `add_member`, `update_member_role`, `remove_member`, `find_user_by_email`, `list_workspaces`
 - [x] `src/middleware/rbac.rs` — `Role` enum (ReadOnly=1..Admin=4, Ord-comparable); `require_role()` global check; `require_role_in_workspace()` workspace-scoped check; bootstrap rule: no memberships → admin
 - [x] `src/handlers/admin/members.rs` — `GET /admin/workspaces`, member CRUD endpoints (`list_members`, `add_member`, `update_member`, `remove_member`)
 - [x] `dashboard/src/app/(dashboard)/workspaces/page.tsx` — Workspace management page with expandable workspace cards, member table, add/edit/remove member dialogs
-- [x] RBAC enforcement added to all admin handlers: `analytics.*` (BillingViewer+), `keys.*` (ApiManager+), `cache.*` (Admin), `providers.test_provider` (Admin), `velox_config.patch_config` (Admin), `requests.*` (BillingViewer+)
+- [x] RBAC enforcement added to all admin handlers: `analytics.*` (BillingViewer+), `keys.*` (ApiManager+), `cache.*` (Admin), `providers.test_provider` (Admin), `janus_config.patch_config` (Admin), `requests.*` (BillingViewer+)
 - [x] `tests/v4_8_rbac.rs` — 14 acceptance tests covering role enforcement, bootstrap rule, cross-workspace isolation, migration seeding
 
-### Velox-Specific Rust Modules (V4-9 — External Vector Stores)
+### Janus-Specific Rust Modules (V4-9 — External Vector Stores)
 - [x] `src/cache/index/qdrant.rs` — `QdrantIndex`: implements `EmbeddingIndex` trait via gRPC calls to Qdrant; `new()` is async (connects + ensures collection exists); sync trait methods bridge via `block_in_place`; point IDs derived from hash prefix; hash stored in payload for retrieval
 - [x] `src/cache/index/mod.rs` — Added `pub mod qdrant;` to expose `QdrantIndex`
 - [x] `src/cache/mod.rs` — Added `CacheEngine::new_with_qdrant_semantic()` constructor
-- [x] `src/config.rs` — Added `qdrant_url` (default `http://localhost:6334`), `qdrant_collection` (default `velox_cache`), `qdrant_vector_size` (default 384)
+- [x] `src/config.rs` — Added `qdrant_url` (default `http://localhost:6334`), `qdrant_collection` (default `janus_cache`), `qdrant_vector_size` (default 384)
 - [x] `src/main.rs` — Wired `semantic_cache_backend = "qdrant"` branch; graceful fallback to linear on connection error
 - [x] `Cargo.toml` — Added `qdrant-client = "1.9"`
 - [x] `tests/v4_9_vector_store.rs` — 6 acceptance tests; Qdrant-dependent tests skip gracefully when instance not running (CI-safe); full suite runs with `docker run -p 6334:6334 qdrant/qdrant`
 
-### Velox-Specific Rust Modules (V5-0 — API Surface Expansion)
+### Janus-Specific Rust Modules (V5-0 — API Surface Expansion)
 - [x] `migrations/0027_api_expansion.sql` (+ sqlite mirror): adds `requests.tool_calls` (JSONB) and `requests.endpoint` (VARCHAR(50), default `/v1/chat/completions`); GIN/B-tree indexes; adds `price_per_image`, `price_per_audio_second`, `price_per_character` to `model_pricing`
 - [x] `src/providers/mod.rs`: new modality types (`ModelInfo`, `ImagesRequest/Response`, `TranscribeRequest/Response`, `SpeechRequest/Stream`); extends `Provider` trait with `list_models`, `images_generate`, `audio_transcribe`, `audio_speech` (all default to `ProviderError::Unsupported`); extends `ChatMessage` with `tool_calls` + `tool_call_id` so function-calling responses survive round-trip
 - [x] `src/providers/openai.rs`: implements all four new trait methods against `/v1/models`, `/v1/images/generations`, `/v1/audio/transcriptions` (multipart), `/v1/audio/speech` (streaming bytes)
@@ -223,30 +223,30 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `Cargo.toml`: adds `axum` feature `multipart` + `reqwest` feature `multipart`
 - [x] `tests/v5_0_api_expansion.rs`: 14 acceptance tests — embeddings shape/cost/priority, `/v1/models` aggregation + 5-second TTL, images passthrough + per-image cost, audio multipart + speech streaming, legacy completions, tool-calls extraction into requests row, endpoint-per-route attribution, unsupported modality error path, regression on chat completions
 
-### Velox-Specific Rust Modules (V5-1 — OpenAPI + Swagger UI + `velox` CLI)
-- [x] `src/openapi.rs`: `VeloxApiDoc` derived via `utoipa::OpenApi`; combines every annotated handler into a single OpenAPI 3.1 document; declares `bearer_jwt` + `api_key` security schemes via a `Modify` impl; tag-per-domain (Keys, Requests, Analytics, Models, Providers, Alerts, Cache, Prompts, Config, System, Workspaces, Gateway)
+### Janus-Specific Rust Modules (V5-1 — OpenAPI + Swagger UI + `janus` CLI)
+- [x] `src/openapi.rs`: `JanusApiDoc` derived via `utoipa::OpenApi`; combines every annotated handler into a single OpenAPI 3.1 document; declares `bearer_jwt` + `api_key` security schemes via a `Modify` impl; tag-per-domain (Keys, Requests, Analytics, Models, Providers, Alerts, Cache, Prompts, Config, System, Workspaces, Gateway)
 - [x] Every admin handler and every gateway handler now carries a `#[utoipa::path(...)]` annotation (`src/handlers/admin/*.rs`, `src/handlers/gateway.rs`); query-param structs that flow into the spec gained `utoipa::IntoParams` (`ListKeysQuery`, `ListRequestsQuery`, `ListPromptsQuery`, `CostQuery`, `HoursQuery`, `SimulateQuery`)
 - [x] `src/models/api_key.rs`: derives `ToSchema` on `CreateApiKeyRequest`, `CreateApiKeyResponse`, `ApiKeyView`
-- [x] `src/handlers/admin/docs.rs`: returns the `SwaggerUi::new("/admin/docs").url("/admin/openapi.json", VeloxApiDoc::openapi())` sub-router; both endpoints are unauthenticated by design so prospects can read the spec before authenticating
+- [x] `src/handlers/admin/docs.rs`: returns the `SwaggerUi::new("/admin/docs").url("/admin/openapi.json", JanusApiDoc::openapi())` sub-router; both endpoints are unauthenticated by design so prospects can read the spec before authenticating
 - [x] `src/routes/mod.rs`: merges the docs sub-router at the top level so paths land on `/admin/openapi.json` and `/admin/docs`
-- [x] `src/cli/{mod,admin_client,keys,migrate,config,import}.rs`: `velox` CLI — single binary with clap subcommands. `serve` (default, no subcommand) preserves the old boot path; `doctor`, `demo`, `mcp-stdio` cover the old `--doctor` / `--demo` / `--mcp-stdio` flags; `keys list|create|rotate|revoke`, `migrate up|status`, `config get|set key=value`, `import litellm|portkey|openrouter` (stubs — full impl in V5-2). Admin-API calls resolve URL+token from `--url`/`--token`, `VELOX_URL`/`VELOX_ADMIN_TOKEN`, or `~/.config/velox/cli.toml`
-- [x] `src/main.rs`: rewritten to delegate to `velox::cli::run` for non-serve subcommands; the serve path stays byte-for-byte equivalent to the pre-V5-1 behaviour (mcp-stdio, doctor, demo are now subcommands but carry the same semantics)
+- [x] `src/cli/{mod,admin_client,keys,migrate,config,import}.rs`: `janus` CLI — single binary with clap subcommands. `serve` (default, no subcommand) preserves the old boot path; `doctor`, `demo`, `mcp-stdio` cover the old `--doctor` / `--demo` / `--mcp-stdio` flags; `keys list|create|rotate|revoke`, `migrate up|status`, `config get|set key=value`, `import litellm|portkey|openrouter` (stubs — full impl in V5-2). Admin-API calls resolve URL+token from `--url`/`--token`, `JANUS_URL`/`JANUS_ADMIN_TOKEN`, or `~/.config/janus/cli.toml`
+- [x] `src/main.rs`: rewritten to delegate to `janus::cli::run` for non-serve subcommands; the serve path stays byte-for-byte equivalent to the pre-V5-1 behaviour (mcp-stdio, doctor, demo are now subcommands but carry the same semantics)
 - [x] `Cargo.toml`: adds `utoipa` 5 (with `axum_extras`, `uuid`, `chrono`, `decimal` features), `utoipa-swagger-ui` 8 (with `axum` feature), `toml` 0.8 (CLI config file), and enables `clap` `env` feature for env-var-backed CLI flags
 - [x] `tests/v5_1_openapi.rs`: 5 acceptance tests covering `/admin/openapi.json` returns a 3.1 spec, the spec includes every annotated admin + gateway endpoint, Swagger UI returns 200 + HTML + static asset, response handlers unchanged
 - [x] `tests/v5_1_cli.rs`: 7 acceptance tests covering CLI help lists every subcommand, default-serve when no subcommand, `keys create` flag parsing, global `--url`/`--token` propagation, `keys create` + `config get` round-tripping through the admin API, `migrate status` reading `_sqlx_migrations`
 
-### Velox-Specific Rust Modules (V5-2 — Deployment & Migration Tooling)
-- [x] `src/cli/import/{mod,plan,litellm,portkey,openrouter}.rs`: importer suite. Each importer parses a competitor config (LiteLLM YAML, Portkey JSON, OpenRouter `/v1/models`) into a `MigrationPlan` — provider patches + key specs + cache toggle + notes. `--apply` pushes through `AdminClient` (`PATCH /admin/providers/:id`, `POST /admin/keys`, `PATCH /admin/config`); the default `--dry-run` prints a preview. OpenRouter is read-only because Velox has no admin endpoint for model aliases — it emits a grouped report instead.
-- [x] `src/cli/backup.rs`: `velox backup create|restore|inspect` — single tar.gz archive containing `VERSION` (schema_version + velox_version + RFC3339 created_at), `db.sql` (`pg_dump --no-owner --no-acl`), optional `velox.toml`, and `models/`. `read_archive` and `write_archive` are pure functions so tests round-trip in-memory archives without shelling out. `check_version_compatible` rejects archives produced by a newer schema than the binary knows.
+### Janus-Specific Rust Modules (V5-2 — Deployment & Migration Tooling)
+- [x] `src/cli/import/{mod,plan,litellm,portkey,openrouter}.rs`: importer suite. Each importer parses a competitor config (LiteLLM YAML, Portkey JSON, OpenRouter `/v1/models`) into a `MigrationPlan` — provider patches + key specs + cache toggle + notes. `--apply` pushes through `AdminClient` (`PATCH /admin/providers/:id`, `POST /admin/keys`, `PATCH /admin/config`); the default `--dry-run` prints a preview. OpenRouter is read-only because Janus has no admin endpoint for model aliases — it emits a grouped report instead.
+- [x] `src/cli/backup.rs`: `janus backup create|restore|inspect` — single tar.gz archive containing `VERSION` (schema_version + janus_version + RFC3339 created_at), `db.sql` (`pg_dump --no-owner --no-acl`), optional `janus.toml`, and `models/`. `read_archive` and `write_archive` are pure functions so tests round-trip in-memory archives without shelling out. `check_version_compatible` rejects archives produced by a newer schema than the binary knows.
 - [x] `src/cli/mod.rs` + `src/main.rs`: adds `Backup(BackupCmd)` to the top-level CLI; routes `Import(_)` through the new module signature (`flag_url` / `flag_token` propagated so `--apply` works).
 - [x] `Cargo.toml`: adds `serde_yaml = "0.9"`, `tar = "0.4"`, `flate2 = "1"`. Reuses existing `tempfile` dev-dep for archive round-trip tests.
-- [x] `charts/velox/`: Helm chart v0.1.0. Deployment, Service, ConfigMap, Secret (or existingSecret), PVC for `models/`, HPA (CPU + memory + optional custom metrics), Ingress, ServiceMonitor (Prometheus Operator), Qdrant subchart toggle, `_helpers.tpl`, NOTES.txt, `.helmignore`. Chart targets an **external PostgreSQL** (locked decision L9).
+- [x] `charts/janus/`: Helm chart v0.1.0. Deployment, Service, ConfigMap, Secret (or existingSecret), PVC for `models/`, HPA (CPU + memory + optional custom metrics), Ingress, ServiceMonitor (Prometheus Operator), Qdrant subchart toggle, `_helpers.tpl`, NOTES.txt, `.helmignore`. Chart targets an **external PostgreSQL** (locked decision L9).
 - [x] `deploy/railway/railway.json` + `deploy/fly/fly.toml` + `deploy/render/render.yaml` (+ per-folder README): one-click deploy bundles. Each provisions an external Postgres, mounts a model volume, and injects the JWT/encryption secrets via the platform's secret store.
-- [x] `docs/deployment/ha.md`: HA runbook — Postgres primary+replica, ≥2 Velox nodes, cluster mode, embedding-model strategies, encryption key rotation, DR runbook tied to `velox backup`. `docs/deployment/helm.md` (chart reference) and `docs/deployment/terraform.md` (provider stub for the separate repo).
+- [x] `docs/deployment/ha.md`: HA runbook — Postgres primary+replica, ≥2 Janus nodes, cluster mode, embedding-model strategies, encryption key rotation, DR runbook tied to `janus backup`. `docs/deployment/helm.md` (chart reference) and `docs/deployment/terraform.md` (provider stub for the separate repo).
 - [x] `tests/fixtures/v5_2/`: synthetic `litellm-sample.yaml`, `portkey-sample.json`, `openrouter-models.json`, and `helm-minimal-values.yaml` used by the acceptance tests.
 - [x] `tests/v5_2_migration_imports.rs`: 11 acceptance tests — LiteLLM parsing + routing map + unknown-provider notes, Portkey provider list + routing map + cache flow, OpenRouter alias grouping + unmapped pass-through, backup archive complete-file shape, restore round-trip, version compatibility refusal, `helm lint`, `helm template` (lint/template tests skip gracefully when `helm` is not on PATH).
 
-### Velox-Specific Rust Modules (V5-L2 — OIDC Login)
+### Janus-Specific Rust Modules (V5-L2 — OIDC Login)
 - [x] `migrations/0028_oidc.sql` (+ SQLite mirror): adds `identity_providers` (id, workspace_id, kind, name, config JSONB, group_role_map JSONB, enabled, created_at) and `identities` (id, user_id, idp_id, external_id, last_login) with UNIQUE(idp_id, external_id)
 - [x] `src/auth/mod.rs` + `src/auth/oidc.rs`: OIDC protocol helpers — `fetch_discovery`, `generate_pkce` (S256), `random_token`, `build_auth_url`, `exchange_code` (token exchange + RS256/384/512 ID token validation via JWKS + nonce check)
 - [x] `src/db/identities.rs`: dynamic sqlx queries for `identity_providers` and `identities` tables — `list_idps`, `get_idp`, `create_idp`, `delete_idp`, `find_identity`, `create_identity`, `touch_last_login`
@@ -254,12 +254,12 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `src/handlers/admin/idp.rs`: `GET /admin/idp`, `POST /admin/idp`, `DELETE /admin/idp/:id` (Admin role required; client_secret AES-256-GCM encrypted at rest)
 - [x] `src/state.rs`: added `OidcState` struct + `oidc_states: Arc<DashMap<String, OidcState>>` for per-login PKCE/nonce ephemeral state (removed on callback or after 10-minute TTL)
 - [x] `dashboard/src/app/(dashboard)/settings/sso/page.tsx`: SSO settings page — IdP table (name, issuer, client_id, enabled badge, created_at, delete), "Add OIDC provider" dialog, delete confirmation dialog, "How it works" card
-- [x] `tests/v5_l2_oidc.rs`: 7 acceptance tests using wiremock + rsa crate — admin CRUD endpoints require Admin role, OIDC start redirects to IdP, callback creates user JIT, invalid ID token rejected, second login reuses same user row, group claim maps to Velox role, CSRF state param enforced
+- [x] `tests/v5_l2_oidc.rs`: 7 acceptance tests using wiremock + rsa crate — admin CRUD endpoints require Admin role, OIDC start redirects to IdP, callback creates user JIT, invalid ID token rejected, second login reuses same user row, group claim maps to Janus role, CSRF state param enforced
 
-### Velox-Specific Rust Modules (V5-L3 — Cost Tags)
+### Janus-Specific Rust Modules (V5-L3 — Cost Tags)
 - [x] `migrations/0029_request_tags.sql` (+ SQLite mirror): adds `tags JSONB NOT NULL DEFAULT '{}'` to `requests` table; GIN index on PostgreSQL, plain index on SQLite
 - [x] `src/providers/mod.rs`: added `metadata: Option<serde_json::Value>` field to `ChatCompletionRequest` (mirrors OpenAI's `metadata` field; skipped on serialization if absent)
-- [x] `src/handlers/gateway.rs`: added `extract_tags(request, headers)` — merges tags from `metadata` body field (OpenAI convention) and `X-Velox-Tags: key=val,key2=val2` header; header values win on key collision
+- [x] `src/handlers/gateway.rs`: added `extract_tags(request, headers)` — merges tags from `metadata` body field (OpenAI convention) and `X-Janus-Tags: key=val,key2=val2` header; header values win on key collision
 - [x] `src/gateway/pipeline.rs`: `run()` and `run_streaming()` accept `tags: &serde_json::Value` / `serde_json::Value`; cloned into fire-and-forget spawn for DB write; all call sites updated (replay, playground, MCP tools)
 - [x] `src/db/requests.rs`: `insert_request` extended with `tags: &serde_json::Value`; PostgreSQL uses native JSONB binding, SQLite serializes to `TEXT`
 - [x] `src/models/request.rs`: `Request` struct gains `tags: serde_json::Value` with `#[serde(default)]`
@@ -269,6 +269,22 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 - [x] `dashboard/src/lib/api.ts`: added `CostByTagGroup`, `CostByTagResponse` types and `analytics.costByTag(tag, days)` method
 - [x] `dashboard/src/app/(dashboard)/analytics/page.tsx`: cost-by-tag card — tag key input, horizontal Recharts BarChart grouped by tag value
 - [x] `tests/v5_l3_cost_tags.rs`: 6 acceptance tests — metadata tags stored, header tags stored, header overrides body, cost breakdown endpoint, null group for untagged, 400 for invalid tag key
+
+### Janus-Specific Rust Modules (V5-L5 — Onboarding & Docs Polish)
+- [x] `migrations/0031_user_tour.sql` (+ SQLite mirror): adds `tour_completed_at TIMESTAMPTZ` to `users` table; NULL = tour not yet completed
+- [x] `src/models/user.rs`: added `tour_completed_at: Option<DateTime<Utc>>` to `User` and `UserResponse`; propagated through all queries in `src/db/users.rs`
+- [x] `src/db/users.rs`: all SELECT/INSERT/UPDATE queries extended to include `tour_completed_at`; new `mark_tour_complete(pool, id)` sets the timestamp only when currently NULL (idempotent)
+- [x] `src/handlers/auth.rs`: `POST /api/v1/auth/tour-complete` handler — marks tour done for the authenticated user, returns 204; requires JWT auth
+- [x] `src/routes/mod.rs`: wired `/api/v1/auth/tour-complete`
+- [x] `dashboard/src/components/OnboardingTour.tsx`: 4-step dismissable onboarding tour (Create key → Playground → Requests → Alerts); progress indicator bar; skip/done actions both call `POST /api/v1/auth/tour-complete`; `useOnboardingTour()` hook checks `/api/v1/auth/me` on mount, shows tour when `tour_completed_at` is null
+- [x] `dashboard/src/app/(dashboard)/layout.tsx`: mounts `<OnboardingTour>` when the hook says to show it
+- [x] `dashboard/src/lib/api.ts`: added `tour_completed_at` to user response types; `auth.me()` corrected to return `UserResponse` directly; `auth.tourComplete()` calls the new endpoint
+- [x] `docs/quickstart.md`: fixed stale `your-org/janus` clone URL → `Janus-admin/janus`
+- [x] `docs/configuration.md`: added Qdrant configuration table (was missing); removed stale nested-key placeholder section
+- [x] `LICENSE`: switched from MIT to Elastic License 2.0 (ELv2)
+- [x] `Cargo.toml`: `license = "Elastic-2.0"`
+- [x] `README.md`: updated license badge text and Contributing section
+- [x] `tests/v5_l5_onboarding.rs`: 5 acceptance tests — new user tour_completed_at is null, tour-complete sets timestamp, idempotent second call, 401 on unauthenticated call, field always present in /me response
 
 ---
 
@@ -286,10 +302,10 @@ VELOX_V5_ROADMAP.md § "Future Plans" — build them when a paying customer asks
 
 ### 2. API Key Format
 ```
-Format:  vx-sk-[48 alphanumeric chars]
-Example: vx-sk-a8Kd92nPqRx4mTvL7wYjBc3hEiZsNfGu5oQpAb1Cy6Xk
+Format:  jn-sk-[48 alphanumeric chars]
+Example: jn-sk-a8Kd92nPqRx4mTvL7wYjBc3hEiZsNfGu5oQpAb1Cy6Xk
 Stored:  bcrypt hash (source of truth in DB) + SHA-256 hash (fast in-memory lookup)
-Display: prefix only — vx-sk-a8Kd92n... (shown in dashboard)
+Display: prefix only — jn-sk-a8Kd92n... (shown in dashboard)
 Revealed: full key shown ONCE at creation, never again
 ```
 
@@ -342,7 +358,7 @@ pub struct AppState {
 ### 9. Configuration Loading Order (priority: high to low)
 ```
 1. Environment variables (highest priority)
-2. velox.toml file
+2. janus.toml file
 3. Default values in code (lowest priority)
 ```
 
@@ -380,7 +396,7 @@ Layer 2 — Semantic match:
 ### 14. Authentication
 ```
 Admin dashboard: Username/password → JWT (uses existing users table + JWT system)
-Gateway API:     Velox API key (vx-sk-...) → validated against api_keys table
+Gateway API:     Janus API key (jn-sk-...) → validated against api_keys table
 These are SEPARATE auth systems. Gateway keys never work on admin endpoints.
 ```
 
@@ -495,7 +511,7 @@ These are SEPARATE auth systems. Gateway keys never work on admin endpoints.
 ## Architecture Quick Reference
 
 ```
-velox/
+janus/
 ├── src/
 │   ├── main.rs              ← startup: load config, connect db, run migrations, start server
 │   ├── config.rs            ← Config struct (TOML + env)
@@ -515,7 +531,7 @@ velox/
 │   │   ├── exact.rs         ← SHA-256 based exact match
 │   │   └── semantic.rs      ← Linear cosine scan (HNSW planned V3-1)
 │   ├── middleware/          ← axum middleware
-│   │   ├── api_key_auth.rs  ← Validate vx-sk-... keys
+│   │   ├── api_key_auth.rs  ← Validate jn-sk-... keys
 │   │   ├── rate_limit.rs    ← Sliding window limiter
 │   │   └── budget.rs        ← Spend limit enforcement
 │   ├── handlers/            ← HTTP handlers
@@ -631,10 +647,10 @@ cargo fmt -- --check
 
 # 4. Project builds in release mode
 cargo build --release
-# Expected: Compiling velox ... Finished
+# Expected: Compiling janus ... Finished
 
 # 5. Manual smoke test (curl commands specific to the phase)
-# See each phase's "Manual Verification" section in VELOX_ROADMAP.md
+# See each phase's "Manual Verification" section in JANUS_ROADMAP.md
 
 # 6. Commit and tag
 git add -A

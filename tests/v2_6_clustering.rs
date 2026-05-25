@@ -40,14 +40,14 @@ async fn mock_server_with_response(body: serde_json::Value) -> MockServer {
 #[tokio::test]
 async fn v2_6_rate_limit_enforced_globally_across_two_nodes() {
     load_env();
-    let config = velox::config::Config::load().expect("Failed to load config");
-    let pool = velox::db::pool::connect(&config.database_url)
+    let config = janus::config::Config::load().expect("Failed to load config");
+    let pool = janus::db::pool::connect(&config.database_url)
         .await
         .expect("Failed to connect to test DB");
 
     // Two limiter instances that share the same pool — simulating two cluster nodes.
-    let limiter1 = velox::cluster::rate_limit::DbRateLimiter::new(pool.clone(), 60);
-    let limiter2 = velox::cluster::rate_limit::DbRateLimiter::new(pool.clone(), 60);
+    let limiter1 = janus::cluster::rate_limit::DbRateLimiter::new(pool.clone(), 60);
+    let limiter2 = janus::cluster::rate_limit::DbRateLimiter::new(pool.clone(), 60);
 
     // Use a unique key_id so parallel test runs don't interfere.
     let key_id = uuid::Uuid::new_v4();
@@ -78,8 +78,8 @@ async fn v2_6_rate_limit_enforced_globally_across_two_nodes() {
 #[tokio::test]
 async fn v2_6_cleanup_task_removes_old_rate_limit_rows() {
     load_env();
-    let config = velox::config::Config::load().expect("Failed to load config");
-    let pool = velox::db::pool::connect(&config.database_url)
+    let config = janus::config::Config::load().expect("Failed to load config");
+    let pool = janus::db::pool::connect(&config.database_url)
         .await
         .expect("Failed to connect to test DB");
 
@@ -114,7 +114,7 @@ async fn v2_6_cleanup_task_removes_old_rate_limit_rows() {
     assert!(before.0 >= 1, "Stale row should be present before cleanup");
 
     // Run cleanup directly via DbRateLimiter with a 60-second window.
-    let limiter = velox::cluster::rate_limit::DbRateLimiter::new(pool.clone(), 60);
+    let limiter = janus::cluster::rate_limit::DbRateLimiter::new(pool.clone(), 60);
     limiter.cleanup().await.expect("Cleanup should succeed");
 
     // Stale rows should be gone.
@@ -167,30 +167,30 @@ async fn v2_6_key_revocation_propagates_via_notify() {
     use std::sync::Arc;
 
     load_env();
-    let config = velox::config::Config::load().expect("Failed to load config");
-    let pool = velox::db::pool::connect(&config.database_url)
+    let config = janus::config::Config::load().expect("Failed to load config");
+    let pool = janus::db::pool::connect(&config.database_url)
         .await
         .expect("Failed to connect to test DB");
 
     // Generate a fake key's sha256 bytes.
-    let fake_raw_key = "vx-sk-PropagationTestKey000000000000000000000000000000";
-    let sha256_hex = velox::db::api_keys::sha256_hex(fake_raw_key);
-    let sha256_bytes = velox::db::api_keys::sha256_bytes(fake_raw_key);
+    let fake_raw_key = "jn-sk-PropagationTestKey000000000000000000000000000000";
+    let sha256_hex = janus::db::api_keys::sha256_hex(fake_raw_key);
+    let sha256_bytes = janus::db::api_keys::sha256_bytes(fake_raw_key);
 
     // Simulate two separate node key caches.
-    let cache_node1: Arc<DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let cache_node1: Arc<DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         Arc::new(DashMap::new());
-    let cache_node2: Arc<DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let cache_node2: Arc<DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         Arc::new(DashMap::new());
 
-    let dummy_key = velox::models::api_key::ApiKey {
+    let dummy_key = janus::models::api_key::ApiKey {
         id: uuid::Uuid::new_v4(),
         name: "propagation-test".to_string(),
         key_hash: "placeholder".to_string(),
         key_sha256: Some(sha256_hex.clone()),
         previous_key_sha256: None,
         rotation_expires_at: None,
-        key_prefix: "vx-sk-Propa".to_string(),
+        key_prefix: "jn-sk-Propa".to_string(),
         workspace_id: None,
         budget_limit: None,
         budget_used: rust_decimal::Decimal::ZERO,
@@ -221,7 +221,7 @@ async fn v2_6_key_revocation_propagates_via_notify() {
     );
 
     // Start the key_sync listener on node2's cache.
-    velox::cluster::key_sync::start(pool.clone(), cache_node2.clone())
+    janus::cluster::key_sync::start(pool.clone(), cache_node2.clone())
         .await
         .expect("key_sync::start must succeed");
 
@@ -347,12 +347,12 @@ async fn v2_6_exact_cache_hit_on_second_node_after_first_node_populates() {
     assert_eq!(r2.status(), 200, "node2 request must succeed");
     let cache_header2 = r2
         .headers()
-        .get("x-velox-cache-hit")
+        .get("x-janus-cache-hit")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     assert_eq!(
         cache_header2, "exact",
-        "node2 must return X-Velox-Cache-Hit: exact after warming cache from shared DB"
+        "node2 must return X-Janus-Cache-Hit: exact after warming cache from shared DB"
     );
 }
 
@@ -362,7 +362,7 @@ async fn v2_6_exact_cache_hit_on_second_node_after_first_node_populates() {
 #[tokio::test]
 async fn v2_6_cluster_disabled_by_default() {
     load_env();
-    let config = velox::config::Config::load().expect("Failed to load config");
+    let config = janus::config::Config::load().expect("Failed to load config");
     assert!(
         !config.cluster.enabled,
         "cluster.enabled must default to false"
@@ -447,7 +447,7 @@ async fn v2_6_regression_auth_still_enforced() {
         .post(format!("{}/v1/chat/completions", base_url))
         .header(
             "Authorization",
-            "Bearer vx-sk-invalid000000000000000000000000000000000000000000",
+            "Bearer jn-sk-invalid000000000000000000000000000000000000000000",
         )
         .json(&minimal_chat_request())
         .send()

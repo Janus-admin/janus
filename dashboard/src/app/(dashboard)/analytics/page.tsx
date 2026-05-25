@@ -523,7 +523,7 @@ export default function AnalyticsPage() {
             <h2 className="text-lg font-medium">Cost by tag</h2>
             <p className="text-muted-foreground text-xs mt-0.5">
               Breakdown by any tag key sent via <code>metadata</code> field or{" "}
-              <code>X-Velox-Tags</code> header.
+              <code>X-Janus-Tags</code> header.
             </p>
           </div>
           <form
@@ -562,7 +562,7 @@ export default function AnalyticsPage() {
             ) : !tagQ.data?.data.groups.length ? (
               <p className="text-center text-muted-foreground text-sm py-10">
                 No tagged requests in this window. Send requests with{" "}
-                <code className="bg-muted px-1 rounded">X-Velox-Tags: {tagKey}=value</code>.
+                <code className="bg-muted px-1 rounded">X-Janus-Tags: {tagKey}=value</code>.
               </p>
             ) : (
               <ChartContainer config={tagChartConfig} className="h-44 w-full">

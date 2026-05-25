@@ -2,11 +2,11 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-/// Velox runtime configuration.
+/// Janus runtime configuration.
 ///
 /// Loading priority (high → low):
 ///   1. Environment variables
-///   2. velox.toml (optional, in working directory)
+///   2. janus.toml (optional, in working directory)
 ///   3. Default values below
 ///
 /// Env var convention: field name uppercased, e.g. `database_url` → `DATABASE_URL`.
@@ -66,7 +66,7 @@ pub struct Config {
     /// Per-model TTL overrides. Key = model name, value = TTL in seconds.
     /// When set, takes precedence over `cache_ttl_secs` for that model.
     ///
-    /// Example in velox.toml:
+    /// Example in janus.toml:
     /// ```toml
     /// [cache_ttl_overrides]
     /// "gpt-4o-mini" = 3600
@@ -143,7 +143,7 @@ pub struct Config {
     /// Model fallback chains for intelligent routing.
     /// When a request fails for a model, fallback models are tried in order.
     ///
-    /// Example in velox.toml:
+    /// Example in janus.toml:
     /// ```toml
     /// [routing.fallbacks]
     /// "gpt-4o" = ["claude-3-5-sonnet-20241022", "gpt-4o-mini"]
@@ -179,7 +179,7 @@ pub struct Config {
     /// When enabled, rate limits use the shared `rate_limit_windows` DB table
     /// and key revocations propagate via PostgreSQL LISTEN/NOTIFY.
     ///
-    /// Example in velox.toml:
+    /// Example in janus.toml:
     /// ```toml
     /// [cluster]
     /// enabled = true
@@ -195,7 +195,7 @@ pub struct Config {
 
 /// SMTP configuration for email alert delivery (V5-L4).
 ///
-/// Set `smtp.host` in velox.toml or via `SMTP__HOST` env var to enable email alerts.
+/// Set `smtp.host` in janus.toml or via `SMTP__HOST` env var to enable email alerts.
 /// When `smtp.file_dir` is non-empty, emails are written to that directory as .eml
 /// files instead of being sent — useful for testing and CI environments.
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -212,7 +212,7 @@ pub struct SmtpConfig {
     /// SMTP login password.
     #[serde(default)]
     pub password: String,
-    /// RFC 5321 sender address (e.g. `velox@acme.com`). Defaults to `velox@<host>`.
+    /// RFC 5321 sender address (e.g. `janus@acme.com`). Defaults to `janus@<host>`.
     #[serde(default)]
     pub from_address: String,
     /// When non-empty, write emails as .eml files in this directory instead of sending.
@@ -292,7 +292,7 @@ impl ProviderTlsConfig {
 /// Per-key `downgrade_at_percent` / `downgrade_strategy` / `downgrade_to_model`
 /// columns take precedence over these global defaults when set.
 ///
-/// Example in velox.toml:
+/// Example in janus.toml:
 /// ```toml
 /// [budget_downgrade]
 /// enabled           = true
@@ -413,7 +413,7 @@ fn default_qdrant_url() -> String {
     "http://localhost:6334".to_string()
 }
 fn default_qdrant_collection() -> String {
-    "velox_cache".to_string()
+    "janus_cache".to_string()
 }
 fn default_qdrant_vector_size() -> u64 {
     384
@@ -451,7 +451,7 @@ fn default_otlp_endpoint() -> String {
     "http://localhost:4317".to_string()
 }
 fn default_service_name() -> String {
-    "velox".to_string()
+    "janus".to_string()
 }
 fn default_sample_rate() -> f64 {
     1.0
@@ -466,7 +466,7 @@ pub struct TracingConfig {
     /// gRPC OTLP collector endpoint. Default: "http://localhost:4317"
     #[serde(default = "default_otlp_endpoint")]
     pub otlp_endpoint: String,
-    /// Service name embedded in trace metadata. Default: "velox"
+    /// Service name embedded in trace metadata. Default: "janus"
     #[serde(default = "default_service_name")]
     pub service_name: String,
     /// Sampling rate [0.0, 1.0]. 1.0 = 100%, 0.1 = 10%. Default: 1.0
@@ -532,13 +532,13 @@ impl From<&Config> for RuntimeConfig {
 }
 
 impl Config {
-    /// Load configuration from velox.toml (optional) then environment variables.
+    /// Load configuration from janus.toml (optional) then environment variables.
     ///
     /// Environment variables always win. `DATABASE_URL` maps to `database_url`,
     /// `JWT_SECRET` maps to `jwt_secret`, etc.
     pub fn load() -> Result<Self> {
         let cfg = config::Config::builder()
-            .add_source(config::File::with_name("velox").required(false))
+            .add_source(config::File::with_name("janus").required(false))
             .add_source(
                 config::Environment::default()
                     .separator("__")

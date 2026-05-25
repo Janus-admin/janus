@@ -5,17 +5,17 @@
 //
 // Most tests here are pure unit tests of `check_budget()` — no network or
 // database required.  One integration test uses wiremock to verify the
-// X-Velox-Downgraded header is present on a live request.
+// X-Janus-Downgraded header is present on a live request.
 
 mod common;
 
-use rust_decimal::Decimal;
-use std::str::FromStr;
-use velox::{
+use janus::{
     config::BudgetDowngradeConfig,
     middleware::budget::{check_budget, DowngradeDecision},
     models::api_key::ApiKey,
 };
+use rust_decimal::Decimal;
+use std::str::FromStr;
 use wiremock::{
     matchers::{method, path},
     Mock, ResponseTemplate,
@@ -31,7 +31,7 @@ fn make_key(budget_limit: Option<&str>, budget_used: &str) -> ApiKey {
         key_sha256: None,
         previous_key_sha256: None,
         rotation_expires_at: None,
-        key_prefix: "vx-sk-test".into(),
+        key_prefix: "jn-sk-test".into(),
         workspace_id: None,
         budget_limit: budget_limit.map(|s| Decimal::from_str(s).unwrap()),
         budget_used: Decimal::from_str(budget_used).unwrap(),
@@ -210,7 +210,7 @@ fn v4_4_header_value_empty_for_none() {
     assert_eq!(DowngradeDecision::None.header_value(), "");
 }
 
-// ── Integration test: X-Velox-Downgraded header ───────────────────────────────
+// ── Integration test: X-Janus-Downgraded header ───────────────────────────────
 
 #[tokio::test]
 async fn v4_4_downgrade_header_set_when_triggered() {
@@ -248,12 +248,12 @@ async fn v4_4_downgrade_header_set_when_triggered() {
     assert_eq!(resp.status(), 200);
     let downgraded_header = resp
         .headers()
-        .get("x-velox-downgraded")
+        .get("x-janus-downgraded")
         .and_then(|h| h.to_str().ok());
     assert_eq!(
         downgraded_header,
         Some("cost_optimized"),
-        "X-Velox-Downgraded header must be set when downgrade triggers"
+        "X-Janus-Downgraded header must be set when downgrade triggers"
     );
 
     mock_server.verify().await;
@@ -294,8 +294,8 @@ async fn v4_4_no_downgrade_header_when_under_threshold() {
 
     assert_eq!(resp.status(), 200);
     assert!(
-        resp.headers().get("x-velox-downgraded").is_none(),
-        "X-Velox-Downgraded must not be set when under threshold"
+        resp.headers().get("x-janus-downgraded").is_none(),
+        "X-Janus-Downgraded must not be set when under threshold"
     );
 
     mock_server.verify().await;

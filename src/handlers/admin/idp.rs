@@ -33,7 +33,7 @@ pub struct CreateIdpRequest {
     pub client_id: String,
     /// Plaintext secret — stored encrypted at rest using the server's encryption_key.
     pub client_secret: String,
-    /// Optional: map IdP group names to Velox roles.
+    /// Optional: map IdP group names to Janus roles.
     /// Example: `{ "engineering": "ApiManager", "admins": "Admin" }`
     #[serde(default)]
     pub group_role_map: Value,
@@ -61,10 +61,7 @@ impl TryFrom<db_idp::IdentityProvider> for IdpView {
             .as_str()
             .unwrap_or("")
             .to_string();
-        let client_id = idp.config["client_id"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let client_id = idp.config["client_id"].as_str().unwrap_or("").to_string();
         Ok(IdpView {
             id: idp.id,
             workspace_id: idp.workspace_id,
@@ -140,7 +137,7 @@ pub async fn create_idp(
     } else if state.config.encryption_key.is_empty() {
         tracing::warn!(
             "encryption_key not configured — storing OIDC client_secret in plaintext. \
-             Set encryption_key in velox.toml for production use."
+             Set encryption_key in janus.toml for production use."
         );
         req.client_secret.clone()
     } else {

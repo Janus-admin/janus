@@ -65,9 +65,9 @@ where
 /// Drop-in replacement for the OpenAI Chat Completions endpoint.
 /// Supports both non-streaming (default) and SSE streaming (`"stream": true`).
 ///
-/// Request header `X-Velox-Cache: false` bypasses the cache for that request.
-/// Response header `X-Velox-Cache-Hit: exact` is present on exact cache hits.
-/// Response header `X-Velox-Cache-Hit: semantic` + `X-Velox-Cache-Similarity: 0.97`
+/// Request header `X-Janus-Cache: false` bypasses the cache for that request.
+/// Response header `X-Janus-Cache-Hit: exact` is present on exact cache hits.
+/// Response header `X-Janus-Cache-Hit: semantic` + `X-Janus-Cache-Similarity: 0.97`
 /// are present on semantic cache hits.
 #[utoipa::path(
     post,
@@ -94,13 +94,13 @@ pub async fn chat_completions(
 ) -> impl IntoResponse {
     // Root span for this gateway request.
     // W3C `traceparent` from the incoming request becomes the parent context so
-    // end-to-end traces are linked when Velox sits behind an instrumented caller.
+    // end-to-end traces are linked when Janus sits behind an instrumented caller.
     let span = tracing::info_span!(
-        "velox.request",
+        "janus.request",
         otel.kind = "server",
-        velox.model = %request.model,
-        velox.api_key_id = %api_key.id,
-        velox.cache_hit = tracing::field::Empty,
+        janus.model = %request.model,
+        janus.api_key_id = %api_key.id,
+        janus.cache_hit = tracing::field::Empty,
         http.status_code = tracing::field::Empty,
     );
     {
@@ -120,7 +120,7 @@ async fn chat_completions_inner(
 ) -> impl IntoResponse {
     // Budget gate — also returns a DowngradeDecision when spend nears the limit.
     let downgrade = {
-        let result = tracing::info_span!("velox.budget.check")
+        let result = tracing::info_span!("janus.budget.check")
             .in_scope(|| check_budget(&api_key, &state.config.budget_downgrade));
         match result {
             Ok(d) => d,
@@ -144,7 +144,7 @@ async fn chat_completions_inner(
         }
         Ok::<(), AppError>(())
     }
-    .instrument(tracing::info_span!("velox.rate_limit.check"))
+    .instrument(tracing::info_span!("janus.rate_limit.check"))
     .await;
     if let Err(e) = rate_limit_result {
         return e.into_response();
@@ -180,17 +180,17 @@ async fn chat_completions_inner(
         }
     }
 
-    // ── Prompt injection (X-Velox-Prompt header) ─────────────────────────────
+    // ── Prompt injection (X-Janus-Prompt header) ─────────────────────────────
     // If the caller supplies a prompt ID we load the active version, render the
-    // template with variables from X-Velox-Variables, and prepend the result to
+    // template with variables from X-Janus-Variables, and prepend the result to
     // the messages array.  Requests without this header are unaffected.
     let mut request = request;
     let prompt_version_id: Option<Uuid> = if let Some(pid_str) =
-        headers.get("x-velox-prompt").and_then(|v| v.to_str().ok())
+        headers.get("x-janus-prompt").and_then(|v| v.to_str().ok())
     {
         match Uuid::parse_str(pid_str) {
             Err(_) => {
-                return AppError::BadRequest("X-Velox-Prompt must be a valid UUID".to_string())
+                return AppError::BadRequest("X-Janus-Prompt must be a valid UUID".to_string())
                     .into_response();
             }
             Ok(prompt_id) => match db::prompts::get_active_versions(&state.pool, prompt_id).await {
@@ -218,10 +218,10 @@ async fn chat_completions_inner(
     // Snapshot mutable config once per request.
     let rc = state.runtime_config.read().await;
 
-    // Bypass cache when disabled globally or when the client sends X-Velox-Cache: false.
+    // Bypass cache when disabled globally or when the client sends X-Janus-Cache: false.
     let explicit_bypass = !rc.cache_enabled
         || headers
-            .get("x-velox-cache")
+            .get("x-janus-cache")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.eq_ignore_ascii_case("false"))
             .unwrap_or(false);
@@ -273,7 +273,7 @@ async fn chat_completions_inner(
         .cloned()
         .unwrap_or_default();
 
-    // V5-L3: extract cost tags from metadata field + X-Velox-Tags header.
+    // V5-L3: extract cost tags from metadata field + X-Janus-Tags header.
     let tags = extract_tags(&request, &headers);
 
     if request.stream == Some(true) {
@@ -302,13 +302,13 @@ async fn chat_completions_inner(
                 attach_cache_headers(response.headers_mut(), &cache_hit);
                 if time_sensitive {
                     response.headers_mut().insert(
-                        "x-velox-cache-skip",
+                        "x-janus-cache-skip",
                         HeaderValue::from_static("time_sensitive"),
                     );
                 }
                 if downgrade_triggered {
                     if let Ok(v) = HeaderValue::from_str(downgrade.header_value()) {
-                        response.headers_mut().insert("x-velox-downgraded", v);
+                        response.headers_mut().insert("x-janus-downgraded", v);
                     }
                 }
                 broadcast_event(
@@ -387,13 +387,13 @@ async fn chat_completions_inner(
                         attach_cache_headers(response.headers_mut(), &cache_hit);
                         if time_sensitive {
                             response.headers_mut().insert(
-                                "x-velox-cache-skip",
+                                "x-janus-cache-skip",
                                 HeaderValue::from_static("time_sensitive"),
                             );
                         }
                         if downgrade_triggered {
                             if let Ok(v) = HeaderValue::from_str(downgrade.header_value()) {
-                                response.headers_mut().insert("x-velox-downgraded", v);
+                                response.headers_mut().insert("x-janus-downgraded", v);
                             }
                         }
                         response
@@ -872,7 +872,7 @@ fn select_version_by_weight(
     &versions[versions.len() - 1]
 }
 
-/// Extract cost tags from the request body (`metadata` field) and `X-Velox-Tags` header.
+/// Extract cost tags from the request body (`metadata` field) and `X-Janus-Tags` header.
 ///
 /// Merge order: body metadata first, then header values (header wins on key collision).
 /// Returns an empty JSON object when neither source provides tags.
@@ -890,7 +890,7 @@ pub(crate) fn extract_tags(
         }
     }
 
-    if let Some(header_val) = headers.get("x-velox-tags").and_then(|v| v.to_str().ok()) {
+    if let Some(header_val) = headers.get("x-janus-tags").and_then(|v| v.to_str().ok()) {
         for pair in header_val.split(',') {
             let pair = pair.trim();
             if let Some((k, v)) = pair.split_once('=') {
@@ -905,11 +905,11 @@ pub(crate) fn extract_tags(
     serde_json::Value::Object(map)
 }
 
-/// Parse `X-Velox-Variables: {"key": "value"}` header into a HashMap.
+/// Parse `X-Janus-Variables: {"key": "value"}` header into a HashMap.
 /// Returns an empty map if the header is absent or invalid JSON.
 fn parse_variables_header(headers: &HeaderMap) -> HashMap<String, String> {
     headers
-        .get("x-velox-variables")
+        .get("x-janus-variables")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| serde_json::from_str::<HashMap<String, String>>(s).ok())
         .unwrap_or_default()
@@ -1232,12 +1232,12 @@ fn attach_cache_headers(headers: &mut axum::http::HeaderMap, hit: &CacheHit) {
     match hit {
         CacheHit::None => {}
         CacheHit::Exact => {
-            headers.insert("x-velox-cache-hit", HeaderValue::from_static("exact"));
+            headers.insert("x-janus-cache-hit", HeaderValue::from_static("exact"));
         }
         CacheHit::Semantic(score) => {
-            headers.insert("x-velox-cache-hit", HeaderValue::from_static("semantic"));
+            headers.insert("x-janus-cache-hit", HeaderValue::from_static("semantic"));
             if let Ok(v) = HeaderValue::from_str(&format!("{score:.4}")) {
-                headers.insert("x-velox-cache-similarity", v);
+                headers.insert("x-janus-cache-similarity", v);
             }
         }
     }

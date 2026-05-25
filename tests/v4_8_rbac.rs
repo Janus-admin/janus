@@ -18,8 +18,8 @@ use uuid::Uuid;
 
 async fn connect_pool() -> PgPool {
     common::load_env();
-    let config = velox::config::Config::load().expect("Failed to load config");
-    velox::db::pool::connect(&config.database_url)
+    let config = janus::config::Config::load().expect("Failed to load config");
+    janus::db::pool::connect(&config.database_url)
         .await
         .expect("Failed to connect to test database")
 }

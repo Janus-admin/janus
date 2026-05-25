@@ -1,4 +1,4 @@
-//! `velox config` — read and update runtime-mutable configuration via the admin API.
+//! `janus config` — read and update runtime-mutable configuration via the admin API.
 
 use anyhow::{bail, Context};
 use clap::Subcommand;

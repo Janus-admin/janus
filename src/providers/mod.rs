@@ -14,7 +14,7 @@ pub mod groq;
 pub mod openai;
 
 // ── OpenAI-compatible request/response types ──────────────────────────────────
-// These are the canonical types used throughout Velox. Provider adapters
+// These are the canonical types used throughout Janus. Provider adapters
 // translate to/from their own wire formats internally.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +68,7 @@ pub struct ChatCompletionRequest {
     pub parallel_tool_calls: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<serde_json::Value>,
-    /// OpenAI `metadata` field — Velox reads tag keys from here for cost attribution.
+    /// OpenAI `metadata` field — Janus reads tag keys from here for cost attribution.
     /// Passed through to providers unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,

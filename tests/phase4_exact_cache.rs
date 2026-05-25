@@ -40,12 +40,12 @@ async fn send(base: &str, body: &serde_json::Value) -> reqwest::Response {
         .expect("request must reach server")
 }
 
-/// Send a request with `X-Velox-Cache: false` to bypass the cache.
+/// Send a request with `X-Janus-Cache: false` to bypass the cache.
 async fn send_bypass(base: &str, body: &serde_json::Value) -> reqwest::Response {
     reqwest::Client::new()
         .post(format!("{}/v1/chat/completions", base))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(body)
         .send()
         .await
@@ -54,7 +54,7 @@ async fn send_bypass(base: &str, body: &serde_json::Value) -> reqwest::Response 
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-/// Identical requests must return `X-Velox-Cache-Hit: exact` on the second call.
+/// Identical requests must return `X-Janus-Cache-Hit: exact` on the second call.
 #[tokio::test]
 #[serial]
 async fn phase4_identical_request_returns_exact_cache_hit() {
@@ -67,8 +67,8 @@ async fn phase4_identical_request_returns_exact_cache_hit() {
     let resp1 = send(&base, &body).await;
     assert_eq!(resp1.status(), 200, "first request must succeed");
     assert!(
-        resp1.headers().get("x-velox-cache-hit").is_none(),
-        "first request must NOT have X-Velox-Cache-Hit header"
+        resp1.headers().get("x-janus-cache-hit").is_none(),
+        "first request must NOT have X-Janus-Cache-Hit header"
     );
 
     // Second request: cache hit — header must be present with value "exact".
@@ -77,10 +77,10 @@ async fn phase4_identical_request_returns_exact_cache_hit() {
     assert_eq!(
         resp2
             .headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .and_then(|v| v.to_str().ok()),
         Some("exact"),
-        "second request must have X-Velox-Cache-Hit: exact"
+        "second request must have X-Janus-Cache-Hit: exact"
     );
 }
 
@@ -105,7 +105,7 @@ async fn phase4_exact_cache_response_time_under_10ms() {
     assert_eq!(resp.status(), 200, "cache-hit request must succeed");
     assert_eq!(
         resp.headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .and_then(|v| v.to_str().ok()),
         Some("exact"),
         "response must come from cache"
@@ -117,7 +117,7 @@ async fn phase4_exact_cache_response_time_under_10ms() {
     );
 }
 
-/// `X-Velox-Cache: false` request header must bypass the cache entirely.
+/// `X-Janus-Cache: false` request header must bypass the cache entirely.
 /// Both requests must reach the provider; neither response has a cache-hit header.
 #[tokio::test]
 #[serial]
@@ -130,14 +130,14 @@ async fn phase4_cache_bypass_header_skips_cache() {
     let resp1 = send_bypass(&base, &body).await;
     assert_eq!(resp1.status(), 200, "first bypass request must succeed");
     assert!(
-        resp1.headers().get("x-velox-cache-hit").is_none(),
+        resp1.headers().get("x-janus-cache-hit").is_none(),
         "bypass response must not have cache-hit header"
     );
 
     let resp2 = send_bypass(&base, &body).await;
     assert_eq!(resp2.status(), 200, "second bypass request must succeed");
     assert!(
-        resp2.headers().get("x-velox-cache-hit").is_none(),
+        resp2.headers().get("x-janus-cache-hit").is_none(),
         "second bypass response must not have cache-hit header"
     );
 
@@ -158,7 +158,7 @@ async fn phase4_cache_stats_show_correct_savings() {
     // Flush any cache entries from concurrent Phase 5 tests to get a clean baseline.
     {
         common::load_env();
-        let config = velox::config::Config::load().expect("config must load");
+        let config = janus::config::Config::load().expect("config must load");
         let pool = sqlx::PgPool::connect(&config.database_url)
             .await
             .expect("must connect");
@@ -184,7 +184,7 @@ async fn phase4_cache_stats_show_correct_savings() {
     assert_eq!(r2.status(), 200);
     assert_eq!(
         r2.headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .and_then(|v| v.to_str().ok()),
         Some("exact")
     );
@@ -242,7 +242,7 @@ async fn phase4_flush_cache_causes_miss_on_next_request() {
     assert_eq!(r2.status(), 200);
     assert_eq!(
         r2.headers()
-            .get("x-velox-cache-hit")
+            .get("x-janus-cache-hit")
             .and_then(|v| v.to_str().ok()),
         Some("exact"),
         "second request must be a cache hit before flush"
@@ -263,7 +263,7 @@ async fn phase4_flush_cache_causes_miss_on_next_request() {
     let r3 = send(&base, &body).await;
     assert_eq!(r3.status(), 200, "post-flush request must succeed");
     assert!(
-        r3.headers().get("x-velox-cache-hit").is_none(),
+        r3.headers().get("x-janus-cache-hit").is_none(),
         "post-flush request must NOT have cache-hit header"
     );
 

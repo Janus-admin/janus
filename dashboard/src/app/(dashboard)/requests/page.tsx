@@ -79,7 +79,7 @@ function exportCsv(rows: GatewayRequest[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `velox-requests-${format(new Date(), "yyyy-MM-dd")}.csv`;
+  a.download = `janus-requests-${format(new Date(), "yyyy-MM-dd")}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

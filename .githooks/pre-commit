@@ -1,5 +1,5 @@
 #!/bin/sh
-# Velox pre-commit hook
+# Janus pre-commit hook
 # Prevents committing broken code.
 # Install: git config core.hooksPath .githooks
 

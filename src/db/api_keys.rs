@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-/// Generate a fresh `vx-sk-<48 alphanumeric chars>` key (54 chars total).
+/// Generate a fresh `jn-sk-<48 alphanumeric chars>` key (54 chars total).
 pub fn generate_key() -> String {
     use rand::Rng;
     let suffix: String = (0..48)
@@ -17,7 +17,7 @@ pub fn generate_key() -> String {
             CHARSET[idx] as char
         })
         .collect();
-    format!("vx-sk-{}", suffix)
+    format!("jn-sk-{}", suffix)
 }
 
 /// Compute the hex-encoded SHA-256 of `key` for dashmap storage.

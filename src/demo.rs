@@ -1,12 +1,12 @@
 // src/demo.rs — V4-0 Demo Mode
 //
-// `velox --demo` starts with a mock LLM provider that returns canned responses,
+// `janus --demo` starts with a mock LLM provider that returns canned responses,
 // a pre-seeded demo admin user, 2 API keys, and 100 historical requests.
 // No real LLM API keys or external network access required.
 //
 // Demo mode requires the `sqlite` feature for in-memory database support.
-// To start: velox --demo
-// Login: admin@velox.local / demo-password
+// To start: janus --demo
+// Login: admin@janus.local / demo-password
 
 use crate::{
     db::DbPool,
@@ -24,7 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // ── DemoProvider ──────────────────────────────────────────────────────────────
 
 /// Mock provider that returns pre-canned responses without any network calls.
-/// Used in `velox --demo` so evaluators can experience Velox without API keys.
+/// Used in `janus --demo` so evaluators can experience Janus without API keys.
 pub struct DemoProvider;
 
 #[async_trait]
@@ -60,7 +60,7 @@ impl Provider for DemoProvider {
 
         let reply = format!(
             "[Demo mode] You said: \"{}\". \
-             This is a canned response from the Velox demo provider. \
+             This is a canned response from the Janus demo provider. \
              Configure a real provider to get actual LLM responses.",
             &user_content[..user_content.len().min(80)]
         );
@@ -111,7 +111,7 @@ impl Provider for DemoProvider {
             " response",
             " from",
             " the",
-            " Velox",
+            " Janus",
             " demo",
             " provider.",
         ];
@@ -193,7 +193,7 @@ impl Provider for DemoProvider {
 // ── Demo data seeding ─────────────────────────────────────────────────────────
 
 /// Seed demo data into the given pool:
-/// - demo admin user (admin@velox.local / demo-password)
+/// - demo admin user (admin@janus.local / demo-password)
 /// - 2 API keys
 /// - 100 historical request records with realistic timestamps and costs
 pub async fn seed_demo_data(pool: &DbPool) -> anyhow::Result<()> {
@@ -211,7 +211,7 @@ async fn seed_demo_user(pool: &DbPool) -> anyhow::Result<()> {
          ON CONFLICT (email) DO NOTHING",
     )
     .bind(uuid::Uuid::new_v4())
-    .bind("admin@velox.local")
+    .bind("admin@janus.local")
     .bind(password_hash)
     .bind("Demo Admin")
     .execute(pool)
@@ -222,11 +222,11 @@ async fn seed_demo_user(pool: &DbPool) -> anyhow::Result<()> {
 async fn seed_demo_api_keys(pool: &DbPool) -> anyhow::Result<()> {
     let keys = [
         (
-            "vx-sk-DemoKey1111111111111111111111111111111111111111",
+            "jn-sk-DemoKey1111111111111111111111111111111111111111",
             "Demo Key 1 (production)",
         ),
         (
-            "vx-sk-DemoKey2222222222222222222222222222222222222222",
+            "jn-sk-DemoKey2222222222222222222222222222222222222222",
             "Demo Key 2 (staging)",
         ),
     ];

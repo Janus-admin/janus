@@ -1,6 +1,6 @@
-# VELOX V3 — Engineering Roadmap
+# JANUS V3 — Engineering Roadmap
 > Built on V2 (all 8 phases complete, 2026-05-23).
-> **If you are Claude: read CLAUDE.md first, then VELOX_V2_ROADMAP.md §13, then this file.**
+> **If you are Claude: read CLAUDE.md first, then JANUS_V2_ROADMAP.md §13, then this file.**
 
 ---
 
@@ -147,7 +147,7 @@ pub fn clear(&self) {
 ### 3.3 Fix Benchmarks
 
 The `benches/` directory has 4 files that are untracked (not in git). They reference
-`velox::` types and must compile cleanly. Add them to git and verify they pass:
+`janus::` types and must compile cleanly. Add them to git and verify they pass:
 
 ```bash
 cargo bench --no-run   # must compile
@@ -246,7 +246,7 @@ pub struct HnswIndex {
 }
 ```
 
-Parameters (configurable via `velox.toml`):
+Parameters (configurable via `janus.toml`):
 ```toml
 [semantic_cache]
 backend        = "hnsw"     # "linear" (default) or "hnsw"
@@ -357,33 +357,33 @@ This closes the biggest enterprise observability gap.
 Every call to `POST /v1/chat/completions` produces a root span with child spans:
 
 ```
-velox.request [root]
-├── velox.cache.exact_lookup
-├── velox.cache.semantic_lookup     (if semantic enabled)
-├── velox.rate_limit.check
-├── velox.budget.check
-├── velox.provider.call [provider=openai, model=gpt-4o]
-│   └── velox.provider.http         (raw HTTP roundtrip)
-└── velox.cache.insert              (on miss + successful response)
+janus.request [root]
+├── janus.cache.exact_lookup
+├── janus.cache.semantic_lookup     (if semantic enabled)
+├── janus.rate_limit.check
+├── janus.budget.check
+├── janus.provider.call [provider=openai, model=gpt-4o]
+│   └── janus.provider.http         (raw HTTP roundtrip)
+└── janus.cache.insert              (on miss + successful response)
 ```
 
 Span attributes (OpenTelemetry semantic conventions):
 ```
-velox.provider          = "openai"
-velox.model             = "gpt-4o"
-velox.cache_hit         = "exact" | "semantic" | "none"
-velox.cache_similarity  = 0.9312   (semantic only)
-velox.prompt_tokens     = 142
-velox.completion_tokens = 88
-velox.cost_usd          = 0.00043
-velox.api_key_id        = "uuid..."
+janus.provider          = "openai"
+janus.model             = "gpt-4o"
+janus.cache_hit         = "exact" | "semantic" | "none"
+janus.cache_similarity  = 0.9312   (semantic only)
+janus.prompt_tokens     = 142
+janus.completion_tokens = 88
+janus.cost_usd          = 0.00043
+janus.api_key_id        = "uuid..."
 http.status_code        = 200
 ```
 
 ### 5.2 Trace Context Propagation
 
 Incoming requests with `traceparent` header (W3C Trace Context) are linked to the
-upstream trace. This enables end-to-end tracing when Velox sits behind another
+upstream trace. This enables end-to-end tracing when Janus sits behind another
 instrumented service.
 
 Outgoing requests to providers carry the `traceparent` header so provider-side
@@ -397,7 +397,7 @@ Configuration:
 [tracing]
 enabled          = false           # default off — zero overhead when disabled
 otlp_endpoint    = "http://localhost:4317"   # gRPC OTLP
-service_name     = "velox"
+service_name     = "janus"
 sample_rate      = 1.0             # 1.0 = 100%, 0.1 = 10%
 ```
 
@@ -712,7 +712,7 @@ limited filter support.
 | `end_time` | RFC3339 | Inclusive upper bound |
 | `has_cache_hit` | bool | Only cached or only live responses |
 
-Response adds `X-Velox-Audit-Hash` header: SHA-256 of the response body, so
+Response adds `X-Janus-Audit-Hash` header: SHA-256 of the response body, so
 the caller can verify the log hasn't been tampered with since export.
 
 ### New Migration
@@ -834,7 +834,7 @@ async-trait = "0.1"   # if not already present
 | V3-2 | OpenTelemetry | ✅ Complete (2026-05-24) | `src/telemetry.rs`, span tree, OTLP gRPC, W3C propagation, 16 tests |
 | V3-3 | Streaming Hardening | ✅ Complete (2026-05-24) | select!+tx.closed() disconnect, bounded-channel backpressure, mid-stream error status |
 | V3-4 | Plugin Middleware | ✅ Complete (2026-05-24) | RequestPlugin trait, plugin chain, PiiRedactionPlugin, ContentLengthPlugin, 13 tests |
-| V3-5 | Security Hardening | ✅ Complete (2026-05-24) | mTLS validation, key rotation with grace period, extended audit log + X-Velox-Audit-Hash, 16 tests |
+| V3-5 | Security Hardening | ✅ Complete (2026-05-24) | mTLS validation, key rotation with grace period, extended audit log + X-Janus-Audit-Hash, 16 tests |
 
 ---
 

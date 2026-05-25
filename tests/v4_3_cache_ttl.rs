@@ -8,11 +8,11 @@
 
 mod common;
 
-use std::sync::Arc;
-use velox::{
+use janus::{
     cache::{time_guard::TimeGuard, CacheEngine},
     providers::ChatCompletionResponse,
 };
+use std::sync::Arc;
 use wiremock::{
     matchers::{method, path},
     Mock, ResponseTemplate,
@@ -149,7 +149,7 @@ async fn v4_3_plain_insert_has_no_expiry() {
 
 // ── Unit tests: TimeGuard ─────────────────────────────────────────────────────
 
-fn req_with(content: &str) -> velox::providers::ChatCompletionRequest {
+fn req_with(content: &str) -> janus::providers::ChatCompletionRequest {
     serde_json::from_value(serde_json::json!({
         "model": "gpt-4o-mini",
         "messages": [{ "role": "user", "content": content }]
@@ -189,7 +189,7 @@ fn v4_3_custom_pattern_added_via_config() {
     assert!(!guard.is_time_sensitive(&req_with("What is the weather forecast?")));
 }
 
-// ── Integration tests: X-Velox-Cache-Skip header ─────────────────────────────
+// ── Integration tests: X-Janus-Cache-Skip header ─────────────────────────────
 
 #[tokio::test]
 async fn v4_3_skip_header_set_on_time_sensitive_request() {
@@ -216,11 +216,11 @@ async fn v4_3_skip_header_set_on_time_sensitive_request() {
         .expect("request failed");
 
     assert_eq!(resp.status(), 200);
-    let skip_header = resp.headers().get("x-velox-cache-skip");
+    let skip_header = resp.headers().get("x-janus-cache-skip");
     assert_eq!(
         skip_header.and_then(|h| h.to_str().ok()),
         Some("time_sensitive"),
-        "time-sensitive requests must have X-Velox-Cache-Skip: time_sensitive header"
+        "time-sensitive requests must have X-Janus-Cache-Skip: time_sensitive header"
     );
 }
 
@@ -251,10 +251,10 @@ async fn v4_3_regression_exact_cache_hit_still_works_without_ttl() {
         .expect("first request failed");
     assert_eq!(r1.status(), 200);
     assert!(
-        r1.headers().get("x-velox-cache-hit").is_none()
+        r1.headers().get("x-janus-cache-hit").is_none()
             || r1
                 .headers()
-                .get("x-velox-cache-hit")
+                .get("x-janus-cache-hit")
                 .map(|h| h != "exact")
                 .unwrap_or(true),
         "first request should not be a cache hit"
@@ -272,7 +272,7 @@ async fn v4_3_regression_exact_cache_hit_still_works_without_ttl() {
 
     let hit_header = r2
         .headers()
-        .get("x-velox-cache-hit")
+        .get("x-janus-cache-hit")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
     assert_eq!(

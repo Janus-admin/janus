@@ -22,10 +22,10 @@ pub fn random_port_addr() -> String {
     format!("127.0.0.1:{}", port)
 }
 
-/// A valid Velox API key format for testing (exactly 54 chars: "vx-sk-" + 48 alphanumeric).
+/// A valid Janus API key format for testing (exactly 54 chars: "jn-sk-" + 48 alphanumeric).
 /// This key is pre-seeded into the key_cache by spawn_app so all auth tests work.
 pub fn test_api_key() -> &'static str {
-    "vx-sk-TestAPIKey00000000000000000000000000000000000000"
+    "jn-sk-TestAPIKey00000000000000000000000000000000000000"
 }
 
 /// Authorization header value for the test API key (gateway routes only).
@@ -45,8 +45,8 @@ pub async fn admin_auth_header(base_url: &str) -> String {
     client
         .post(format!("{}/api/v1/auth/register", base_url))
         .json(&serde_json::json!({
-            "email": "test-admin@velox.test",
-            "password": "velox-test-password",
+            "email": "test-admin@janus.test",
+            "password": "janus-test-password",
             "name": "Test Admin"
         }))
         .send()
@@ -57,8 +57,8 @@ pub async fn admin_auth_header(base_url: &str) -> String {
     let resp = client
         .post(format!("{}/api/v1/auth/login", base_url))
         .json(&serde_json::json!({
-            "email": "test-admin@velox.test",
-            "password": "velox-test-password"
+            "email": "test-admin@janus.test",
+            "password": "janus-test-password"
         }))
         .send()
         .await
@@ -182,7 +182,7 @@ impl Default for TestAppOpts {
 
 // ── Public spawn helpers ──────────────────────────────────────────────────────
 
-/// Start the full Velox application on a random port and return the base URL.
+/// Start the full Janus application on a random port and return the base URL.
 ///
 /// The test API key (`test_api_key()`) is pre-seeded into the in-memory key cache
 /// so gateway auth tests work without inserting DB rows.
@@ -353,7 +353,7 @@ pub async fn spawn_app_with_cluster_warmed(openai_base_url: String, node_id: &st
 async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     load_env();
 
-    let mut config = velox::config::Config::load().expect("Failed to load config");
+    let mut config = janus::config::Config::load().expect("Failed to load config");
 
     // Override the rate-limit window if requested (e.g. 1 s for fast tests).
     config.rate_limit_window_secs = opts.rate_limit_window_secs;
@@ -371,15 +371,15 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         }
     }
 
-    let pool = velox::db::pool::connect(&config.database_url)
+    let pool = janus::db::pool::connect(&config.database_url)
         .await
         .expect("Failed to connect to test database");
 
     // ── Build provider list ───────────────────────────────────────────────────
-    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
-    let mut providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = Vec::new();
+    let mut providers: Vec<std::sync::Arc<dyn janus::providers::Provider>> = Vec::new();
 
     if let Some(ref base_url) = opts.openai_base_url {
         // Explicit URL override (wiremock): always add, ignore env key emptiness.
@@ -389,18 +389,18 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
             config.openai_api_key.clone()
         };
         providers.push(std::sync::Arc::new(
-            velox::providers::openai::OpenAIProvider::with_base_url(api_key, base_url.clone(), 1),
+            janus::providers::openai::OpenAIProvider::with_base_url(api_key, base_url.clone(), 1),
         ));
     } else {
         // No override: use real API keys from env if present.
         if !config.openai_api_key.is_empty() {
             providers.push(std::sync::Arc::new(
-                velox::providers::openai::OpenAIProvider::new(config.openai_api_key.clone(), 10),
+                janus::providers::openai::OpenAIProvider::new(config.openai_api_key.clone(), 10),
             ));
         }
         if !config.anthropic_api_key.is_empty() {
             providers.push(std::sync::Arc::new(
-                velox::providers::anthropic::AnthropicProvider::new(
+                janus::providers::anthropic::AnthropicProvider::new(
                     config.anthropic_api_key.clone(),
                     20,
                 ),
@@ -416,7 +416,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
             config.openai_api_key.clone()
         };
         providers.push(std::sync::Arc::new(
-            velox::providers::openai::OpenAIProvider::with_base_url(
+            janus::providers::openai::OpenAIProvider::with_base_url(
                 api_key,
                 secondary_url.clone(),
                 2,
@@ -426,8 +426,8 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     // ── Seed the test API key into the in-memory cache ────────────────────────
     let test_key_str = test_api_key();
-    let test_key_bytes = velox::db::api_keys::sha256_bytes(test_key_str);
-    let test_key_entry = velox::models::api_key::ApiKey {
+    let test_key_bytes = janus::db::api_keys::sha256_bytes(test_key_str);
+    let test_key_entry = janus::models::api_key::ApiKey {
         id: Uuid::new_v4(),
         name: "Test Key".to_string(),
         key_hash: "placeholder".to_string(),
@@ -473,7 +473,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     // ── Load additional DB keys if requested ─────────────────────────────────
     if opts.load_keys_from_db {
-        if let Ok(entries) = velox::db::api_keys::load_all_active(&pool).await {
+        if let Ok(entries) = janus::db::api_keys::load_all_active(&pool).await {
             for (hash, key) in entries {
                 key_cache.insert(hash, key);
             }
@@ -482,7 +482,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     // ── Build cache engine ────────────────────────────────────────────────────
     let cache = if opts.load_embedding_model {
-        let model = velox::cache::embedding::EmbeddingModel::load(
+        let model = janus::cache::embedding::EmbeddingModel::load(
             &config.embedding_model_path,
             &config.embedding_tokenizer_path,
         )
@@ -490,7 +490,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
             "Embedding model must be loadable for Phase 5 tests — \
              ensure models/all-MiniLM-L6-v2.onnx and models/tokenizer.json exist",
         );
-        let engine = std::sync::Arc::new(velox::cache::CacheEngine::new_with_semantic(
+        let engine = std::sync::Arc::new(janus::cache::CacheEngine::new_with_semantic(
             std::sync::Arc::new(model),
             config.semantic_cache_threshold as f32,
         ));
@@ -498,7 +498,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         engine.warm_from_db(&pool).await;
         engine
     } else {
-        let engine = std::sync::Arc::new(velox::cache::CacheEngine::new());
+        let engine = std::sync::Arc::new(janus::cache::CacheEngine::new());
         if opts.warm_cache {
             // Warm the exact cache from DB without loading the embedding model.
             engine.warm_from_db(&pool).await;
@@ -506,16 +506,16 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         engine
     };
 
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+    let registry = std::sync::Arc::new(janus::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
     ));
 
     let rate_limiter =
-        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+        janus::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
 
     let cluster_rate_limiter = if config.cluster.enabled {
-        Some(velox::cluster::rate_limit::DbRateLimiter::new(
+        Some(janus::cluster::rate_limit::DbRateLimiter::new(
             pool.clone(),
             config.rate_limit_window_secs,
         ))
@@ -526,14 +526,14 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
 
-    let time_guard = std::sync::Arc::new(velox::cache::time_guard::TimeGuard::new(
+    let time_guard = std::sync::Arc::new(janus::cache::time_guard::TimeGuard::new(
         &config.time_sensitive_patterns,
     ));
 
-    let state = std::sync::Arc::new(velox::state::AppState {
+    let state = std::sync::Arc::new(janus::state::AppState {
         pool,
         config,
         runtime_config,
@@ -543,17 +543,17 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         cluster_rate_limiter,
         cache,
         // Tests use the permissive default (allows all models/routes/keys).
-        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
+        semantic_policy: janus::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         // Tests start with an empty plugin chain so behavior is unchanged.
         plugins: std::sync::Arc::new(vec![]),
-        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        dedup: std::sync::Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
         time_guard,
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
     });
 
-    let app = velox::routes::create_router(state);
+    let app = janus::routes::create_router(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

@@ -1,10 +1,10 @@
 #!/bin/sh
-# cloud-init script for the Velox Lightsail VM.
+# cloud-init script for the Janus Lightsail VM.
 # Lightsail prepends its own `#!/bin/sh` SSH-CA setup, so this body must be dash-compatible.
 set -eux
 
-# Log everything to /var/log/velox-bootstrap.log
-exec >>/var/log/velox-bootstrap.log 2>&1
+# Log everything to /var/log/janus-bootstrap.log
+exec >>/var/log/janus-bootstrap.log 2>&1
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -42,8 +42,8 @@ EOF
 chmod 600 /root/.aws/credentials
 
 # 4) Lay down the app workspace.
-mkdir -p /opt/velox
-cd /opt/velox
+mkdir -p /opt/janus
+cd /opt/janus
 
 cat >.env <<EOF
 ECR_IMAGE=${ecr_image}
@@ -67,13 +67,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: velox
-      POSTGRES_USER: velox
+      POSTGRES_DB: janus
+      POSTGRES_USER: janus
       POSTGRES_PASSWORD: $${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U velox"]
+      test: ["CMD-SHELL", "pg_isready -U janus"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -84,7 +84,7 @@ services:
     ports:
       - "80:8080"
     environment:
-      DATABASE_URL: postgres://velox:$${DB_PASSWORD}@db:5432/velox
+      DATABASE_URL: postgres://janus:$${DB_PASSWORD}@db:5432/janus
       JWT_SECRET: $${JWT_SECRET}
       ENCRYPTION_KEY: $${ENCRYPTION_KEY}
       OPENAI_API_KEY: $${OPENAI_API_KEY}
@@ -113,10 +113,10 @@ aws ecr get-login-password --region "${aws_region}" \
 docker compose up -d || true
 
 # 7) Background watcher: poll for the image every 30s and start once available.
-cat >/usr/local/bin/velox-wait-for-image.sh <<'WATCHER'
+cat >/usr/local/bin/janus-wait-for-image.sh <<'WATCHER'
 #!/bin/bash
 set -eux
-cd /opt/velox
+cd /opt/janus
 for i in $(seq 1 60); do
   aws ecr get-login-password --region AWS_REGION_PLACEHOLDER \
     | docker login --username AWS --password-stdin ECR_HOST_PLACEHOLDER || true
@@ -127,9 +127,9 @@ for i in $(seq 1 60); do
   sleep 30
 done
 WATCHER
-sed -i "s|AWS_REGION_PLACEHOLDER|${aws_region}|g" /usr/local/bin/velox-wait-for-image.sh
-sed -i "s|ECR_HOST_PLACEHOLDER|${ecr_account}.dkr.ecr.${aws_region}.amazonaws.com|g" /usr/local/bin/velox-wait-for-image.sh
-chmod +x /usr/local/bin/velox-wait-for-image.sh
-nohup /usr/local/bin/velox-wait-for-image.sh >/var/log/velox-wait.log 2>&1 &
+sed -i "s|AWS_REGION_PLACEHOLDER|${aws_region}|g" /usr/local/bin/janus-wait-for-image.sh
+sed -i "s|ECR_HOST_PLACEHOLDER|${ecr_account}.dkr.ecr.${aws_region}.amazonaws.com|g" /usr/local/bin/janus-wait-for-image.sh
+chmod +x /usr/local/bin/janus-wait-for-image.sh
+nohup /usr/local/bin/janus-wait-for-image.sh >/var/log/janus-wait.log 2>&1 &
 
-echo "velox bootstrap complete"
+echo "janus bootstrap complete"

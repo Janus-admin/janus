@@ -1,4 +1,4 @@
-# VELOX — Future Backlog
+# JANUS — Future Backlog
 > Items here are real and important but not scheduled for V4 or earlier.
 > Before starting any item, create a proper roadmap section for it.
 > Nothing here is a commitment — it is a parking lot.
@@ -8,7 +8,7 @@
 ## 1. Testing & Quality Assurance
 
 ### Frontend E2E Tests (Playwright)
-**Why deferred**: Writing E2E tests requires a running Velox instance with seeded
+**Why deferred**: Writing E2E tests requires a running Janus instance with seeded
 data, and adds significant maintenance overhead. Deferred until dashboard stabilizes
 after V4-7.
 
@@ -76,7 +76,7 @@ admin-configurable rules engine (stored in DB, UI-manageable) is a separate laye
 **Dependencies**: V3-4 Plugin Middleware + V4-8 RBAC.
 
 ### Audit Log Tamper-Evident Chain
-**Why deferred**: V3-5 adds per-response hash (`X-Velox-Audit-Hash`).
+**Why deferred**: V3-5 adds per-response hash (`X-Janus-Audit-Hash`).
 A proper tamper-evident chain requires each log entry to include the hash
 of the previous entry — this is a more significant change.
 
@@ -151,11 +151,11 @@ trait method + handler, but no demand confirmed yet.
 large file uploads. More complex than completion proxying.
 
 ### Prompt Compression / Token Optimization
-**Why deferred (V3 and V4)**: Velox is a transparent proxy. Modifying prompts
+**Why deferred (V3 and V4)**: Janus is a transparent proxy. Modifying prompts
 by default violates user trust. Only acceptable as explicit opt-in.
 
 **If implemented**: Must be a V3-4 plugin, opt-in per API key, with
-`X-Velox-Compressed: true` response header so callers know the prompt was modified.
+`X-Janus-Compressed: true` response header so callers know the prompt was modified.
 Never default behavior.
 
 ---
@@ -164,7 +164,7 @@ Never default behavior.
 
 ### Python SDK
 **Why deferred**: Separate repository. OpenAI's Python SDK already works against
-Velox by changing `base_url` — a thin Velox-specific wrapper adds analytics,
+Janus by changing `base_url` — a thin Janus-specific wrapper adds analytics,
 key management helpers, and typed responses.
 
 ### Node.js / TypeScript SDK
@@ -175,7 +175,7 @@ key management helpers, and typed responses.
 alerts, workspaces as Terraform resources.
 
 ### GitHub Actions Integration
-**Why deferred**: Pre-built action to run Velox in CI for LLM-dependent test
+**Why deferred**: Pre-built action to run Janus in CI for LLM-dependent test
 suites with cost caps and caching.
 
 ---
@@ -214,11 +214,11 @@ latency, error rate — and generating monthly reports.
 
 ## 7. Developer Experience
 
-### `velox dev` — Local Development Mode
+### `janus dev` — Local Development Mode
 **Why deferred**: Currently, seeing dashboard changes requires `cargo build`.
 
 **What it covers**:
-- `velox dev` starts Rust on :8080 and Next.js dev server on :3000
+- `janus dev` starts Rust on :8080 and Next.js dev server on :3000
 - Next.js proxies API calls to Rust
 - Hot reload for dashboard changes without Rust rebuild
 - This was noted in V4 planning as "decide before V4-d"
@@ -248,7 +248,7 @@ OpsGenie. Each as a new `WebhookFormat` variant or separate `NotificationChannel
 billing, account management, multi-tenant isolation, and ops infrastructure.
 
 **What it covers**:
-- SaaS version of Velox
+- SaaS version of Janus
 - Per-workspace isolation
 - Usage-based billing
 - Managed upgrades

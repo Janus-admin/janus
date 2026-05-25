@@ -2,13 +2,13 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "velox.fullname" . }}
-  labels: {{- include "velox.labels" . | nindent 4 }}
+  name: {{ include "janus.fullname" . }}
+  labels: {{- include "janus.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "velox.fullname" . }}
+    name: {{ include "janus.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

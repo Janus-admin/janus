@@ -1,4 +1,4 @@
-# Velox on Fly.io
+# Janus on Fly.io
 
 Single-region launch. For HA, scale to 2+ machines and use a Fly Postgres HA
 cluster.
@@ -11,36 +11,36 @@ cluster.
 
 ```bash
 # 1. Create the app shell and copy this config.
-fly launch --copy-config --no-deploy --name velox
+fly launch --copy-config --no-deploy --name janus
 
 # 2. Provision Postgres (HA two-node by default).
-fly postgres create --name velox-pg --region iad --vm-size shared-cpu-1x \
+fly postgres create --name janus-pg --region iad --vm-size shared-cpu-1x \
   --initial-cluster-size 2
 
 # 3. Attach Postgres to the app (sets DATABASE_URL secret).
-fly postgres attach --app velox velox-pg
+fly postgres attach --app janus janus-pg
 
 # 4. Set the rest of the secrets.
-fly secrets set --app velox \
+fly secrets set --app janus \
   JWT_SECRET=$(openssl rand -hex 32) \
   ENCRYPTION_KEY=$(openssl rand -hex 32) \
   OPENAI_API_KEY=sk-...
 
 # 5. Create the models volume (one per region you deploy to).
-fly volumes create velox_models --region iad --size 5 --app velox
+fly volumes create janus_models --region iad --size 5 --app janus
 
 # 6. Deploy.
-fly deploy --app velox
+fly deploy --app janus
 ```
 
 ## Scaling
 
 ```bash
 # Add a second machine in the same region for HA.
-fly scale count 2 --region iad --app velox
+fly scale count 2 --region iad --app janus
 
 # Multi-region (read-only failover; Postgres needs its own multi-region story).
-fly scale count 2 --region iad --app velox
-fly scale count 1 --region fra --app velox
-fly volumes create velox_models --region fra --size 5 --app velox
+fly scale count 2 --region iad --app janus
+fly scale count 1 --region fra --app janus
+fly volumes create janus_models --region fra --size 5 --app janus
 ```

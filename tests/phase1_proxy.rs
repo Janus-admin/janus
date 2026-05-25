@@ -66,7 +66,7 @@ async fn phase1_nonexistent_api_key_returns_401() {
         .post(format!("{}/v1/chat/completions", base_url))
         .header(
             "Authorization",
-            "Bearer vx-sk-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "Bearer jn-sk-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         )
         .header("Content-Type", "application/json")
         .json(&common::minimal_chat_request())
@@ -208,7 +208,7 @@ async fn phase1_request_is_logged_with_cost() {
 
 // ─── Admin API Tests ─────────────────────────────────────────────────────────
 
-/// Creating an API key must return the key with vx-sk- prefix.
+/// Creating an API key must return the key with jn-sk- prefix.
 /// The full key is only shown once.
 #[tokio::test]
 async fn phase1_create_api_key_returns_prefixed_key() {
@@ -234,13 +234,13 @@ async fn phase1_create_api_key_returns_prefixed_key() {
         .expect("Response must contain key");
 
     assert!(
-        key.starts_with("vx-sk-"),
-        "API key must start with vx-sk-. Got: {}",
+        key.starts_with("jn-sk-"),
+        "API key must start with jn-sk-. Got: {}",
         key
     );
     assert_eq!(
         key.len(),
-        54, // "vx-sk-" (6) + 48 chars
+        54, // "jn-sk-" (6) + 48 chars
         "API key must be 54 characters total. Got: {}",
         key.len()
     );

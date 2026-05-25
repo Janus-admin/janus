@@ -2,7 +2,7 @@
 .env
 .env.local
 .env.production
-velox.toml
+janus.toml
 *.key
 *.pem
 *.cert
@@ -11,9 +11,9 @@ velox.toml
 /target/
 sqlx-data.json
 
-# ─── Velox Runtime Files ──────────────────────────────────────────────────────
-velox.db
-velox_cache.idx
+# ─── Janus Runtime Files ──────────────────────────────────────────────────────
+janus.db
+janus_cache.idx
 *.idx
 
 # ─── Node.js (dashboard) ──────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ pub fn tool_list() -> Vec<Tool> {
     vec![
         Tool {
             name: "proxy_llm_request",
-            description: "Send a chat completion request through the Velox gateway",
+            description: "Send a chat completion request through the Janus gateway",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -79,7 +79,7 @@ pub fn tool_list() -> Vec<Tool> {
         },
         Tool {
             name: "create_api_key",
-            description: "Create a new Velox API key",
+            description: "Create a new Janus API key",
             input_schema: json!({
                 "type": "object",
                 "properties": {

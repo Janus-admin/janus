@@ -1,15 +1,15 @@
-# Fly.io launch config for Velox.
+# Fly.io launch config for Janus.
 #
 # Usage:
 #   fly launch --copy-config --no-deploy   # creates the app and reads this file
-#   fly postgres create --name velox-pg     # provisions HA Postgres
-#   fly postgres attach --app <app> velox-pg
+#   fly postgres create --name janus-pg     # provisions HA Postgres
+#   fly postgres attach --app <app> janus-pg
 #   fly secrets set JWT_SECRET=$(openssl rand -hex 32) \
 #                   ENCRYPTION_KEY=$(openssl rand -hex 32) \
 #                   OPENAI_API_KEY=sk-...
 #   fly deploy
 
-app = "velox"
+app = "janus"
 primary_region = "iad"
 kill_signal = "SIGTERM"
 kill_timeout = 30
@@ -49,8 +49,8 @@ kill_timeout = 30
 
 # Models live on a volume so Fly can warm-start them across deploys.
 [mounts]
-  source = "velox_models"
-  destination = "/var/lib/velox/models"
+  source = "janus_models"
+  destination = "/var/lib/janus/models"
 
 [checks.alive]
   type = "tcp"

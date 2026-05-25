@@ -6,7 +6,7 @@ use super::{PluginError, RequestPlugin};
 
 /// Rejects requests whose total message character count exceeds a configured limit.
 ///
-/// Controlled by `plugins.max_prompt_chars` in velox.toml.
+/// Controlled by `plugins.max_prompt_chars` in janus.toml.
 /// A value of 0 (default) disables the limit entirely.
 pub struct ContentLengthPlugin {
     pub max_chars: usize,

@@ -1,12 +1,12 @@
-//! `velox backup` / `velox restore` — single-file, version-stamped archives.
+//! `janus backup` / `janus restore` — single-file, version-stamped archives.
 //!
 //! V5-2 §5.5. The archive bundles:
 //!
 //! ```text
-//! velox-backup.tar.gz
-//! ├── VERSION                 # JSON manifest (schema + velox version)
+//! janus-backup.tar.gz
+//! ├── VERSION                 # JSON manifest (schema + janus version)
 //! ├── db.sql                  # pg_dump --no-owner --no-acl output
-//! ├── velox.toml              # optional — copied if --config-file is supplied
+//! ├── janus.toml              # optional — copied if --config-file is supplied
 //! └── models/                 # optional — embedding model + tokenizer
 //!     ├── all-MiniLM-L6-v2.onnx
 //!     └── tokenizer.json
@@ -41,13 +41,13 @@ use super::CliResult;
 /// allowed — `sqlx::migrate!` will replay the gap on next boot.
 pub const CURRENT_SCHEMA_VERSION: u32 = 27;
 
-pub const VELOX_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const JANUS_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// JSON contents of the `VERSION` file inside an archive.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VersionStamp {
     pub schema_version: u32,
-    pub velox_version: String,
+    pub janus_version: String,
     /// RFC 3339 timestamp written by `write_archive`.
     pub created_at: String,
 }
@@ -56,7 +56,7 @@ impl VersionStamp {
     pub fn current() -> Self {
         Self {
             schema_version: CURRENT_SCHEMA_VERSION,
-            velox_version: VELOX_VERSION.to_string(),
+            janus_version: JANUS_VERSION.to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -67,8 +67,8 @@ impl VersionStamp {
 pub struct ArchiveContents {
     pub version: VersionStamp,
     pub db_sql: Vec<u8>,
-    /// Optional `velox.toml` bytes.
-    pub velox_toml: Option<Vec<u8>>,
+    /// Optional `janus.toml` bytes.
+    pub janus_toml: Option<Vec<u8>>,
     /// Files under `models/` — keyed by relative path.
     pub models: BTreeMap<String, Vec<u8>>,
 }
@@ -81,7 +81,7 @@ pub enum BackupCmd {
     Create {
         /// Output `.tar.gz` path.
         path: PathBuf,
-        /// Optional `velox.toml` to embed.
+        /// Optional `janus.toml` to embed.
         #[arg(long)]
         config_file: Option<PathBuf>,
         /// Optional `models/` directory to embed (defaults to `models/`).
@@ -95,14 +95,14 @@ pub enum BackupCmd {
         #[arg(long)]
         no_db: bool,
     },
-    /// Restore an archive produced by `velox backup create`.
+    /// Restore an archive produced by `janus backup create`.
     Restore {
         /// Archive `.tar.gz` path.
         path: PathBuf,
         /// Drop the existing public schema before restoring.
         #[arg(long)]
         clean: bool,
-        /// Write `velox.toml` to this location (default: `./velox.toml`).
+        /// Write `janus.toml` to this location (default: `./janus.toml`).
         #[arg(long)]
         config_out: Option<PathBuf>,
         /// Restore models to this directory (default: `models/`).
@@ -141,14 +141,14 @@ async fn create_cmd(
     no_models: bool,
     no_db: bool,
 ) -> CliResult {
-    let config = crate::config::Config::load().context("loading velox config")?;
+    let config = crate::config::Config::load().context("loading janus config")?;
     let db_sql = if no_db {
         Vec::new()
     } else {
         pg_dump(&config.database_url)?
     };
 
-    let velox_toml = match config_file {
+    let janus_toml = match config_file {
         Some(p) => {
             Some(std::fs::read(&p).with_context(|| format!("read config file {}", p.display()))?)
         }
@@ -164,7 +164,7 @@ async fn create_cmd(
     let archive = ArchiveContents {
         version: VersionStamp::current(),
         db_sql,
-        velox_toml,
+        janus_toml,
         models,
     };
 
@@ -174,8 +174,8 @@ async fn create_cmd(
         out_path.display(),
         archive.db_sql.len(),
         archive.models.len(),
-        if archive.velox_toml.is_some() {
-            ", + velox.toml"
+        if archive.janus_toml.is_some() {
+            ", + janus.toml"
         } else {
             ""
         }
@@ -189,7 +189,7 @@ async fn restore_cmd(
     config_out: Option<PathBuf>,
     models_dir: PathBuf,
 ) -> CliResult {
-    let config = crate::config::Config::load().context("loading velox config")?;
+    let config = crate::config::Config::load().context("loading janus config")?;
     let archive = read_archive(&in_path)?;
     check_version_compatible(&archive.version)?;
 
@@ -197,11 +197,11 @@ async fn restore_cmd(
         psql_restore(&config.database_url, &archive.db_sql, clean)?;
     }
 
-    if let Some(toml) = &archive.velox_toml {
-        let dest = config_out.unwrap_or_else(|| PathBuf::from("velox.toml"));
+    if let Some(toml) = &archive.janus_toml {
+        let dest = config_out.unwrap_or_else(|| PathBuf::from("janus.toml"));
         std::fs::write(&dest, toml)
-            .with_context(|| format!("write velox.toml to {}", dest.display()))?;
-        println!("restored velox.toml → {}", dest.display());
+            .with_context(|| format!("write janus.toml to {}", dest.display()))?;
+        println!("restored janus.toml → {}", dest.display());
     }
 
     if !archive.models.is_empty() {
@@ -228,13 +228,13 @@ fn inspect_cmd(in_path: PathBuf) -> CliResult {
     let archive = read_archive(&in_path)?;
     println!("VERSION:");
     println!("  schema_version: {}", archive.version.schema_version);
-    println!("  velox_version:  {}", archive.version.velox_version);
+    println!("  janus_version:  {}", archive.version.janus_version);
     println!("  created_at:     {}", archive.version.created_at);
     println!("db.sql: {} bytes", archive.db_sql.len());
     println!(
-        "velox.toml: {}",
+        "janus.toml: {}",
         archive
-            .velox_toml
+            .janus_toml
             .as_ref()
             .map(|v| format!("{} bytes", v.len()))
             .unwrap_or_else(|| "(absent)".into())
@@ -268,8 +268,8 @@ pub fn write_archive(out_path: &Path, archive: &ArchiveContents) -> Result<()> {
 
     write_entry(&mut tar, "db.sql", &archive.db_sql)?;
 
-    if let Some(toml) = &archive.velox_toml {
-        write_entry(&mut tar, "velox.toml", toml)?;
+    if let Some(toml) = &archive.janus_toml {
+        write_entry(&mut tar, "janus.toml", toml)?;
     }
 
     for (rel, bytes) in &archive.models {
@@ -287,7 +287,7 @@ pub fn read_archive(in_path: &Path) -> Result<ArchiveContents> {
 
     let mut version: Option<VersionStamp> = None;
     let mut db_sql: Vec<u8> = Vec::new();
-    let mut velox_toml: Option<Vec<u8>> = None;
+    let mut janus_toml: Option<Vec<u8>> = None;
     let mut models: BTreeMap<String, Vec<u8>> = BTreeMap::new();
 
     for entry in tar.entries().context("iterate tar entries")? {
@@ -304,7 +304,7 @@ pub fn read_archive(in_path: &Path) -> Result<ArchiveContents> {
                 version = Some(serde_json::from_slice(&buf).context("decode VERSION manifest")?);
             }
             "db.sql" => db_sql = buf,
-            "velox.toml" => velox_toml = Some(buf),
+            "janus.toml" => janus_toml = Some(buf),
             other if other.starts_with("models/") => {
                 let rel = other.trim_start_matches("models/").to_string();
                 if !rel.is_empty() && !rel.ends_with('/') {
@@ -321,7 +321,7 @@ pub fn read_archive(in_path: &Path) -> Result<ArchiveContents> {
     Ok(ArchiveContents {
         version,
         db_sql,
-        velox_toml,
+        janus_toml,
         models,
     })
 }

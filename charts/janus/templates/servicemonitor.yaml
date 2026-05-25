@@ -2,15 +2,15 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "velox.fullname" . }}
+  name: {{ include "janus.fullname" . }}
   labels:
-    {{- include "velox.labels" . | nindent 4 }}
+    {{- include "janus.labels" . | nindent 4 }}
     {{- with .Values.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
   selector:
-    matchLabels: {{- include "velox.selectorLabels" . | nindent 6 }}
+    matchLabels: {{- include "janus.selectorLabels" . | nindent 6 }}
   endpoints:
     - port: http
       path: /metrics

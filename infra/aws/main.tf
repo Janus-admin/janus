@@ -4,8 +4,8 @@ locals {
   ecr_image_uri = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.project}:latest"
 }
 
-# ── ECR repository for the Velox image ───────────────────────────────────────
-resource "aws_ecr_repository" "velox" {
+# ── ECR repository for the Janus image ───────────────────────────────────────
+resource "aws_ecr_repository" "janus" {
   name                 = var.project
   image_tag_mutability = "MUTABLE"
   force_delete         = true
@@ -15,8 +15,8 @@ resource "aws_ecr_repository" "velox" {
   }
 }
 
-resource "aws_ecr_lifecycle_policy" "velox" {
-  repository = aws_ecr_repository.velox.name
+resource "aws_ecr_lifecycle_policy" "janus" {
+  repository = aws_ecr_repository.janus.name
   policy = jsonencode({
     rules = [{
       rulePriority = 1
@@ -48,17 +48,17 @@ resource "random_bytes" "encryption_key" {
 }
 
 # ── Lightsail static IP ──────────────────────────────────────────────────────
-resource "aws_lightsail_static_ip" "velox" {
+resource "aws_lightsail_static_ip" "janus" {
   name = "${var.project}-ip"
 }
 
-resource "aws_lightsail_static_ip_attachment" "velox" {
-  static_ip_name = aws_lightsail_static_ip.velox.id
-  instance_name  = aws_lightsail_instance.velox.name
+resource "aws_lightsail_static_ip_attachment" "janus" {
+  static_ip_name = aws_lightsail_static_ip.janus.id
+  instance_name  = aws_lightsail_instance.janus.name
 }
 
 # ── Lightsail instance ───────────────────────────────────────────────────────
-resource "aws_lightsail_instance" "velox" {
+resource "aws_lightsail_instance" "janus" {
   name              = "${var.project}-app"
   availability_zone = var.availability_zone
   blueprint_id      = "ubuntu_22_04"
@@ -86,7 +86,7 @@ resource "aws_lightsail_instance" "velox" {
 
   # Don't recreate the instance just because the user_data template changed.
   # The current VM was bootstrapped by hand; rebooting it would lose the working state.
-  # To force a fresh VM, taint explicitly: `terraform taint aws_lightsail_instance.velox`.
+  # To force a fresh VM, taint explicitly: `terraform taint aws_lightsail_instance.janus`.
   lifecycle {
     ignore_changes = [user_data]
   }
@@ -97,5 +97,5 @@ resource "aws_lightsail_instance" "velox" {
 #   - it hangs on destroy for ~30 min,
 #   - it always detects ipv6/cidr drift and forces replacement on every plan.
 # Instead we open ports once at bootstrap via:
-#   aws lightsail put-instance-public-ports --instance-name velox-app \
+#   aws lightsail put-instance-public-ports --instance-name janus-app \
 #     --port-infos '[{"fromPort":22,"toPort":22,"protocol":"tcp"},{"fromPort":80,"toPort":80,"protocol":"tcp"}]'

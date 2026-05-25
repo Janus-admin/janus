@@ -25,36 +25,36 @@ use wiremock::{
 
 // ── SQLite app spawner ────────────────────────────────────────────────────────
 
-/// Spawn a full Velox server backed by a fresh SQLite database in `tmp`.
+/// Spawn a full Janus server backed by a fresh SQLite database in `tmp`.
 ///
 /// Returns `(base_url, mock_server, pool)`.
 /// The mock_server stubs `POST /v1/chat/completions` with a valid OpenAI response.
 /// Callers must keep all three alive for the duration of the test.
 #[cfg(feature = "sqlite")]
-async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPool) {
+async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, janus::db::DbPool) {
     common::load_env();
 
-    let db_path = tmp.path().join("velox_test.db");
+    let db_path = tmp.path().join("janus_test.db");
     let db_url = format!("sqlite:{}", db_path.display());
 
     let mock_server = MockServer::start().await;
 
-    let mut config = velox::config::Config::load().expect("Config::load failed");
+    let mut config = janus::config::Config::load().expect("Config::load failed");
     config.database_url = db_url.clone();
     config.rate_limit_window_secs = 60;
 
-    let pool = velox::db::pool::connect(&db_url)
+    let pool = janus::db::pool::connect(&db_url)
         .await
         .expect("SQLite connect failed");
 
     // Seed the test API key into the in-memory cache.
-    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
     let test_key_str = common::test_api_key();
-    let test_key_bytes = velox::db::api_keys::sha256_bytes(test_key_str);
+    let test_key_bytes = janus::db::api_keys::sha256_bytes(test_key_str);
     let test_key_id = Uuid::new_v4();
-    let test_key_entry = velox::models::api_key::ApiKey {
+    let test_key_entry = janus::models::api_key::ApiKey {
         id: test_key_id,
         name: "SQLite Test Key".to_string(),
         key_hash: "placeholder".to_string(),
@@ -97,23 +97,23 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
     } else {
         config.openai_api_key.clone()
     };
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
-        velox::providers::openai::OpenAIProvider::with_base_url(api_key, mock_server.uri(), 1),
+    let providers: Vec<std::sync::Arc<dyn janus::providers::Provider>> = vec![std::sync::Arc::new(
+        janus::providers::openai::OpenAIProvider::with_base_url(api_key, mock_server.uri(), 1),
     )];
 
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+    let registry = std::sync::Arc::new(janus::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
     ));
     let rate_limiter =
-        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
-    let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
+        janus::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+    let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
 
-    let state = std::sync::Arc::new(velox::state::AppState {
+    let state = std::sync::Arc::new(janus::state::AppState {
         pool: pool.clone(),
         config,
         runtime_config,
@@ -121,13 +121,13 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, velox::db::DbPo
         key_cache,
         rate_limiter,
         cache,
-        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
+        semantic_policy: janus::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
-        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        dedup: std::sync::Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
     });
 
-    let app = velox::routes::create_router(state);
+    let app = janus::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind failed");
@@ -155,8 +155,8 @@ async fn mount_openai_stub(server: &MockServer) {
 // ── Helper: get a fresh SQLite pool connected to an existing db ───────────────
 
 #[cfg(feature = "sqlite")]
-async fn sqlite_pool(db_url: &str) -> velox::db::DbPool {
-    velox::db::pool::connect(db_url)
+async fn sqlite_pool(db_url: &str) -> janus::db::DbPool {
+    janus::db::pool::connect(db_url)
         .await
         .expect("SQLite reconnect failed")
 }
@@ -170,7 +170,7 @@ async fn v2_1_sqlite_migrations_apply_cleanly() {
     let db_path = tmp.path().join("migrations_test.db");
     let db_url = format!("sqlite:{}", db_path.display());
 
-    let pool = velox::db::pool::connect(&db_url)
+    let pool = janus::db::pool::connect(&db_url)
         .await
         .expect("connect failed");
 
@@ -271,7 +271,7 @@ async fn v2_1_sqlite_api_key_created_and_validated() {
         .as_str()
         .expect("key field missing")
         .to_string();
-    assert!(new_key.starts_with("vx-sk-"), "key has wrong format");
+    assert!(new_key.starts_with("jn-sk-"), "key has wrong format");
 
     // Use the newly created key to call the gateway.
     let gw_resp = client
@@ -305,7 +305,7 @@ async fn v2_1_sqlite_exact_cache_hit_and_miss() {
     assert_eq!(r1.status(), 200);
     let hit_header_1 = r1
         .headers()
-        .get("x-velox-cache-hit")
+        .get("x-janus-cache-hit")
         .map(|v| v.to_str().unwrap().to_string());
     assert!(hit_header_1.is_none(), "first request must be a cache miss");
 
@@ -320,7 +320,7 @@ async fn v2_1_sqlite_exact_cache_hit_and_miss() {
     assert_eq!(r2.status(), 200);
     let hit_header_2 = r2
         .headers()
-        .get("x-velox-cache-hit")
+        .get("x-janus-cache-hit")
         .map(|v| v.to_str().unwrap().to_string());
     assert_eq!(
         hit_header_2.as_deref(),
@@ -333,26 +333,26 @@ async fn v2_1_sqlite_exact_cache_hit_and_miss() {
 #[tokio::test]
 async fn v2_1_sqlite_rate_limit_enforced() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("velox_rl.db");
+    let db_path = tmp.path().join("janus_rl.db");
     let db_url = format!("sqlite:{}", db_path.display());
 
     let mock_server = MockServer::start().await;
     mount_openai_stub(&mock_server).await;
 
     common::load_env();
-    let mut config = velox::config::Config::load().expect("config load failed");
+    let mut config = janus::config::Config::load().expect("config load failed");
     config.database_url = db_url.clone();
     config.rate_limit_window_secs = 60;
 
-    let pool = velox::db::pool::connect(&db_url)
+    let pool = janus::db::pool::connect(&db_url)
         .await
         .expect("connect failed");
-    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
     let test_key_str = common::test_api_key();
-    let test_key_bytes = velox::db::api_keys::sha256_bytes(test_key_str);
-    let rate_limited_key = velox::models::api_key::ApiKey {
+    let test_key_bytes = janus::db::api_keys::sha256_bytes(test_key_str);
+    let rate_limited_key = janus::models::api_key::ApiKey {
         id: Uuid::new_v4(),
         name: "RL Key".to_string(),
         key_hash: "placeholder2".to_string(),
@@ -373,26 +373,26 @@ async fn v2_1_sqlite_rate_limit_enforced() {
     };
     key_cache.insert(test_key_bytes, rate_limited_key);
 
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
-        velox::providers::openai::OpenAIProvider::with_base_url(
+    let providers: Vec<std::sync::Arc<dyn janus::providers::Provider>> = vec![std::sync::Arc::new(
+        janus::providers::openai::OpenAIProvider::with_base_url(
             "test-key".to_string(),
             mock_server.uri(),
             1,
         ),
     )];
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+    let registry = std::sync::Arc::new(janus::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
     ));
     let rate_limiter =
-        velox::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
-    let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
+        janus::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
+    let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
 
-    let state = std::sync::Arc::new(velox::state::AppState {
+    let state = std::sync::Arc::new(janus::state::AppState {
         pool,
         config,
         runtime_config,
@@ -400,13 +400,13 @@ async fn v2_1_sqlite_rate_limit_enforced() {
         key_cache,
         rate_limiter,
         cache,
-        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
+        semantic_policy: janus::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
-        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        dedup: std::sync::Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
     });
 
-    let app = velox::routes::create_router(state);
+    let app = janus::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move {
@@ -440,26 +440,26 @@ async fn v2_1_sqlite_rate_limit_enforced() {
 #[tokio::test]
 async fn v2_1_sqlite_budget_limit_blocks_request() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("velox_budget.db");
+    let db_path = tmp.path().join("janus_budget.db");
     let db_url = format!("sqlite:{}", db_path.display());
 
     let mock_server = MockServer::start().await;
     mount_openai_stub(&mock_server).await;
 
     common::load_env();
-    let mut config = velox::config::Config::load().expect("config load failed");
+    let mut config = janus::config::Config::load().expect("config load failed");
     config.database_url = db_url.clone();
 
-    let pool = velox::db::pool::connect(&db_url)
+    let pool = janus::db::pool::connect(&db_url)
         .await
         .expect("connect failed");
-    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], velox::models::api_key::ApiKey>> =
+    let key_cache: std::sync::Arc<dashmap::DashMap<[u8; 32], janus::models::api_key::ApiKey>> =
         std::sync::Arc::new(dashmap::DashMap::new());
 
     let test_key_str = common::test_api_key();
-    let test_key_bytes = velox::db::api_keys::sha256_bytes(test_key_str);
+    let test_key_bytes = janus::db::api_keys::sha256_bytes(test_key_str);
     // budget_limit=0.000001, budget_used=999 → already over budget
-    let budget_key = velox::models::api_key::ApiKey {
+    let budget_key = janus::models::api_key::ApiKey {
         id: Uuid::new_v4(),
         name: "Budget Key".to_string(),
         key_hash: "placeholder3".to_string(),
@@ -480,25 +480,25 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
     };
     key_cache.insert(test_key_bytes, budget_key);
 
-    let providers: Vec<std::sync::Arc<dyn velox::providers::Provider>> = vec![std::sync::Arc::new(
-        velox::providers::openai::OpenAIProvider::with_base_url(
+    let providers: Vec<std::sync::Arc<dyn janus::providers::Provider>> = vec![std::sync::Arc::new(
+        janus::providers::openai::OpenAIProvider::with_base_url(
             "test-key".to_string(),
             mock_server.uri(),
             1,
         ),
     )];
-    let registry = std::sync::Arc::new(velox::gateway::ProviderRegistry::new(
+    let registry = std::sync::Arc::new(janus::gateway::ProviderRegistry::new(
         providers,
         key_cache.clone(),
     ));
-    let rate_limiter = velox::middleware::rate_limit::RateLimiter::new(60);
-    let cache = std::sync::Arc::new(velox::cache::CacheEngine::new());
+    let rate_limiter = janus::middleware::rate_limit::RateLimiter::new(60);
+    let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
     let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
-        velox::config::RuntimeConfig::from(&config),
+        janus::config::RuntimeConfig::from(&config),
     ));
 
-    let state = std::sync::Arc::new(velox::state::AppState {
+    let state = std::sync::Arc::new(janus::state::AppState {
         pool,
         config,
         runtime_config,
@@ -506,13 +506,13 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
         key_cache,
         rate_limiter,
         cache,
-        semantic_policy: velox::cache::policy::SemanticCachePolicy::default(),
+        semantic_policy: janus::cache::policy::SemanticCachePolicy::default(),
         event_tx,
         plugins: std::sync::Arc::new(vec![]),
-        dedup: std::sync::Arc::new(velox::gateway::dedup::InFlightDeduplicator::new()),
+        dedup: std::sync::Arc::new(janus::gateway::dedup::InFlightDeduplicator::new()),
     });
 
-    let app = velox::routes::create_router(state);
+    let app = janus::routes::create_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move {
@@ -620,9 +620,9 @@ async fn v2_1_sqlite_analytics_overview_returns_correct_counts() {
 #[tokio::test]
 async fn v2_1_sqlite_uuids_round_trip_correctly() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("velox_uuid.db");
+    let db_path = tmp.path().join("janus_uuid.db");
     let db_url = format!("sqlite:{}", db_path.display());
-    let pool = velox::db::pool::connect(&db_url).await.unwrap();
+    let pool = janus::db::pool::connect(&db_url).await.unwrap();
 
     let id = Uuid::new_v4();
     let now = Utc::now();
@@ -653,9 +653,9 @@ async fn v2_1_sqlite_uuids_round_trip_correctly() {
 #[tokio::test]
 async fn v2_1_sqlite_cost_decimal_precision_preserved() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("velox_decimal.db");
+    let db_path = tmp.path().join("janus_decimal.db");
     let db_url = format!("sqlite:{}", db_path.display());
-    let pool = velox::db::pool::connect(&db_url).await.unwrap();
+    let pool = janus::db::pool::connect(&db_url).await.unwrap();
 
     // Sub-cent precision value: $0.00012345
     let cost: Decimal = "0.00012345".parse().unwrap();
@@ -689,9 +689,9 @@ async fn v2_1_sqlite_cost_decimal_precision_preserved() {
 #[tokio::test]
 async fn v2_1_sqlite_timestamps_round_trip_as_utc() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("velox_ts.db");
+    let db_path = tmp.path().join("janus_ts.db");
     let db_url = format!("sqlite:{}", db_path.display());
-    let pool = velox::db::pool::connect(&db_url).await.unwrap();
+    let pool = janus::db::pool::connect(&db_url).await.unwrap();
 
     // Truncate to microseconds so the round-trip comparison is exact.
     let ts = Utc::now();

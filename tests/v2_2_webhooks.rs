@@ -7,8 +7,6 @@
 mod common;
 
 use chrono::Utc;
-use rust_decimal::Decimal;
-use std::str::FromStr;
 use uuid::Uuid;
 use wiremock::{
     matchers::{method, path},
@@ -17,7 +15,7 @@ use wiremock::{
 
 async fn test_pool() -> sqlx::PgPool {
     common::load_env();
-    let config = velox::config::Config::load().expect("config load failed");
+    let config = janus::config::Config::load().expect("config load failed");
     sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
         .connect(&config.database_url)
@@ -44,7 +42,7 @@ async fn v2_2_slack_payload_format_is_valid_json() {
         .await;
 
     let client = reqwest::Client::new();
-    let ctx = velox::alerts::webhook::WebhookContext {
+    let ctx = janus::alerts::webhook::WebhookContext {
         alert_id: Uuid::new_v4(),
         alert_type: "spend_threshold",
         alert_name: "Test Alert",
@@ -53,8 +51,8 @@ async fn v2_2_slack_payload_format_is_valid_json() {
         threshold: 40.00,
         triggered_at: Utc::now(),
     };
-    let format = velox::alerts::webhook::WebhookFormat::Slack;
-    velox::alerts::webhook::deliver(&client, &mock_server.uri(), &format, None, &ctx)
+    let format = janus::alerts::webhook::WebhookFormat::Slack;
+    janus::alerts::webhook::deliver(&client, &mock_server.uri(), &format, None, &ctx)
         .await
         .expect("slack delivery should succeed");
 
@@ -82,7 +80,7 @@ async fn v2_2_discord_payload_format_is_valid_json() {
         .await;
 
     let client = reqwest::Client::new();
-    let ctx = velox::alerts::webhook::WebhookContext {
+    let ctx = janus::alerts::webhook::WebhookContext {
         alert_id: Uuid::new_v4(),
         alert_type: "error_rate",
         alert_name: "Error Rate Alert",
@@ -91,8 +89,8 @@ async fn v2_2_discord_payload_format_is_valid_json() {
         threshold: 0.10,
         triggered_at: Utc::now(),
     };
-    let format = velox::alerts::webhook::WebhookFormat::Discord;
-    velox::alerts::webhook::deliver(&client, &mock_server.uri(), &format, None, &ctx)
+    let format = janus::alerts::webhook::WebhookFormat::Discord;
+    janus::alerts::webhook::deliver(&client, &mock_server.uri(), &format, None, &ctx)
         .await
         .expect("discord delivery should succeed");
 
@@ -114,7 +112,7 @@ async fn v2_2_generic_payload_contains_all_required_fields() {
 
     let alert_id = Uuid::new_v4();
     let client = reqwest::Client::new();
-    let ctx = velox::alerts::webhook::WebhookContext {
+    let ctx = janus::alerts::webhook::WebhookContext {
         alert_id,
         alert_type: "latency_spike",
         alert_name: "Latency Alert",
@@ -123,8 +121,8 @@ async fn v2_2_generic_payload_contains_all_required_fields() {
         threshold: 3000.0,
         triggered_at: Utc::now(),
     };
-    let format = velox::alerts::webhook::WebhookFormat::Generic;
-    velox::alerts::webhook::deliver(&client, &mock_server.uri(), &format, None, &ctx)
+    let format = janus::alerts::webhook::WebhookFormat::Generic;
+    janus::alerts::webhook::deliver(&client, &mock_server.uri(), &format, None, &ctx)
         .await
         .expect("generic delivery should succeed");
 
@@ -148,7 +146,7 @@ async fn v2_2_webhook_secret_hmac_header_added_when_configured() {
 
     let secret = "super-secret-key";
     let client = reqwest::Client::new();
-    let ctx = velox::alerts::webhook::WebhookContext {
+    let ctx = janus::alerts::webhook::WebhookContext {
         alert_id: Uuid::new_v4(),
         alert_type: "spend_threshold",
         alert_name: "Spend Alert",
@@ -157,10 +155,10 @@ async fn v2_2_webhook_secret_hmac_header_added_when_configured() {
         threshold: 80.0,
         triggered_at: Utc::now(),
     };
-    velox::alerts::webhook::deliver(
+    janus::alerts::webhook::deliver(
         &client,
         &mock_server.uri(),
-        &velox::alerts::webhook::WebhookFormat::Generic,
+        &janus::alerts::webhook::WebhookFormat::Generic,
         Some(secret),
         &ctx,
     )
@@ -172,13 +170,13 @@ async fn v2_2_webhook_secret_hmac_header_added_when_configured() {
 
     let sig_header = reqs[0]
         .headers
-        .get("x-velox-signature")
-        .expect("X-Velox-Signature header must be present");
+        .get("x-janus-signature")
+        .expect("X-Janus-Signature header must be present");
     let sig = sig_header.to_str().expect("header is utf8");
 
     // Independently compute expected signature.
     let body_str = String::from_utf8(reqs[0].body.to_vec()).unwrap();
-    let expected_sig = velox::alerts::webhook::sign(secret, &body_str);
+    let expected_sig = janus::alerts::webhook::sign(secret, &body_str);
     assert_eq!(sig, expected_sig, "HMAC signature must match");
 }
 
@@ -218,7 +216,8 @@ async fn v2_2_spend_threshold_fires_when_budget_exceeded() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.expect("evaluate should not error");
 
     let reqs = mock_server.received_requests().await.unwrap();
@@ -282,7 +281,8 @@ async fn v2_2_webhook_post_reaches_configured_url() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     assert!(
@@ -337,7 +337,8 @@ async fn v2_2_alert_does_not_fire_twice_within_cooldown_window() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     let reqs = mock_server.received_requests().await.unwrap_or_default();
@@ -392,7 +393,8 @@ async fn v2_2_alert_fires_again_after_cooldown_expires() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     let reqs = mock_server.received_requests().await.unwrap_or_default();
@@ -444,7 +446,8 @@ async fn v2_2_inactive_alert_does_not_fire() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     assert_eq!(
@@ -503,7 +506,8 @@ async fn v2_2_alert_history_recorded_after_firing() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.unwrap();
 
     let history_count: (i64,) =
@@ -573,7 +577,8 @@ async fn v2_2_failed_delivery_recorded_with_error() {
     .await
     .unwrap();
 
-    let engine = velox::alerts::AlertEngine::new(pool.clone(), velox::config::SmtpConfig::default());
+    let engine =
+        janus::alerts::AlertEngine::new(pool.clone(), janus::config::SmtpConfig::default());
     engine.evaluate().await.unwrap(); // engine must not propagate delivery errors
 
     let row: (bool, Option<String>) =

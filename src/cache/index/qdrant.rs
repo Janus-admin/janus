@@ -8,7 +8,7 @@
 //! ```toml
 //! semantic_cache_backend = "qdrant"
 //! qdrant_url              = "http://localhost:6334"
-//! qdrant_collection       = "velox_cache"
+//! qdrant_collection       = "janus_cache"
 //! qdrant_vector_size      = 384
 //! ```
 

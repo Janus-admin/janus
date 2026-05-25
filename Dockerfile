@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Velox
+# Multi-stage Dockerfile for Janus
 # Stage 1: Builder
 FROM rust:1.88-slim-trixie AS builder
 
@@ -49,7 +49,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/velox .
+COPY --from=builder /build/target/release/janus .
 
 # Bundle semantic-cache ONNX model + tokenizer (read at runtime)
 COPY --from=builder /build/models ./models
@@ -62,4 +62,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the application
-CMD ["./velox"]
+CMD ["./janus"]

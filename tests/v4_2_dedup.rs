@@ -7,15 +7,15 @@
 // network required. The deduplicator is instantiated directly and driven
 // with tokio tasks to verify concurrent behaviour.
 
+use janus::gateway::dedup::{DedupRole, DeduplicatedResult, InFlightDeduplicator};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use velox::gateway::dedup::{DedupRole, DeduplicatedResult, InFlightDeduplicator};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn make_resp(content: &str) -> velox::providers::ChatCompletionResponse {
+fn make_resp(content: &str) -> janus::providers::ChatCompletionResponse {
     serde_json::from_value(serde_json::json!({
         "id": "test-id",
         "object": "chat.completion",

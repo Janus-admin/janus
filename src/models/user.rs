@@ -11,6 +11,7 @@ pub struct User {
     pub name: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub tour_completed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,6 +20,7 @@ pub struct UserResponse {
     pub email: String,
     pub name: String,
     pub created_at: DateTime<Utc>,
+    pub tour_completed_at: Option<DateTime<Utc>>,
 }
 
 impl From<User> for UserResponse {
@@ -28,6 +30,7 @@ impl From<User> for UserResponse {
             email: user.email,
             name: user.name,
             created_at: user.created_at,
+            tour_completed_at: user.tour_completed_at,
         }
     }
 }

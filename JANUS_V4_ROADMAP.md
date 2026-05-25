@@ -1,6 +1,6 @@
-# VELOX V4 — Engineering Roadmap
+# JANUS V4 — Engineering Roadmap
 > Built on V3 (all 6 phases complete).
-> **If you are Claude: read CLAUDE.md first, then VELOX_V3_ROADMAP.md §11, then this file.**
+> **If you are Claude: read CLAUDE.md first, then JANUS_V3_ROADMAP.md §11, then this file.**
 
 ---
 
@@ -56,7 +56,7 @@ Two types of gaps are tracked here: **backend** (missing Rust code) and **dashbo
 | Gap | Source | Phase |
 |---|---|---|
 | Provider `base_url` is hardcoded — Ollama/vLLM unreachable | V4 planning | V4-0 |
-| No system readiness check / `velox doctor` | V4 planning | V4-0 |
+| No system readiness check / `janus doctor` | V4 planning | V4-0 |
 | N identical concurrent requests hit provider N times | V4 planning | V4-2 |
 | Cache entries never expire (no TTL) | V1 design | V4-3 |
 | No time-sensitive query detection — "current price?" cached | V4 planning | V4-3 |
@@ -120,7 +120,7 @@ Test naming: `v4p{phase}_{feature}_{expected_outcome}`
 
 ## 3. Phase V4-0: Foundation & DX
 
-**Goal**: Unlock Ollama/vLLM support, add system self-diagnosis, and make Velox
+**Goal**: Unlock Ollama/vLLM support, add system self-diagnosis, and make Janus
 evaluable by anyone in under 5 minutes.
 
 ### 3.1 Configurable Provider `base_url`
@@ -144,12 +144,12 @@ let base = provider_record.base_url
     .unwrap_or("https://api.openai.com/v1");
 ```
 
-**Result**: Pointing Velox at a local Ollama instance requires one database
+**Result**: Pointing Janus at a local Ollama instance requires one database
 UPDATE — zero code changes, zero new adapters.
 
 **Files to modify:** `src/providers/openai.rs`, `src/providers/anthropic.rs`
 
-### 3.2 `velox doctor` — System Readiness Checks
+### 3.2 `janus doctor` — System Readiness Checks
 
 **Problem**: Misconfigurations are only discovered at runtime under load.
 
@@ -168,7 +168,7 @@ UPDATE — zero code changes, zero new adapters.
 | Disk space | ≥ 100 MB free |
 
 ```
-velox --doctor
+janus --doctor
 
 [✓] Database connection
 [✓] Migrations up to date (0024)
@@ -184,16 +184,16 @@ velox --doctor
 
 ### 3.3 Demo Mode
 
-**Problem**: Evaluating Velox requires PostgreSQL, real API keys, and real LLM
+**Problem**: Evaluating Janus requires PostgreSQL, real API keys, and real LLM
 calls — barrier to "see what this does" is too high.
 
-**Fix**: `velox --demo` starts with SQLite in-memory, a mock provider, 2 pre-made
+**Fix**: `janus --demo` starts with SQLite in-memory, a mock provider, 2 pre-made
 API keys, and 100 seeded historical requests.
 
 ```bash
-velox --demo
-# Velox demo mode at http://localhost:8080
-# Login: admin@velox.local / demo-password
+janus --demo
+# Janus demo mode at http://localhost:8080
+# Login: admin@janus.local / demo-password
 ```
 
 ### New Files
@@ -226,7 +226,7 @@ async fn v4p0_regression_existing_provider_adapters_unaffected()
 cargo test v4_0
 cargo test
 cargo clippy -- -D warnings
-velox --doctor   # must pass on a correctly configured local instance
+janus --doctor   # must pass on a correctly configured local instance
 ```
 
 ---
@@ -294,7 +294,7 @@ Add to the key detail view:
 cargo test   # must still be green (no regressions from dashboard rebuild)
 ```
 
-Verify each new page/feature works end-to-end against a running Velox instance.
+Verify each new page/feature works end-to-end against a running Janus instance.
 
 ---
 
@@ -421,7 +421,7 @@ cache_ttl_secs = 0   # 0 = no expiry (backward compatible)
 **New file: `src/cache/time_guard.rs`**
 
 Checks all message content against a configurable pattern list before cache lookup.
-If matched: skip both lookup AND write. Sets `X-Velox-Cache-Skip: time_sensitive` header.
+If matched: skip both lookup AND write. Sets `X-Janus-Cache-Skip: time_sensitive` header.
 
 **Default patterns (configurable, extensible):**
 ```toml
@@ -506,7 +506,7 @@ fallback_model    = ""
 2. New: if `spend / budget_limit >= downgrade_at_percent / 100`:
    - Override routing strategy to `downgrade_strategy`
    - OR override model to `downgrade_to_model`
-   - Set `X-Velox-Downgraded: cost_optimized` response header
+   - Set `X-Janus-Downgraded: cost_optimized` response header
    - Log `downgrade_triggered = true` in request record
 
 ### Files to Modify
@@ -757,7 +757,7 @@ Improve `GET /admin/analytics/overview` presentation to answer:
 - "Top 5 API keys by cost this month"
 - "Cache savings this month in dollars"
 - "Provider with most errors in last 24h"
-- "Is the system healthy right now?" (velox doctor summary)
+- "Is the system healthy right now?" (janus doctor summary)
 
 These are answered using APIs that already exist — this is a presentation improvement.
 
@@ -767,7 +767,7 @@ These are answered using APIs that already exist — this is a presentation impr
 cargo test   # must still be green (no regressions from dashboard rebuild)
 ```
 
-Visual verification of all 5 sections against a running Velox instance with data.
+Visual verification of all 5 sections against a running Janus instance with data.
 
 ---
 
@@ -895,11 +895,11 @@ OR a specific customer requests it. HNSW handles everything below that scale.
 **New file: `src/cache/index/qdrant.rs`** — implements `EmbeddingIndex` trait.
 
 ```toml
-# velox.toml
+# janus.toml
 [semantic_cache]
 backend          = "qdrant"
 qdrant_url       = "http://localhost:6334"
-qdrant_collection = "velox_cache"
+qdrant_collection = "janus_cache"
 ```
 
 ### New Dependencies
@@ -939,7 +939,7 @@ cargo clippy -- -D warnings
 | Prompt compression / summarization | Transparent proxy contract violated; possible as opt-in V3-4 plugin only |
 | Quality evaluation / LLM-as-judge | Evals platform — out of scope for a gateway |
 | Batch chat completions (OpenAI Batch API) | Requires async job queue; architectural overhaul |
-| Backup/restore CLI | `pg_dump` covers this; Velox-specific tooling adds maintenance cost |
+| Backup/restore CLI | `pg_dump` covers this; Janus-specific tooling adds maintenance cost |
 | WASM/Lua dynamic plugins | V3-4 Rust plugins cover real needs |
 | SSO / SAML | Requires identity provider layer; V5 territory |
 | Budget forecasting ML | Time-series model; V5 territory |

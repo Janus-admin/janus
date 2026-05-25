@@ -1,12 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use serde_json::json;
-use std::sync::Arc;
-use velox::{
+use janus::{
     cache::{exact::compute_hash, CacheEngine},
     providers::{
         ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData,
     },
 };
+use serde_json::json;
+use std::sync::Arc;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ fn bench_hot_cache(c: &mut Criterion) {
 }
 
 /// End-to-end in-memory pipeline: deserialize → hash → lookup (miss) → insert.
-/// This models the overhead Velox adds to every request that misses the cache,
+/// This models the overhead Janus adds to every request that misses the cache,
 /// excluding the actual provider call and all I/O.
 fn bench_pipeline_overhead(c: &mut Criterion) {
     let cache = CacheEngine::new();

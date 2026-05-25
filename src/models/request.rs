@@ -49,7 +49,7 @@ impl CacheType {
 
 /// Database row from the `requests` table.
 ///
-/// Every LLM request proxied through Velox is logged here.
+/// Every LLM request proxied through Janus is logged here.
 /// `request_body` and `response_body` are NULL unless logging is enabled in config.
 #[cfg_attr(
     all(feature = "postgres", not(feature = "sqlite")),

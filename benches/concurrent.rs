@@ -1,14 +1,14 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use serde_json::json;
-use std::sync::{Arc, Barrier};
-use uuid::Uuid;
-use velox::{
+use janus::{
     cache::{exact::compute_hash, CacheEngine},
     middleware::rate_limit::RateLimiter,
     providers::{
         ChatChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, UsageData,
     },
 };
+use serde_json::json;
+use std::sync::{Arc, Barrier};
+use uuid::Uuid;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

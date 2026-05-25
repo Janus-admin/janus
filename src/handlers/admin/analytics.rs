@@ -174,12 +174,7 @@ pub async fn cost_by_tag(
     require_role(Role::BillingViewer, &auth.0, &state).await?;
 
     // Validate the tag key: alphanumeric + underscore only.
-    if params.tag.is_empty()
-        || !params
-            .tag
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if params.tag.is_empty() || !params.tag.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err(crate::errors::AppError::BadRequest(
             "tag key must be non-empty and contain only alphanumeric characters or underscores"
                 .to_string(),

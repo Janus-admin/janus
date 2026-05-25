@@ -6,7 +6,7 @@
 //!
 //! Adding a new admin endpoint:
 //! 1. Annotate the handler with `#[utoipa::path(...)]`
-//! 2. Add it to the `paths(...)` list in `VeloxApiDoc` below
+//! 2. Add it to the `paths(...)` list in `JanusApiDoc` below
 //! 3. If it uses a custom request/response struct, add `ToSchema` and list it under `components(schemas(...))`
 
 use utoipa::{
@@ -16,7 +16,7 @@ use utoipa::{
 
 /// Adds two security schemes to every operation:
 /// - `bearer_jwt`  → admin dashboard endpoints (JWT)
-/// - `api_key`     → gateway endpoints (vx-sk-... in `Authorization: Bearer`)
+/// - `api_key`     → gateway endpoints (jn-sk-... in `Authorization: Bearer`)
 pub struct SecurityAddon;
 
 impl Modify for SecurityAddon {
@@ -38,7 +38,7 @@ impl Modify for SecurityAddon {
             "api_key",
             SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
                 "Authorization",
-                "Velox gateway API key prefixed with `Bearer vx-sk-...`",
+                "Janus gateway API key prefixed with `Bearer jn-sk-...`",
             ))),
         );
     }
@@ -47,11 +47,11 @@ impl Modify for SecurityAddon {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Velox Admin & Gateway API",
+        title = "Janus Admin & Gateway API",
         version = "0.1.0",
-        description = "Velox is a self-hosted AI gateway: OpenAI-compatible proxy for chat/embeddings/images/audio, with caching, cost tracking, alerts, and per-workspace RBAC.\n\nTwo authentication systems coexist:\n- **Admin API** (`/admin/*`, `/api/v1/auth/*`): JWT bearer token from dashboard login.\n- **Gateway API** (`/v1/*`): `vx-sk-...` API key as `Authorization: Bearer <key>`.\n\nGateway endpoints are OpenAI request/response compatible — clients change only the `base_url`.",
-        contact(name = "Velox", url = "https://github.com/AlizadehAFPN/Velox"),
-        license(name = "MIT", url = "https://opensource.org/licenses/MIT"),
+        description = "Janus is a self-hosted AI gateway: OpenAI-compatible proxy for chat/embeddings/images/audio, with caching, cost tracking, alerts, and per-workspace RBAC.\n\nTwo authentication systems coexist:\n- **Admin API** (`/admin/*`, `/api/v1/auth/*`): JWT bearer token from dashboard login.\n- **Gateway API** (`/v1/*`): `jn-sk-...` API key as `Authorization: Bearer <key>`.\n\nGateway endpoints are OpenAI request/response compatible — clients change only the `base_url`.",
+        contact(name = "Janus", url = "https://github.com/Janus-admin/janus"),
+        license(name = "Elastic-2.0", url = "https://www.elastic.co/licensing/elastic-license"),
     ),
     servers(
         (url = "http://localhost:8080", description = "Local dev server"),
@@ -61,12 +61,12 @@ impl Modify for SecurityAddon {
         (name = "Keys", description = "API key lifecycle: create, list, rotate, revoke."),
         (name = "Requests", description = "Audit log of every proxied request, with replay and export."),
         (name = "Analytics", description = "Cost, latency, cache, and routing analytics."),
-        (name = "Models", description = "Pricing catalogue of models known to Velox."),
+        (name = "Models", description = "Pricing catalogue of models known to Janus."),
         (name = "Providers", description = "Upstream LLM providers (OpenAI, Anthropic, Bedrock, etc.)."),
         (name = "Alerts", description = "Spend/error/latency threshold alerts with webhook delivery."),
         (name = "Cache", description = "Exact + semantic cache statistics and management."),
         (name = "Prompts", description = "Prompt template registry with versioning."),
-        (name = "Config", description = "Runtime-mutable subset of velox.toml."),
+        (name = "Config", description = "Runtime-mutable subset of janus.toml."),
         (name = "System", description = "Readiness, liveness, and metrics."),
         (name = "Workspaces", description = "Tenants and member RBAC."),
         (name = "Identity Providers", description = "OIDC single sign-on configuration."),
@@ -117,8 +117,8 @@ impl Modify for SecurityAddon {
         crate::handlers::admin::prompts::create_version,
         crate::handlers::admin::prompts::update_version,
         // ── Config ───────────────────────────────────────────────────────────
-        crate::handlers::admin::velox_config::get_config,
-        crate::handlers::admin::velox_config::patch_config,
+        crate::handlers::admin::janus_config::get_config,
+        crate::handlers::admin::janus_config::patch_config,
         // ── System ───────────────────────────────────────────────────────────
         crate::handlers::admin::system::readiness,
         // ── Workspaces / Members ─────────────────────────────────────────────
@@ -146,4 +146,4 @@ impl Modify for SecurityAddon {
         crate::models::api_key::CreateApiKeyResponse,
     )),
 )]
-pub struct VeloxApiDoc;
+pub struct JanusApiDoc;

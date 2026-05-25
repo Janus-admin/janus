@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { useTheme } from "next-themes";
 import { getToken, clearToken } from "@/lib/api";
 import { useEffect, useState } from "react";
+import { OnboardingTour, useOnboardingTour } from "@/components/OnboardingTour";
 import {
   LayoutDashboard,
   List,
@@ -84,7 +85,7 @@ function Sidebar({ open }: { open: boolean }) {
         <Zap className="h-5 w-5 shrink-0 text-sidebar-primary" />
         {open && (
           <span className="font-semibold text-sidebar-foreground tracking-tight">
-            Velox
+            Janus
           </span>
         )}
       </div>
@@ -138,6 +139,7 @@ export default function DashboardLayout({
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const router = useRouter();
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const { show: showTour, dismiss: dismissTour } = useOnboardingTour();
 
   useEffect(() => {
     if (getToken()) {
@@ -152,6 +154,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-full">
+      {showTour && <OnboardingTour onDismiss={dismissTour} />}
       <Sidebar open={sidebarOpen} />
 
       <div
@@ -174,7 +177,7 @@ export default function DashboardLayout({
             )}
           </Button>
           <span className="text-sm font-medium text-muted-foreground">
-            Velox Admin
+            Janus Admin
           </span>
         </header>
 

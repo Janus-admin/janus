@@ -2,8 +2,8 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "velox.fullname" . }}
-  labels: {{- include "velox.labels" . | nindent 4 }}
+  name: {{ include "janus.fullname" . }}
+  labels: {{- include "janus.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations: {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -24,7 +24,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "velox.fullname" $ }}
+                name: {{ include "janus.fullname" $ }}
                 port:
                   number: {{ $.Values.service.port }}
           {{- end }}

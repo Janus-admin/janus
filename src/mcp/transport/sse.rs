@@ -29,7 +29,7 @@ pub fn build_sse_stream(
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
             "params": {
-                "serverInfo": { "name": "velox", "version": "0.1.0" },
+                "serverInfo": { "name": "janus", "version": "0.1.0" },
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} }
             }

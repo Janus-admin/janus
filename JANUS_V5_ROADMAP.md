@@ -1,6 +1,6 @@
-# VELOX V5 — Launch Readiness Roadmap (Revised 2026-05-25)
+# JANUS V5 — Launch Readiness Roadmap (Revised 2026-05-25)
 > Built on V4 (all 10 phases complete, 2026-05-24).
-> **If you are Claude: read CLAUDE.md first, then VELOX_V4_ROADMAP.md §16, then this file.**
+> **If you are Claude: read CLAUDE.md first, then JANUS_V4_ROADMAP.md §16, then this file.**
 
 ---
 
@@ -9,7 +9,7 @@
 V1–V4 built a technically complete product. V5 makes it a **shippable product for the first 10 customers.**
 
 **The right question for V5 is:**
-> *What would stop a technical buyer at a 20–100 person company from adopting Velox today?*
+> *What would stop a technical buyer at a 20–100 person company from adopting Janus today?*
 
 Not: *What does Okta enterprise procurement require?*
 Not: *What benchmarks does a public HN launch need?*
@@ -39,18 +39,18 @@ Do not rebuild these.
 - Tool calls extracted and stored in `requests.tool_calls` (JSONB)
 - Per-modality cost tracking (image, audio, character pricing)
 
-### V5-1 ✅ OpenAPI + Swagger UI + `velox` CLI (2026-05-25)
+### V5-1 ✅ OpenAPI + Swagger UI + `janus` CLI (2026-05-25)
 - OpenAPI 3.1 spec at `GET /admin/openapi.json`
 - Swagger UI at `GET /admin/docs`
-- `velox` binary with full subcommand structure: `serve`, `keys`, `migrate`, `config`, `import`, `backup`, `doctor`, `demo`
+- `janus` binary with full subcommand structure: `serve`, `keys`, `migrate`, `config`, `import`, `backup`, `doctor`, `demo`
 
 ### V5-2 ✅ Deployment & Migration Tooling (2026-05-25)
-- Helm chart at `charts/velox/` (HPA, ServiceMonitor, Ingress, external Postgres)
+- Helm chart at `charts/janus/` (HPA, ServiceMonitor, Ingress, external Postgres)
 - One-click deploy configs: Railway, Fly.io, Render
-- Migration importers: `velox import litellm`, `velox import portkey`, `velox import openrouter`
-- `velox backup` / `velox restore` with version-safe tar.gz archives
+- Migration importers: `janus import litellm`, `janus import portkey`, `janus import openrouter`
+- `janus backup` / `janus restore` with version-safe tar.gz archives
 - HA deployment guide at `docs/deployment/ha.md`
-- Terraform provider is a separate repo (`terraform-provider-velox`) — not in scope here
+- Terraform provider is a separate repo (`terraform-provider-janus`) — not in scope here
 
 ---
 
@@ -72,7 +72,7 @@ This must be resolved before any customer conversation.
 
 ### What to do
 
-1. **README rewrite** — Replace placeholder Docker image paths with `ghcr.io/alizadehafpn/velox`.
+1. **README rewrite** — Replace placeholder Docker image paths with `ghcr.io/alizadehafpn/janus`.
    Rewrite the intro to be a clear product pitch. Remove any leftover references to Anthropic
    as a company or employer.
 
@@ -148,7 +148,7 @@ CREATE TABLE identities (
 
 ### Routes
 - `GET  /auth/oidc/:idp_id/start` — redirect to IdP authorization endpoint with PKCE
-- `GET  /auth/oidc/:idp_id/callback` — verify ID token, JIT-create user if new, mint Velox JWT
+- `GET  /auth/oidc/:idp_id/callback` — verify ID token, JIT-create user if new, mint Janus JWT
 - `GET  /admin/idp` — list configured identity providers
 - `POST /admin/idp` — configure a new OIDC IdP
 - `DELETE /admin/idp/:id` — remove an IdP
@@ -157,11 +157,11 @@ CREATE TABLE identities (
 - Form: name, discovery URL, client ID, client secret
 - "Test connection" button — verifies the discovery URL resolves and returns valid metadata
 - Table of configured IdPs with enable/disable toggle
-- Group claim → Velox role mapping (optional; default: authenticated = ReadOnly)
+- Group claim → Janus role mapping (optional; default: authenticated = ReadOnly)
 
 ### Key behaviors
 - JIT user creation: first OIDC login creates a `users` row automatically
-- Group mapping: if the IdP returns a `groups` claim, map it to a Velox role via `group_role_map`
+- Group mapping: if the IdP returns a `groups` claim, map it to a Janus role via `group_role_map`
 - Existing password accounts: unaffected. OIDC is additive.
 - `openidconnect` crate (Rust) handles the token validation and discovery
 
@@ -221,14 +221,14 @@ CREATE INDEX idx_requests_tags_gin ON requests USING gin(tags);
 ### How tags are sent (client-side, zero SDK changes)
 ```bash
 # Option A: OpenAI metadata field (already in OpenAI spec)
-curl -H "Authorization: Bearer vx-sk-..." \
+curl -H "Authorization: Bearer jn-sk-..." \
      -d '{"model":"gpt-4o","messages":[...],"metadata":{"team":"backend","project":"rag"}}' \
-     http://velox/v1/chat/completions
+     http://janus/v1/chat/completions
 
-# Option B: Velox header
-curl -H "Authorization: Bearer vx-sk-..." \
-     -H "X-Velox-Tags: team=backend,project=rag" \
-     http://velox/v1/chat/completions
+# Option B: Janus header
+curl -H "Authorization: Bearer jn-sk-..." \
+     -H "X-Janus-Tags: team=backend,project=rag" \
+     http://janus/v1/chat/completions
 ```
 
 ### New analytics endpoint
@@ -259,7 +259,7 @@ Bar chart. Date range filter.
 No new page needed — extend the existing analytics page.
 
 ### Files to modify
-- `src/gateway/pipeline.rs` — extract tags from `metadata` body field and `X-Velox-Tags` header
+- `src/gateway/pipeline.rs` — extract tags from `metadata` body field and `X-Janus-Tags` header
 - `src/db/requests.rs` — include `tags` in `insert_request`
 - `src/handlers/admin/analytics.rs` — add cost breakdown by tag query
 - `dashboard/src/app/(dashboard)/analytics/page.tsx` — add cost-by-tag card
@@ -301,7 +301,7 @@ They add integration surface without adding customers in the 1–10 range.
 ```json
 {
   "blocks": [
-    {"type":"header","text":{"type":"plain_text","text":"⚠️ Velox Alert: Budget Limit Reached"}},
+    {"type":"header","text":{"type":"plain_text","text":"⚠️ Janus Alert: Budget Limit Reached"}},
     {"type":"section","fields":[
       {"type":"mrkdwn","text":"*Key:* Production API"},
       {"type":"mrkdwn","text":"*Spend:* $95.20 / $100.00"},
@@ -312,8 +312,8 @@ They add integration surface without adding customers in the 1–10 range.
 }
 ```
 
-**Email** — SMTP via `lettre` crate. Plain text + HTML fallback. One SMTP config per Velox instance
-(set in `velox.toml`). Alert includes: alert name, condition triggered, current value, link to dashboard.
+**Email** — SMTP via `lettre` crate. Plain text + HTML fallback. One SMTP config per Janus instance
+(set in `janus.toml`). Alert includes: alert name, condition triggered, current value, link to dashboard.
 
 ### Schema addition
 ```sql
@@ -358,7 +358,7 @@ cargo clippy -- -D warnings
 
 **Blocker removed:** "I couldn't figure out how to get started. The README was confusing."
 
-This phase completes the first-impression loop. A developer who finds Velox should be able to
+This phase completes the first-impression loop. A developer who finds Janus should be able to
 go from "what is this?" to "first successful request" in under 10 minutes without asking anyone.
 
 ### What to do
@@ -421,11 +421,11 @@ cargo build --release
 grep -rn "ghcr\.io/anthropi\|github\.com/anthropi" --include="*.md" --include="*.toml" .
 
 # 6. Docker image builds and runs
-docker build -t velox:latest .
-docker run --rm -e DATABASE_URL=... velox:latest velox doctor
+docker build -t janus:latest .
+docker run --rm -e DATABASE_URL=... janus:latest janus doctor
 
 # 7. Helm lint
-helm lint charts/velox
+helm lint charts/janus
 ```
 
 ---
@@ -435,13 +435,13 @@ helm lint charts/velox
 | Phase | Description | Status | Notes |
 |---|---|---|---|
 | V5-0 | API Surface Expansion | ✅ Complete (2026-05-25) | Embeddings, images, audio, models, tool calls |
-| V5-1 | OpenAPI + Swagger UI + `velox` CLI | ✅ Complete (2026-05-25) | Server side; SDKs live in separate repos |
+| V5-1 | OpenAPI + Swagger UI + `janus` CLI | ✅ Complete (2026-05-25) | Server side; SDKs live in separate repos |
 | V5-2 | Deployment & Migration Tooling | ✅ Complete (2026-05-25) | Helm, one-click deploy, importers, backup; Terraform = separate repo |
 | V5-L1 | Brand & First Impression | ✅ Complete (2026-05-25) | README rewritten, Docker image path fixed, Cargo.toml metadata, openapi.rs |
 | V5-L2 | OIDC Login | ✅ Complete (2026-05-25) | Migration 0028; identity_providers + identities tables, PKCE flow, JIT provisioning, group→role map, admin IdP CRUD, SSO dashboard page, 7 acceptance tests |
 | V5-L3 | Cost Tags | ✅ Complete (2026-05-25) | Migration 0029; tags on requests, GET /admin/analytics/cost-by-tag, 6 acceptance tests |
 | V5-L4 | Polished Alerts (Slack + Email) | ✅ Complete (2026-05-25) | Migration 0030; slack_webhook_url + email_to columns, block-kit Slack dispatch, lettre SMTP/file email, multi-channel test endpoint, 5 acceptance tests |
-| V5-L5 | Onboarding & Docs Polish | ⏳ Not started | Migration 0031 |
+| V5-L5 | Onboarding & Docs Polish | ✅ Complete (2026-05-25) | Migration 0031, ELv2 license, 4-step tour, 5 tests |
 
 ---
 
@@ -493,12 +493,12 @@ asks for them, or when you have 5+ customers and know the pattern.
 - **Marketing landing page** — hero, comparison table, install CTA
 - **Comparison pages** — `/vs/litellm`, `/vs/portkey`, `/vs/helicone`, `/vs/cloudflare`
 - **Sample apps repo** — RAG chatbot, tool-using agent, embeddings search
-- **Docs site migration** — Mintlify or Docusaurus at docs.velox.dev
+- **Docs site migration** — Mintlify or Docusaurus at docs.janus.dev
 - **Discord server** — community, showcase, feature requests
-- **Status page** — status.velox.dev
+- **Status page** — status.janus.dev
 - **Blog launch sequence** — 5 posts over 4 weeks
-- **Python SDK** (`velox-python`, separate repo)
-- **Node.js SDK** (`velox-node`, separate repo)
+- **Python SDK** (`janus-python`, separate repo)
+- **Node.js SDK** (`janus-node`, separate repo)
 
 ---
 
@@ -507,10 +507,10 @@ asks for them, or when you have 5+ customers and know the pattern.
 | # | Decision | Rationale |
 |---|---|---|
 | L1 | License: MIT now → ELv2 at V5-L5 | MIT removes legal friction for first customers; ELv2 protects before public launch |
-| L2 | Brand: Velox by Farzad Alizadeh | Independent product; remove all Anthropic org references |
+| L2 | Brand: Janus by Farzad Alizadeh | Independent product; remove all Anthropic org references |
 | L3 | Managed cloud: deferred to V6 | Cannot build self-host + managed cloud in parallel as a solo founder |
 | L4 | OIDC first, SAML later | OIDC covers ~80% of buyers; SAML is legacy IT, not developer-led evaluation |
-| L5 | CLI: single `velox` binary, clap subcommands | Done in V5-1 |
+| L5 | CLI: single `janus` binary, clap subcommands | Done in V5-1 |
 | L6 | OpenAPI: utoipa + utoipa-swagger-ui | Done in V5-1 |
 | L7 | Postgres in Helm: external only | Done in V5-2 |
 

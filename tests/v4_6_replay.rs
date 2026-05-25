@@ -29,36 +29,6 @@ fn mock_response() -> serde_json::Value {
     })
 }
 
-/// Make a gateway request with body logging enabled and return the request ID.
-/// For replay tests, we need `request_body` to be persisted.  We pass
-/// `X-Velox-Cache: false` so the response is always logged with status=success.
-async fn make_loggable_request(
-    base_url: &str,
-    mock_server: &wiremock::MockServer,
-    content: &str,
-) -> serde_json::Value {
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(mock_response()))
-        .mount(mock_server)
-        .await;
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{}/v1/chat/completions", base_url))
-        .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
-        .json(&serde_json::json!({
-            "model": "gpt-4o-mini",
-            "messages": [{ "role": "user", "content": content }]
-        }))
-        .send()
-        .await
-        .expect("gateway request failed");
-
-    resp.json().await.expect("response must be JSON")
-}
-
 // ── Playground: accessible with admin JWT ─────────────────────────────────────
 
 #[tokio::test]
@@ -147,27 +117,27 @@ async fn v4_6_playground_returns_extended_metadata_headers() {
 
     let headers = resp.headers();
     assert!(
-        headers.contains_key("x-velox-request-id"),
-        "must have x-velox-request-id header"
+        headers.contains_key("x-janus-request-id"),
+        "must have x-janus-request-id header"
     );
     assert!(
-        headers.contains_key("x-velox-latency-ms"),
-        "must have x-velox-latency-ms header"
+        headers.contains_key("x-janus-latency-ms"),
+        "must have x-janus-latency-ms header"
     );
     assert!(
-        headers.contains_key("x-velox-cache-hit"),
-        "must have x-velox-cache-hit header"
+        headers.contains_key("x-janus-cache-hit"),
+        "must have x-janus-cache-hit header"
     );
     assert!(
-        headers.contains_key("x-velox-playground"),
-        "must have x-velox-playground header"
+        headers.contains_key("x-janus-playground"),
+        "must have x-janus-playground header"
     );
     assert_eq!(
         headers
-            .get("x-velox-playground")
+            .get("x-janus-playground")
             .and_then(|v| v.to_str().ok()),
         Some("true"),
-        "x-velox-playground must be 'true'"
+        "x-janus-playground must be 'true'"
     );
 }
 
@@ -201,9 +171,9 @@ async fn v4_6_playground_flagged_in_request_log() {
     // The request-id header lets us look up the record directly.
     let request_id = resp
         .headers()
-        .get("x-velox-request-id")
+        .get("x-janus-request-id")
         .and_then(|v| v.to_str().ok())
-        .expect("must have x-velox-request-id")
+        .expect("must have x-janus-request-id")
         .to_string();
 
     // Wait briefly for the async DB write to complete.
@@ -247,7 +217,7 @@ async fn v4_6_replay_creates_new_request_record() {
     let gw_resp = client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "replay creates record unique v4_6" }]
@@ -343,7 +313,7 @@ async fn v4_6_original_request_record_not_modified() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "original record check unique v4_6" }]
@@ -421,7 +391,7 @@ async fn v4_6_replay_records_replay_of_request_id() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "replay id tracking unique v4_6" }]
@@ -490,7 +460,7 @@ async fn v4_6_replay_with_skip_cache_bypasses_cache() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "skip cache replay test unique v4_6" }]
@@ -556,7 +526,7 @@ async fn v4_6_replay_with_provider_override_uses_specified_provider() {
     client
         .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", common::auth_header())
-        .header("X-Velox-Cache", "false")
+        .header("X-Janus-Cache", "false")
         .json(&serde_json::json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "provider override test unique v4_6" }]

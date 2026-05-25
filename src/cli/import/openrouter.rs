@@ -1,9 +1,9 @@
-//! OpenRouter → Velox model-alias report.
+//! OpenRouter → Janus model-alias report.
 //!
-//! OpenRouter has no equivalent of Velox's pre-seeded providers — it is itself
+//! OpenRouter has no equivalent of Janus's pre-seeded providers — it is itself
 //! a gateway. The useful import action is therefore *discovery*: fetch the
-//! OpenRouter model list and emit a Velox-friendly table mapping each
-//! `<provider>/<model>` to the Velox provider id you would enable.
+//! OpenRouter model list and emit a Janus-friendly table mapping each
+//! `<provider>/<model>` to the Janus provider id you would enable.
 //!
 //! `GET https://openrouter.ai/api/v1/models` →
 //! ```json
@@ -16,7 +16,7 @@
 //! ```
 //!
 //! No DB writes occur — this importer is read-only by design. The output
-//! doubles as input for VELOX_V5_ROADMAP.md §5.4: "extend `model_pricing`
+//! doubles as input for JANUS_V5_ROADMAP.md §5.4: "extend `model_pricing`
 //! seeds with OpenRouter rows" (a manual migration step until V6 adds a model
 //! registration endpoint).
 
@@ -58,9 +58,9 @@ pub struct Pricing {
 pub struct ModelAlias {
     /// OpenRouter id, e.g. `openai/gpt-4o`.
     pub openrouter_id: String,
-    /// Velox pre-seeded provider id, or `None` for OpenRouter-only providers.
-    pub velox_provider: Option<String>,
-    /// The model name after the `/` — what you would send as `model` to Velox.
+    /// Janus pre-seeded provider id, or `None` for OpenRouter-only providers.
+    pub janus_provider: Option<String>,
+    /// The model name after the `/` — what you would send as `model` to Janus.
     pub model: String,
     /// Display name from OpenRouter, if any.
     pub display_name: Option<String>,
@@ -69,14 +69,14 @@ pub struct ModelAlias {
     pub completion_price: Option<String>,
 }
 
-/// Group OpenRouter models by inferred Velox provider id.
+/// Group OpenRouter models by inferred Janus provider id.
 #[derive(Debug, Default, Serialize)]
 pub struct AliasReport {
     pub aliases: Vec<ModelAlias>,
     /// Pre-seeded providers seen → model count, sorted alphabetically.
     pub provider_counts: BTreeMap<String, usize>,
     /// IDs of OpenRouter-only "providers" (e.g. `openrouter/auto`) that have no
-    /// Velox row. Useful for capacity planning.
+    /// Janus row. Useful for capacity planning.
     pub unmapped_providers: Vec<String>,
 }
 
@@ -92,7 +92,7 @@ impl AliasReport {
             out.push_str(&format!("  {p}: {n} models\n"));
         }
         if !self.unmapped_providers.is_empty() {
-            out.push_str("  unmapped (no Velox provider row):\n");
+            out.push_str("  unmapped (no Janus provider row):\n");
             for p in &self.unmapped_providers {
                 out.push_str(&format!("    - {p}\n"));
             }
@@ -103,7 +103,7 @@ impl AliasReport {
             "MODEL", "PROVIDER", "DISPLAY"
         ));
         for a in &self.aliases {
-            let provider = a.velox_provider.as_deref().unwrap_or("—");
+            let provider = a.janus_provider.as_deref().unwrap_or("—");
             let display = a.display_name.as_deref().unwrap_or("");
             let ctx = a
                 .context_length
@@ -130,7 +130,7 @@ pub fn build_aliases(listing: &OpenRouterListing) -> AliasReport {
     let mut unmapped_set: std::collections::BTreeSet<String> = Default::default();
 
     for m in &listing.data {
-        let (velox_provider, model) = match m.id.split_once('/') {
+        let (janus_provider, model) = match m.id.split_once('/') {
             Some((lhs, rhs)) if !lhs.is_empty() && !rhs.is_empty() => {
                 let normalized = normalize_openrouter_provider(lhs);
                 if is_known_provider(&normalized) {
@@ -150,7 +150,7 @@ pub fn build_aliases(listing: &OpenRouterListing) -> AliasReport {
         let pricing = m.pricing.as_ref();
         report.aliases.push(ModelAlias {
             openrouter_id: m.id.clone(),
-            velox_provider,
+            janus_provider,
             model,
             display_name: m.name.clone(),
             context_length: m.context_length,

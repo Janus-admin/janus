@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   providers,
-  type VeloxProvider,
+  type JanusProvider,
   type UpdateProviderRequest,
 } from "@/lib/api";
 import { useForm } from "react-hook-form";
@@ -130,7 +130,7 @@ function providerLabel(name: string): string {
 
 export default function ProvidersPage() {
   const qc = useQueryClient();
-  const [editTarget, setEditTarget] = useState<VeloxProvider | null>(null);
+  const [editTarget, setEditTarget] = useState<JanusProvider | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["providers"],
@@ -167,7 +167,7 @@ export default function ProvidersPage() {
     resolver: zodResolver(editSchema),
   });
 
-  function openEdit(provider: VeloxProvider) {
+  function openEdit(provider: JanusProvider) {
     setEditTarget(provider);
     form.reset({
       api_key: "",

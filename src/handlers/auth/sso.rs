@@ -47,7 +47,7 @@ fn build_redirect_uri(headers: &HeaderMap, idp_id: Uuid) -> String {
     format!("{scheme}://{host}/auth/oidc/{idp_id}/callback")
 }
 
-/// Resolve the highest Velox role from IdP group claims and the IdP's group_role_map.
+/// Resolve the highest Janus role from IdP group claims and the IdP's group_role_map.
 /// Returns "ReadOnly" when no group matches.
 fn resolve_role(groups: &[String], group_role_map: &serde_json::Value) -> &'static str {
     let Some(map) = group_role_map.as_object() else {
@@ -138,7 +138,7 @@ pub async fn oidc_start(
     Ok(Redirect::to(&auth_url).into_response())
 }
 
-/// GET /auth/oidc/:idp_id/callback — receive code from IdP, mint Velox JWT.
+/// GET /auth/oidc/:idp_id/callback — receive code from IdP, mint Janus JWT.
 ///
 /// On success, returns JSON `{ "token": "...", "user": { ... } }` — same shape
 /// as `POST /api/v1/auth/login` so the dashboard can handle both identically.
@@ -151,9 +151,7 @@ pub async fn oidc_callback(
     // IdP sent an error (user denied, misconfiguration, etc.)
     if let Some(err) = q.error {
         let desc = q.error_description.unwrap_or_default();
-        return Err(AppError::BadRequest(format!(
-            "IdP error: {err} — {desc}"
-        )));
+        return Err(AppError::BadRequest(format!("IdP error: {err} — {desc}")));
     }
 
     let code = q
@@ -234,14 +232,8 @@ pub async fn oidc_callback(
     .map_err(|e| AppError::Unauthorized(format!("OIDC token validation failed: {e}")))?;
 
     // ── JIT user creation / lookup ───────────────────────────────────────────
-    let email = claims
-        .email
-        .as_deref()
-        .unwrap_or(claims.sub.as_str());
-    let display_name = claims
-        .name
-        .as_deref()
-        .unwrap_or(email);
+    let email = claims.email.as_deref().unwrap_or(claims.sub.as_str());
+    let display_name = claims.name.as_deref().unwrap_or(email);
 
     let existing_identity = db_idp::find_identity(&state.pool, idp_id, &claims.sub).await?;
 
@@ -269,7 +261,7 @@ pub async fn oidc_callback(
         new_user
     };
 
-    // ── Mint Velox JWT ───────────────────────────────────────────────────────
+    // ── Mint Janus JWT ───────────────────────────────────────────────────────
     let token = create_token(
         user.id,
         &user.email,

@@ -1,4 +1,4 @@
-//! LiteLLM → Velox importer.
+//! LiteLLM → Janus importer.
 //!
 //! LiteLLM's `proxy_config.yaml` has three top-level sections we care about:
 //!
@@ -18,12 +18,12 @@
 //!   router_settings: { routing_strategy: simple-shuffle }
 //! ```
 //!
-//! Mapping (matches VELOX_V5_ROADMAP.md §5.4):
-//! - `litellm_params.model` prefix → Velox provider id
+//! Mapping (matches JANUS_V5_ROADMAP.md §5.4):
+//! - `litellm_params.model` prefix → Janus provider id
 //! - `litellm_params.api_key`     → provider `api_key`
 //! - `litellm_params.api_base`    → provider `base_url`
 //! - `litellm_settings.cache`     → `PATCH /admin/config` `cache_enabled`
-//! - `routing_strategy` string    → Velox routing strategy (see [`map_routing_strategy`])
+//! - `routing_strategy` string    → Janus routing strategy (see [`map_routing_strategy`])
 
 use std::path::Path;
 
@@ -117,7 +117,7 @@ pub fn plan_from_config(cfg: &LiteLLMConfig) -> MigrationPlan {
 
         if !is_known_provider(&provider_id) {
             plan.notes.push(format!(
-                "model_list[{idx}]: provider `{}` has no pre-seeded Velox row \
+                "model_list[{idx}]: provider `{}` has no pre-seeded Janus row \
                  — enable manually or add to migrations",
                 provider_id
             ));
@@ -144,7 +144,7 @@ pub fn plan_from_config(cfg: &LiteLLMConfig) -> MigrationPlan {
         });
         plan.notes.push(
             "LiteLLM `master_key` was present in source config. \
-             A fresh Velox key (vx-sk-…) will be created — the LiteLLM key is not reusable."
+             A fresh Janus key (jn-sk-…) will be created — the LiteLLM key is not reusable."
                 .into(),
         );
     }
@@ -161,7 +161,7 @@ pub fn plan_from_config(cfg: &LiteLLMConfig) -> MigrationPlan {
     if let Some(strat) = &cfg.router_settings.routing_strategy {
         if map_routing_strategy(Some(strat)) == "priority" && strat != "priority" {
             plan.notes.push(format!(
-                "routing_strategy `{strat}` has no exact Velox equivalent — \
+                "routing_strategy `{strat}` has no exact Janus equivalent — \
                  defaulted to `priority`. Edit the resulting key if needed."
             ));
         }
@@ -228,10 +228,10 @@ fn is_known_provider(id: &str) -> bool {
     )
 }
 
-/// LiteLLM router strategies → Velox routing strategies.
+/// LiteLLM router strategies → Janus routing strategies.
 ///
-/// The unknown-string fallback is `priority` because that is also Velox's
-/// default — see VELOX_ROADMAP.md decision #5.
+/// The unknown-string fallback is `priority` because that is also Janus's
+/// default — see JANUS_ROADMAP.md decision #5.
 pub fn map_routing_strategy(s: Option<&str>) -> &'static str {
     match s.unwrap_or("").to_ascii_lowercase().as_str() {
         "simple-shuffle" | "loadbalance" => "round_robin",

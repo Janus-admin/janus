@@ -107,7 +107,7 @@ function AddIdpDialog({
               required
             />
             <p className="text-xs text-muted-foreground">
-              Velox appends{" "}
+              Janus appends{" "}
               <code className="font-mono text-xs">
                 /.well-known/openid-configuration
               </code>{" "}
@@ -286,14 +286,14 @@ export default function SsoPage() {
         <CardContent className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
           <ol className="list-decimal list-inside space-y-2 text-sm">
             <li>
-              Register a Velox OAuth app in your IdP and set the redirect URI to{" "}
+              Register a Janus OAuth app in your IdP and set the redirect URI to{" "}
               <code className="font-mono text-xs">
-                https://your-velox-host/auth/oidc/&lt;idp_id&gt;/callback
+                https://your-janus-host/auth/oidc/&lt;idp_id&gt;/callback
               </code>
               .
             </li>
             <li>
-              Paste the issuer URL, client ID, and client secret above. Velox
+              Paste the issuer URL, client ID, and client secret above. Janus
               auto-discovers the authorization and token endpoints.
             </li>
             <li>
@@ -301,11 +301,11 @@ export default function SsoPage() {
               <code className="font-mono text-xs">
                 /auth/oidc/&lt;idp_id&gt;/start
               </code>{" "}
-              — Velox handles the PKCE flow and mints a JWT on callback.
+              — Janus handles the PKCE flow and mints a JWT on callback.
             </li>
             <li>
               First-time users are automatically provisioned with the{" "}
-              <strong>ReadOnly</strong> role. Map IdP groups to Velox roles via
+              <strong>ReadOnly</strong> role. Map IdP groups to Janus roles via
               the API (<code className="font-mono text-xs">group_role_map</code>
               ).
             </li>

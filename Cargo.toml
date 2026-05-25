@@ -1,12 +1,11 @@
 [package]
-name = "velox"
+name = "janus"
 version = "0.1.0"
 edition = "2021"
 description = "Self-hosted AI gateway — proxy, caching, observability"
-license = "MIT"
-authors = ["Farzad Alizadeh <Alizadeh2023@gmail.com>"]
-repository = "https://github.com/AlizadehAFPN/Velox"
-homepage = "https://github.com/AlizadehAFPN/Velox"
+license = "Elastic-2.0"
+repository = "https://github.com/Janus-admin/janus"
+homepage = "https://github.com/Janus-admin/janus"
 
 # ─── Feature flags ─────────────────────────────────────────────────────────────
 # Use exactly one at a time:

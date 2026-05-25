@@ -1,4 +1,4 @@
-//! `velox keys` subcommands. All go through the admin API.
+//! `janus keys` subcommands. All go through the admin API.
 
 use anyhow::{bail, Context};
 use clap::Subcommand;

@@ -2,8 +2,8 @@
 //!
 //! Resolution order for the base URL and admin token:
 //!   1. `--url` / `--token` flags on the parent `Cli`
-//!   2. `VELOX_URL` / `VELOX_ADMIN_TOKEN` env vars
-//!   3. `~/.config/velox/cli.toml` (`url = ...`, `admin_token = ...`)
+//!   2. `JANUS_URL` / `JANUS_ADMIN_TOKEN` env vars
+//!   3. `~/.config/janus/cli.toml` (`url = ...`, `admin_token = ...`)
 //!   4. defaults: `http://localhost:8080`, no token
 
 use std::path::PathBuf;
@@ -69,7 +69,7 @@ impl AdminClient {
 
 fn cli_config_path() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".config/velox/cli.toml"))
+    Some(PathBuf::from(home).join(".config/janus/cli.toml"))
 }
 
 fn load_file_config() -> Option<FileConfig> {
