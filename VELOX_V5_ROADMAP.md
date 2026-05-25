@@ -1534,7 +1534,7 @@ toxiproxy_rust = "0.2"   # chaos testing
 |---|---|---|---|---|
 | V5-0 | Backend | API Surface Expansion (embeddings, images, audio, models, tools) | ✅ Complete (2026-05-25) | 0027 |
 | V5-1 | Backend + SDKs | SDKs, CLI, OpenAPI | ✅ Server side complete (2026-05-25); SDKs live in separate repos (V5-1b) | — |
-| V5-2 | Backend + Infra | Deployment & Migration Tooling | ⏳ Not started | — |
+| V5-2 | Backend + Infra | Deployment & Migration Tooling | ✅ Complete (2026-05-25) — server side; Terraform provider lives in a separate repo (V5-2b) | — |
 | V5-3a | Backend + Frontend | OIDC + SCIM | ⏳ Not started | 0028 |
 | V5-3b | Backend + Frontend | SAML 2.0 | ⏳ Not started | 0028 (shared) |
 | V5-4 | Backend | Compliance & Audit Hardening | ⏳ Not started | 0029, 0030 |

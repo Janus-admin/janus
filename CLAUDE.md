@@ -68,6 +68,12 @@ before touching any code on a V5 phase.
 V5-0 (API Surface Expansion) and V5-1 server side (OpenAPI + Swagger UI + `velox` CLI)
 are complete. SDK repos (velox-python, velox-node) are V5-1b and live in separate repos.
 
+V5-2 (Deployment & Migration Tooling) is complete on the server side: importers
+(LiteLLM / Portkey / OpenRouter), `velox backup`/`restore`, Helm chart, and
+one-click deploy configs (Railway / Fly / Render) all ship in this repo. The
+Terraform provider is a separate repo (`terraform-provider-velox`) and is not
+in scope for this branch.
+
 ---
 
 ## What Has Been Built
@@ -223,6 +229,17 @@ are complete. SDK repos (velox-python, velox-node) are V5-1b and live in separat
 - [x] `Cargo.toml`: adds `utoipa` 5 (with `axum_extras`, `uuid`, `chrono`, `decimal` features), `utoipa-swagger-ui` 8 (with `axum` feature), `toml` 0.8 (CLI config file), and enables `clap` `env` feature for env-var-backed CLI flags
 - [x] `tests/v5_1_openapi.rs`: 5 acceptance tests covering `/admin/openapi.json` returns a 3.1 spec, the spec includes every annotated admin + gateway endpoint, Swagger UI returns 200 + HTML + static asset, response handlers unchanged
 - [x] `tests/v5_1_cli.rs`: 7 acceptance tests covering CLI help lists every subcommand, default-serve when no subcommand, `keys create` flag parsing, global `--url`/`--token` propagation, `keys create` + `config get` round-tripping through the admin API, `migrate status` reading `_sqlx_migrations`
+
+### Velox-Specific Rust Modules (V5-2 — Deployment & Migration Tooling)
+- [x] `src/cli/import/{mod,plan,litellm,portkey,openrouter}.rs`: importer suite. Each importer parses a competitor config (LiteLLM YAML, Portkey JSON, OpenRouter `/v1/models`) into a `MigrationPlan` — provider patches + key specs + cache toggle + notes. `--apply` pushes through `AdminClient` (`PATCH /admin/providers/:id`, `POST /admin/keys`, `PATCH /admin/config`); the default `--dry-run` prints a preview. OpenRouter is read-only because Velox has no admin endpoint for model aliases — it emits a grouped report instead.
+- [x] `src/cli/backup.rs`: `velox backup create|restore|inspect` — single tar.gz archive containing `VERSION` (schema_version + velox_version + RFC3339 created_at), `db.sql` (`pg_dump --no-owner --no-acl`), optional `velox.toml`, and `models/`. `read_archive` and `write_archive` are pure functions so tests round-trip in-memory archives without shelling out. `check_version_compatible` rejects archives produced by a newer schema than the binary knows.
+- [x] `src/cli/mod.rs` + `src/main.rs`: adds `Backup(BackupCmd)` to the top-level CLI; routes `Import(_)` through the new module signature (`flag_url` / `flag_token` propagated so `--apply` works).
+- [x] `Cargo.toml`: adds `serde_yaml = "0.9"`, `tar = "0.4"`, `flate2 = "1"`. Reuses existing `tempfile` dev-dep for archive round-trip tests.
+- [x] `charts/velox/`: Helm chart v0.1.0. Deployment, Service, ConfigMap, Secret (or existingSecret), PVC for `models/`, HPA (CPU + memory + optional custom metrics), Ingress, ServiceMonitor (Prometheus Operator), Qdrant subchart toggle, `_helpers.tpl`, NOTES.txt, `.helmignore`. Chart targets an **external PostgreSQL** (locked decision L9).
+- [x] `deploy/railway/railway.json` + `deploy/fly/fly.toml` + `deploy/render/render.yaml` (+ per-folder README): one-click deploy bundles. Each provisions an external Postgres, mounts a model volume, and injects the JWT/encryption secrets via the platform's secret store.
+- [x] `docs/deployment/ha.md`: HA runbook — Postgres primary+replica, ≥2 Velox nodes, cluster mode, embedding-model strategies, encryption key rotation, DR runbook tied to `velox backup`. `docs/deployment/helm.md` (chart reference) and `docs/deployment/terraform.md` (provider stub for the separate repo).
+- [x] `tests/fixtures/v5_2/`: synthetic `litellm-sample.yaml`, `portkey-sample.json`, `openrouter-models.json`, and `helm-minimal-values.yaml` used by the acceptance tests.
+- [x] `tests/v5_2_migration_imports.rs`: 11 acceptance tests — LiteLLM parsing + routing map + unknown-provider notes, Portkey provider list + routing map + cache flow, OpenRouter alias grouping + unmapped pass-through, backup archive complete-file shape, restore round-trip, version compatibility refusal, `helm lint`, `helm template` (lint/template tests skip gracefully when `helm` is not on PATH).
 
 ---
 

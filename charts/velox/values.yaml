@@ -1,0 +1,203 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Default values for Velox.
+# ─────────────────────────────────────────────────────────────────────────────
+# These defaults boot Velox against an external Postgres and no Qdrant.
+# They are NOT production-ready on their own — at minimum override:
+#   - externalSecrets (or .secrets.* literals) for JWT_SECRET / ENCRYPTION_KEY
+#   - postgresql.externalUrl
+#   - provider keys you actually plan to use
+# ─────────────────────────────────────────────────────────────────────────────
+
+image:
+  repository: ghcr.io/farzad/velox
+  tag: ""           # defaults to .Chart.appVersion when empty
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+replicaCount: 2
+
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""           # nginx, traefik, ...
+  annotations: {}
+  hosts:
+    - host: velox.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # Example for cert-manager + nginx:
+  # tls:
+  #   - secretName: velox-tls
+  #     hosts: [velox.example.com]
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  # Standard CPU-based scaling. Custom RPS metric is documented in
+  # docs/deployment/helm.md and requires Prometheus Adapter.
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  customMetrics: []
+  # Example custom metric (uncomment after installing prometheus-adapter):
+  # customMetrics:
+  #   - type: Pods
+  #     pods:
+  #       metric:
+  #         name: velox_requests_per_second
+  #       target:
+  #         type: AverageValue
+  #         averageValue: "200"
+
+# Prometheus Operator integration. Disabled by default — flip on after
+# prometheus-operator is installed in the cluster.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+
+# ─── Velox application config ────────────────────────────────────────────────
+# Everything here maps 1:1 to env vars consumed by `Config::load()`.
+config:
+  host: "0.0.0.0"
+  port: 8080
+  jwtExpirationHours: 24
+
+  # Cache
+  cacheEnabled: true
+  semanticCacheBackend: "linear"      # "linear" | "hnsw" | "qdrant"
+  semanticCacheThreshold: 0.90
+
+  # Qdrant — only consulted when semanticCacheBackend = "qdrant".
+  qdrantUrl: ""                       # e.g. "http://velox-qdrant:6334"
+  qdrantCollection: "velox_cache"
+  qdrantVectorSize: 384
+
+  # Rate limiting
+  rateLimitWindowSecs: 60
+  maxRetries: 1
+
+  # Cluster mode (multi-node deployments)
+  cluster:
+    enabled: false
+    nodeId: ""                        # defaults to pod name when empty
+
+# ─── Secret references ────────────────────────────────────────────────────────
+# Production deployments should set `existingSecret` and provide the secret
+# out-of-band (Vault, ExternalSecrets, SOPS, etc.). The chart will mount each
+# key as an env var.
+#
+# Required keys in the secret:
+#   JWT_SECRET           — required by auth
+#   ENCRYPTION_KEY       — required to store provider keys at rest
+# Optional provider keys:
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY,
+#   GROQ_API_KEY, DEEPSEEK_API_KEY,
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+secrets:
+  existingSecret: ""                  # name of a pre-created Secret
+  # When existingSecret is empty, the chart creates one from these literals.
+  # Leave them blank to skip — chart_lint won't fail.
+  jwtSecret: ""
+  encryptionKey: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  geminiApiKey: ""
+  groqApiKey: ""
+  deepseekApiKey: ""
+  awsAccessKeyId: ""
+  awsSecretAccessKey: ""
+  awsRegion: ""
+
+# ─── External PostgreSQL ──────────────────────────────────────────────────────
+# Per L9 (VELOX_V5_ROADMAP.md §17): the chart never bundles Postgres.
+# Provide a connection string via either a Secret (preferred) or literal.
+postgresql:
+  # Secret containing key `DATABASE_URL` (e.g. one provided by Crunchy Postgres
+  # Operator or a managed RDS bridge). Wins over `externalUrl` when set.
+  existingSecret: ""
+  existingSecretKey: "DATABASE_URL"
+  # Inline URL — used only when existingSecret is empty. Not recommended for
+  # production: the URL ends up in the rendered StatefulSet env block.
+  externalUrl: ""                     # postgres://user:pass@host:5432/velox
+
+# ─── Embedding model storage ──────────────────────────────────────────────────
+# The semantic cache needs ~100 MB of ONNX + tokenizer files. Mount them via
+# a PVC (default) or skip when running with semanticCacheBackend = "qdrant"
+# and pre-computed embeddings.
+models:
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 5Gi
+    accessModes: ["ReadWriteOnce"]
+  # Mount path inside the container. Must match velox.toml `embedding_model_path` parent.
+  mountPath: /var/lib/velox/models
+
+# ─── Qdrant subchart toggle ──────────────────────────────────────────────────
+# When enabled, the chart pulls in qdrant/qdrant-helm as a dependency. You
+# generally do NOT want this on for production — run Qdrant in its own
+# namespace with its own backup story. Off by default.
+qdrant:
+  enabled: false
+  # qdrant subchart values pass through here when enabled.
+  # See: https://github.com/qdrant/qdrant-helm
+
+# ─── Probes ───────────────────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

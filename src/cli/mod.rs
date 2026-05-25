@@ -14,6 +14,7 @@
 use clap::{Parser, Subcommand};
 
 pub mod admin_client;
+pub mod backup;
 pub mod config;
 pub mod import;
 pub mod keys;
@@ -64,9 +65,13 @@ pub enum Command {
     #[command(subcommand)]
     Config(config::ConfigCmd),
 
-    /// Import configuration from other gateways. Stubbed in V5-1; full impl lands in V5-2.
+    /// Import configuration from other gateways (LiteLLM, Portkey, OpenRouter).
     #[command(subcommand)]
     Import(import::ImportCmd),
+
+    /// Snapshot or restore the Velox installation (DB + models + config).
+    #[command(subcommand)]
+    Backup(backup::BackupCmd),
 }
 
 /// Args mirroring the previous top-level flags so `velox serve` is a true drop-in

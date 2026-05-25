@@ -1,0 +1,41 @@
+# Synthetic LiteLLM proxy_config.yaml used by tests/v5_2_migration_imports.rs.
+# Mirrors the real LiteLLM shape: model_list (provider keys + base_urls),
+# general_settings.master_key, litellm_settings.cache, router_settings.routing_strategy.
+
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: sk-openai-fixture
+      api_base: https://api.openai.com/v1
+
+  - model_name: claude-3-sonnet
+    litellm_params:
+      model: anthropic/claude-3-sonnet-20240229
+      api_key: sk-ant-fixture
+
+  - model_name: bedrock-claude
+    litellm_params:
+      model: bedrock/anthropic.claude-3-sonnet-20240229-v1:0
+      aws_region_name: us-east-1
+
+  - model_name: groq-mixtral
+    litellm_params:
+      model: groq/mixtral-8x7b-32768
+      api_key: gsk-fixture
+
+  - model_name: gemini-pro
+    litellm_params:
+      model: vertex_ai/gemini-1.5-pro
+      api_key: vertex-fixture
+
+general_settings:
+  master_key: sk-master-fixture
+
+litellm_settings:
+  cache: true
+  cache_params:
+    similarity_threshold: 0.85
+
+router_settings:
+  routing_strategy: simple-shuffle

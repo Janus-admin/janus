@@ -1,0 +1,26 @@
+# Minimal values used by tests/v5_2_migration_imports.rs to drive
+# `helm lint` and `helm template` against charts/velox.
+postgresql:
+  externalUrl: postgres://velox:test@pg.test:5432/velox
+
+secrets:
+  jwtSecret: "test-jwt-secret-do-not-use-in-prod"
+  encryptionKey: "test-encryption-key-do-not-use-in-prod"
+  openaiApiKey: "sk-test"
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: velox.test
+      paths:
+        - path: /
+          pathType: Prefix
+
+serviceMonitor:
+  enabled: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5

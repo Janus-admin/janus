@@ -1,0 +1,53 @@
+{
+  "_comment": "Trimmed sample of GET https://openrouter.ai/api/v1/models. Mirrors the real shape: { data: [{ id, name, context_length, pricing: { prompt, completion }}] }",
+  "data": [
+    {
+      "id": "openai/gpt-4o",
+      "name": "OpenAI: GPT-4o",
+      "context_length": 128000,
+      "pricing": { "prompt": "0.000005", "completion": "0.000015" }
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "OpenAI: GPT-4o-mini",
+      "context_length": 128000,
+      "pricing": { "prompt": "0.00000015", "completion": "0.0000006" }
+    },
+    {
+      "id": "anthropic/claude-3.5-sonnet",
+      "name": "Anthropic: Claude 3.5 Sonnet",
+      "context_length": 200000,
+      "pricing": { "prompt": "0.000003", "completion": "0.000015" }
+    },
+    {
+      "id": "google/gemini-1.5-pro",
+      "name": "Google: Gemini 1.5 Pro",
+      "context_length": 1000000,
+      "pricing": { "prompt": "0.00000125", "completion": "0.000005" }
+    },
+    {
+      "id": "groq/llama-3.1-70b",
+      "name": "Groq: Llama 3.1 70B",
+      "context_length": 8000,
+      "pricing": { "prompt": "0.00000059", "completion": "0.00000079" }
+    },
+    {
+      "id": "deepseek/deepseek-chat",
+      "name": "DeepSeek: Chat",
+      "context_length": 64000,
+      "pricing": { "prompt": "0.00000014", "completion": "0.00000028" }
+    },
+    {
+      "id": "amazon/nova-pro",
+      "name": "Amazon: Nova Pro",
+      "context_length": 300000,
+      "pricing": { "prompt": "0.000008", "completion": "0.000032" }
+    },
+    {
+      "id": "mistralai/mistral-large",
+      "name": "Mistral: Large",
+      "context_length": 128000,
+      "pricing": { "prompt": "0.000002", "completion": "0.000006" }
+    }
+  ]
+}

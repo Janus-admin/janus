@@ -19,11 +19,7 @@ pub enum ConfigCmd {
     },
 }
 
-pub async fn run(
-    cmd: ConfigCmd,
-    flag_url: Option<&str>,
-    flag_token: Option<&str>,
-) -> CliResult {
+pub async fn run(cmd: ConfigCmd, flag_url: Option<&str>, flag_token: Option<&str>) -> CliResult {
     let client = AdminClient::resolve(flag_url, flag_token)?;
     match cmd {
         ConfigCmd::Get => {
@@ -40,9 +36,7 @@ pub async fn run(
             Ok(())
         }
         ConfigCmd::Set { pair } => {
-            let (key, value) = pair
-                .split_once('=')
-                .context("expected `key=value` pair")?;
+            let (key, value) = pair.split_once('=').context("expected `key=value` pair")?;
             let patch = build_patch(key, value)?;
             let resp = client
                 .request(reqwest::Method::PATCH, "/admin/config")

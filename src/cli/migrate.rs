@@ -26,11 +26,10 @@ pub async fn run(cmd: MigrateCmd) -> CliResult {
         MigrateCmd::Up => {
             // pool::connect already runs migrations on startup; this is now a no-op
             // but exists so operators have a stable verb. Print the applied count.
-            let applied: i64 =
-                sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap_or(0);
+            let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(0);
             println!("Migrations applied. _sqlx_migrations row count: {applied}");
             Ok(())
         }

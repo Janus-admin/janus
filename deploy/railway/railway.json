@@ -1,0 +1,28 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "./Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "velox serve",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5,
+    "numReplicas": 1,
+    "envs": {
+      "RUST_LOG": "info,tower_http=warn",
+      "HOST": "0.0.0.0",
+      "PORT": "${{PORT}}",
+      "DATABASE_URL": "${{Postgres.DATABASE_URL}}",
+      "JWT_SECRET": "${{shared.JWT_SECRET}}",
+      "ENCRYPTION_KEY": "${{shared.ENCRYPTION_KEY}}",
+      "CACHE_ENABLED": "true",
+      "SEMANTIC_CACHE_BACKEND": "linear",
+      "SEMANTIC_CACHE_THRESHOLD": "0.9",
+      "RATE_LIMIT_WINDOW_SECS": "60",
+      "MAX_RETRIES": "1"
+    }
+  }
+}

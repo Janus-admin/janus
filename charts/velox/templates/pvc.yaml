@@ -1,0 +1,15 @@
+{{- if .Values.models.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "velox.fullname" . }}-models
+  labels: {{- include "velox.labels" . | nindent 4 }}
+spec:
+  accessModes: {{- toYaml .Values.models.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.models.persistence.size | quote }}
+  {{- with .Values.models.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

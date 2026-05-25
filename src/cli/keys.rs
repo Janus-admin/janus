@@ -38,11 +38,7 @@ pub enum KeysCmd {
     },
 }
 
-pub async fn run(
-    cmd: KeysCmd,
-    flag_url: Option<&str>,
-    flag_token: Option<&str>,
-) -> CliResult {
+pub async fn run(cmd: KeysCmd, flag_url: Option<&str>, flag_token: Option<&str>) -> CliResult {
     let client = AdminClient::resolve(flag_url, flag_token)?;
     match cmd {
         KeysCmd::List => list(&client).await,

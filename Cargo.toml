@@ -92,6 +92,13 @@ utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono", "decimal"
 utoipa-swagger-ui = { version = "8", features = ["axum"] }
 toml = "0.8"
 
+# ─── V5-2: Deployment & Migration Tooling ─────────────────────────────────────
+# Importers parse LiteLLM YAML (serde_yaml) and pack/unpack backup archives
+# (tar + flate2 gz). serde_json already covers Portkey + OpenRouter shapes.
+serde_yaml = "0.9"
+tar = "0.4"
+flate2 = "1"
+
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]
 wiremock = "0.6"

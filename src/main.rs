@@ -68,7 +68,10 @@ async fn main() -> anyhow::Result<()> {
             return velox::cli::config::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
         }
         Some(Command::Import(sub)) => {
-            return velox::cli::import::run(sub).await;
+            return velox::cli::import::run(sub, cli.url.as_deref(), cli.token.as_deref()).await;
+        }
+        Some(Command::Backup(sub)) => {
+            return velox::cli::backup::run(sub).await;
         }
     };
 
