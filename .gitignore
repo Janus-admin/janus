@@ -1,6 +1,8 @@
-# ─── AI session / dev tooling ────────────────────────────────────────────────
+# ─── Local-only files (never committed) ──────────────────────────────────────
 CLAUDE.md
 AGENTS.md
+CHANGELOG.md
+CONFIGURATION.md
 
 # ─── Secrets (NEVER commit these) ────────────────────────────────────────────
 .env
