@@ -1,34 +1,48 @@
-version: "3.8"
-
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: rust_backend
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: janus
+      POSTGRES_USER: janus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-janus_dev}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U janus -d janus"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  api:
-    build: .
+  janus:
+    # To build locally instead: replace `image` with `build: .`
+    image: ghcr.io/Janus-admin/janus:latest
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/rust_backend
-      JWT_SECRET: change-this-secret-in-production
-      JWT_EXPIRATION_HOURS: "24"
-      RUST_LOG: info,tower_http=debug
+      DATABASE_URL: postgres://janus:${POSTGRES_PASSWORD:-janus_dev}@db:5432/janus
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env (openssl rand -base64 32)}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env (openssl rand -base64 32)}"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ./models:/app/models:ro    # optional: mount ONNX files for semantic cache
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   pgdata:
