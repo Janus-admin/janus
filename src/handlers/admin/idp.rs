@@ -7,6 +7,7 @@
 use crate::{
     crypto,
     db::identities as db_idp,
+    enterprise::AuditEvent,
     errors::{AppError, AppResult},
     middleware::{
         jwt::AuthUser,
@@ -174,6 +175,13 @@ pub async fn create_idp(
     .await?;
 
     let view = IdpView::try_from(idp)?;
+
+    state.enterprise.audit(
+        AuditEvent::new("idp.create", "identity_provider", Some(view.id.to_string()), Some(auth.0.sub), Some(auth.0.email.clone()))
+            .with_workspace(workspace_id)
+            .with_metadata(serde_json::json!({ "name": req.name, "discovery_url": req.discovery_url })),
+    );
+
     Ok((StatusCode::CREATED, Json(json!({ "data": view }))))
 }
 
@@ -198,6 +206,13 @@ pub async fn delete_idp(
 
     let deleted = db_idp::delete_idp(&state.pool, id).await?;
     if deleted {
+        state.enterprise.audit(AuditEvent::new(
+            "idp.delete",
+            "identity_provider",
+            Some(id.to_string()),
+            Some(auth.0.sub),
+            Some(auth.0.email.clone()),
+        ));
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(AppError::NotFound(format!(

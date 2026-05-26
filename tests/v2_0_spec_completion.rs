@@ -566,6 +566,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
+        enterprise: std::sync::Arc::new(janus::enterprise::CommunityEnterprise),
     });
 
     let app = janus::routes::create_router(state);
@@ -688,6 +689,7 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         )),
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
+        enterprise: std::sync::Arc::new(janus::enterprise::CommunityEnterprise),
     });
 
     let app = janus::routes::create_router(state);

@@ -1,5 +1,6 @@
 use crate::{
     db::api_keys as db_api_keys,
+    enterprise::AuditEvent,
     errors::AppResult,
     middleware::{
         jwt::AuthUser,
@@ -100,6 +101,11 @@ pub async fn create_key(
     let key_bytes = db_api_keys::sha256_bytes(&raw_key);
     state.key_cache.insert(key_bytes, key.clone());
 
+    state.enterprise.audit(
+        AuditEvent::new("key.create", "api_key", Some(id.to_string()), Some(auth.0.sub), Some(auth.0.email.clone()))
+            .with_metadata(serde_json::json!({ "name": body.name })),
+    );
+
     let response = CreateApiKeyResponse {
         id: key.id,
         name: key.name,
@@ -121,13 +127,17 @@ pub async fn create_key(
     responses(
         (status = 200, description = "Paginated list of API keys", body = serde_json::Value),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden — requires ApiManager role or higher"),
     ),
     security(("bearer_jwt" = [])),
 )]
 pub async fn list_keys(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Query(params): Query<ListKeysQuery>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::ApiManager, &auth.0, &state).await?;
+
     let page = params.page.max(1);
     let per_page = params.per_page.clamp(1, 100);
 
@@ -155,13 +165,17 @@ pub async fn list_keys(
         (status = 200, description = "Key details", body = serde_json::Value),
         (status = 404, description = "Key not found"),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden — requires ApiManager role or higher"),
     ),
     security(("bearer_jwt" = [])),
 )]
 pub async fn get_key(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::ApiManager, &auth.0, &state).await?;
+
     let key = db_api_keys::get_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| crate::errors::AppError::NotFound(format!("API key {id}")))?;
@@ -353,6 +367,14 @@ pub async fn rotate_key(
         }
     }
 
+    state.enterprise.audit(AuditEvent::new(
+        "key.rotate",
+        "api_key",
+        Some(id.to_string()),
+        Some(auth.0.sub),
+        Some(auth.0.email.clone()),
+    ));
+
     Ok((
         StatusCode::OK,
         Json(json!({
@@ -416,6 +438,14 @@ pub async fn revoke_key(
                 .await;
         }
     }
+
+    state.enterprise.audit(AuditEvent::new(
+        "key.revoke",
+        "api_key",
+        Some(id.to_string()),
+        Some(auth.0.sub),
+        Some(auth.0.email.clone()),
+    ));
 
     Ok((
         axum::http::StatusCode::OK,

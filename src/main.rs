@@ -9,6 +9,7 @@ use janus::{
     cluster::rate_limit::DbRateLimiter,
     config::Config,
     db::{self, api_keys as db_api_keys},
+    enterprise::EnterpriseExt,
     gateway::ProviderRegistry,
     metrics,
     middleware::rate_limit::RateLimiter,
@@ -338,6 +339,18 @@ async fn main() -> anyhow::Result<()> {
     }
     let plugins = Arc::new(plugin_list);
 
+    // ── Enterprise state ──────────────────────────────────────────────────────
+    // Community builds get a zero-cost no-op implementation.
+    // Enterprise builds get the real implementation with license validation,
+    // audit DB writes, and policy engine (future).
+    #[cfg(feature = "enterprise")]
+    let enterprise: Arc<dyn EnterpriseExt> =
+        janus::enterprise::real::EnterpriseState::new(pool.clone());
+
+    #[cfg(not(feature = "enterprise"))]
+    let enterprise: Arc<dyn EnterpriseExt> =
+        Arc::new(janus::enterprise::CommunityEnterprise);
+
     let (event_tx, _) = tokio::sync::broadcast::channel(1_000);
 
     let runtime_config = Arc::new(tokio::sync::RwLock::new(
@@ -368,6 +381,7 @@ async fn main() -> anyhow::Result<()> {
         time_guard,
         models_cache: Arc::new(std::sync::Mutex::new(None)),
         oidc_states: Arc::new(dashmap::DashMap::new()),
+        enterprise,
     });
 
     // ── Background: cache TTL prune (V4-3) ───────────────────────────────────
@@ -410,6 +424,22 @@ async fn main() -> anyhow::Result<()> {
                 if let Err(e) = alert_engine.evaluate().await {
                     tracing::warn!("Alert evaluation error: {e}");
                 }
+            }
+        });
+    }
+
+    // ── Background: license refresh (enterprise builds only) ─────────────────
+    // Re-validates the JWT every 24 h so key rotation and revocation take effect
+    // without a restart. The refresh is a no-op in community builds.
+    {
+        let enterprise_for_refresh = state.enterprise.clone();
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
+            interval.tick().await; // skip the first immediate tick
+            loop {
+                interval.tick().await;
+                enterprise_for_refresh.refresh_license().await;
             }
         });
     }

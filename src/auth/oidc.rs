@@ -35,6 +35,7 @@ pub struct OidcDiscovery {
 pub struct IdClaims {
     pub sub: String,
     pub email: Option<String>,
+    pub email_verified: Option<bool>,
     pub name: Option<String>,
     pub nonce: Option<String>,
     pub iss: String,

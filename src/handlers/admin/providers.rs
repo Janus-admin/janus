@@ -1,5 +1,6 @@
 use crate::{
     db::providers as db_providers,
+    enterprise::AuditEvent,
     errors::AppResult,
     middleware::{
         jwt::AuthUser,
@@ -48,14 +49,18 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> AppResult<Jso
     responses(
         (status = 200, description = "Updated provider view", body = serde_json::Value),
         (status = 404, description = "Provider not found"),
+        (status = 403, description = "Forbidden — requires Admin role"),
     ),
     security(("bearer_jwt" = [])),
 )]
 pub async fn update_provider(
     State(state): State<Arc<AppState>>,
+    auth: AuthUser,
     Path(id): Path<String>,
     Json(body): Json<UpdateProviderRequest>,
 ) -> AppResult<Json<Value>> {
+    require_role(Role::Admin, &auth.0, &state).await?;
+
     // Encrypt the API key if one was supplied.
     let api_key_encrypted = if let Some(ref plaintext_key) = body.api_key {
         if plaintext_key.is_empty() {
@@ -88,6 +93,15 @@ pub async fn update_provider(
     let provider = db_providers::update_provider(&state.pool, &id, params)
         .await?
         .ok_or_else(|| crate::errors::AppError::NotFound(format!("Provider {id}")))?;
+
+    state.enterprise.audit(
+        AuditEvent::new("provider.update", "provider", Some(id.clone()), Some(auth.0.sub), Some(auth.0.email.clone()))
+            .with_metadata(serde_json::json!({
+                "provider_id": id,
+                "is_enabled": body.is_enabled,
+                "priority": body.priority,
+            })),
+    );
 
     Ok(Json(json!({ "data": ProviderView::from(provider) })))
 }

@@ -551,6 +551,8 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         time_guard,
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
+        // Tests always use the community (no-op) enterprise implementation.
+        enterprise: std::sync::Arc::new(janus::enterprise::CommunityEnterprise),
     });
 
     let app = janus::routes::create_router(state);

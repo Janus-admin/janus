@@ -31,4 +31,4 @@ Janus {{ .Chart.AppVersion }} is being deployed.
    - HA setup:        docs/deployment/ha.md
    - Helm reference:  docs/deployment/helm.md
 
-Need help? https://github.com/farzad/janus/issues
+Need help? https://github.com/Janus-admin/janus/issues

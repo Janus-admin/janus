@@ -35,6 +35,9 @@ pub struct ChatMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionRequest {
+    /// Model identifier. When omitted or empty, the Smart Router (V5-L6) selects
+    /// a model automatically based on capability, complexity, and admin rules.
+    #[serde(default)]
     pub model: String,
     pub messages: Vec<ChatMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]

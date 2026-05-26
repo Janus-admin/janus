@@ -231,6 +231,15 @@ pub async fn oidc_callback(
     .await
     .map_err(|e| AppError::Unauthorized(format!("OIDC token validation failed: {e}")))?;
 
+    // ── Verify email is confirmed before using it for account linking ────────
+    // email_verified = false means the IdP has not confirmed ownership of the
+    // address; allowing login would let an attacker claim an existing account.
+    if claims.email_verified == Some(false) {
+        return Err(AppError::Unauthorized(
+            "IdP email is not verified — login rejected".to_string(),
+        ));
+    }
+
     // ── JIT user creation / lookup ───────────────────────────────────────────
     let email = claims.email.as_deref().unwrap_or(claims.sub.as_str());
     let display_name = claims.name.as_deref().unwrap_or(email);

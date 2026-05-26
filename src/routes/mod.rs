@@ -4,6 +4,11 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+
+#[cfg(not(feature = "enterprise"))]
+use axum::{extract::State, Json};
+#[cfg(not(feature = "enterprise"))]
+use serde_json::json;
 use tower_http::{
     cors::{Any, CorsLayer},
     limit::RequestBodyLimitLayer,
@@ -34,6 +39,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(handlers::gateway::images_generations),
         )
         .route("/v1/audio/speech", post(handlers::gateway::audio_speech))
+        // ── Inbound protocol shims ────────────────────────────────────────────
+        // Accept native Anthropic Messages API format → translate → pipeline.
+        .route(
+            "/v1/messages",
+            post(handlers::inbound::anthropic_shim::messages_handler),
+        )
+        // Accept native Google GenAI generateContent / streamGenerateContent.
+        // The `:model_action` segment encodes both model and action, e.g.
+        // `gemini-2.0-flash:generateContent`.
+        .route(
+            "/v1beta/models/:model_action",
+            post(handlers::inbound::gemini_shim::generate_content_handler),
+        )
         .layer(RequestBodyLimitLayer::new(1024 * 1024)); // 1MB
 
     // Audio upload gets a higher cap (matches OpenAI's 25MB file limit).
@@ -196,6 +214,56 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(handlers::admin::idp::list_idps).post(handlers::admin::idp::create_idp),
         )
         .route("/admin/idp/:id", delete(handlers::admin::idp::delete_idp))
+        // ── Admin — Smart Routing (V5-L6) ────────────────────────────────────
+        .route(
+            "/admin/workspaces/:workspace_id/smart-routing/config",
+            get(handlers::admin::smart_routing::get_config)
+                .put(handlers::admin::smart_routing::put_config),
+        )
+        .route(
+            "/admin/workspaces/:workspace_id/smart-routing/rules",
+            get(handlers::admin::smart_routing::list_rules)
+                .post(handlers::admin::smart_routing::create_rule),
+        )
+        .route(
+            "/admin/workspaces/:workspace_id/smart-routing/rules/:rule_id",
+            patch(handlers::admin::smart_routing::update_rule)
+                .delete(handlers::admin::smart_routing::delete_rule),
+        )
+        .route_layer(axum::middleware::from_extractor_with_state::<
+            AuthUser,
+            Arc<AppState>,
+        >(state.clone()));
+
+    // Enterprise-only routes — absent in community builds.
+    // All require JWT auth (enforced inside each handler via `require_role`).
+    #[cfg(feature = "enterprise")]
+    let enterprise_routes = Router::new()
+        .route(
+            "/admin/enterprise/audit",
+            get(handlers::admin::audit::list_events),
+        )
+        .route(
+            "/admin/enterprise/audit/export",
+            get(handlers::admin::audit::export_events),
+        )
+        .route(
+            "/admin/enterprise/license",
+            get(handlers::admin::audit::get_license),
+        )
+        .route_layer(axum::middleware::from_extractor_with_state::<
+            AuthUser,
+            Arc<AppState>,
+        >(state.clone()));
+
+    #[cfg(not(feature = "enterprise"))]
+    let enterprise_routes = Router::new()
+        // In community builds, expose only the license endpoint so the dashboard
+        // can discover the edition without getting a 404.
+        .route(
+            "/admin/enterprise/license",
+            get(community_license_handler),
+        )
         .route_layer(axum::middleware::from_extractor_with_state::<
             AuthUser,
             Arc<AppState>,
@@ -211,6 +279,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .merge(gateway_routes)
         .merge(audio_upload_routes)
         .merge(admin_routes)
+        .merge(enterprise_routes)
         .merge(mcp_routes)
         // V5-1: OpenAPI spec + Swagger UI — unauthenticated by design
         .merge(handlers::admin::docs::router())
@@ -241,4 +310,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)
+}
+
+/// Minimal community-edition license handler.
+/// Returns `{"data":{"state":"community"}}` so the dashboard can show the edition
+/// without the route being absent (which would look like a 404 network error).
+#[cfg(not(feature = "enterprise"))]
+async fn community_license_handler(
+    State(_state): State<Arc<AppState>>,
+    _auth: AuthUser,
+) -> Json<serde_json::Value> {
+    Json(json!({ "data": { "state": "community" } }))
 }

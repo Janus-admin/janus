@@ -1,3 +1,8 @@
+# ─── AI session / dev tooling ────────────────────────────────────────────────
+docs/CLAUDE.md
+docs/AGENTS.md
+docs/LICENSING_OPS.md
+
 # ─── Secrets (NEVER commit these) ────────────────────────────────────────────
 .env
 .env.local
@@ -10,6 +15,7 @@ janus.toml
 # ─── Rust ─────────────────────────────────────────────────────────────────────
 /target/
 sqlx-data.json
+.cargo/config.toml
 
 # ─── Janus Runtime Files ──────────────────────────────────────────────────────
 janus.db
@@ -40,3 +46,18 @@ Thumbs.db
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 logs/
+
+# ─── Internal planning docs (not for public repo) ─────────────────────────────
+CLAUDE.md
+AGENTS.md
+docs/CLAUDE.md
+docs/AGENTS.md
+docs/JANUS_ROADMAP.md
+docs/JANUS_V2_ROADMAP.md
+docs/JANUS_V3_ROADMAP.md
+docs/JANUS_V4_ROADMAP.md
+docs/JANUS_V5_ROADMAP.md
+docs/JANUS_FUTURE.md
+docs/DECISIONS.md
+docs/QA_MANUAL_TEST_PLAN.md
+docs/CHANGELOG.md

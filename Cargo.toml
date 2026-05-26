@@ -13,8 +13,11 @@ homepage = "https://github.com/Janus-admin/janus"
 #   cargo build --no-default-features --features sqlite  → sqlite (zero-dependency)
 [features]
 default = ["postgres"]
-postgres = ["sqlx/postgres", "rust_decimal/db-postgres"]
-sqlite   = ["sqlx/sqlite", "sqlx/any"]
+postgres    = ["sqlx/postgres", "rust_decimal/db-postgres"]
+sqlite      = ["sqlx/sqlite", "sqlx/any"]
+# Enterprise edition: SOC2 audit log, license validation, policy engine stub.
+# Build with: cargo build --release --features enterprise
+enterprise  = []
 
 # ─── Core (present from project start) ────────────────────────────────────────
 [dependencies]
@@ -110,6 +113,10 @@ base64 = "0.22"
 # ─── V5-L4: Polished Alerts (Slack + Email) ───────────────────────────────────
 # lettre: SMTP email delivery + file-transport for test-mode (writes .eml files).
 lettre = { version = "0.11", features = ["smtp-transport", "tokio1-native-tls", "file-transport", "builder"] }
+
+# ─── Enterprise: open-core boundary ──────────────────────────────────────────
+# arc-swap: wait-free atomic pointer swap for hot-path policy reads.
+arc-swap = "1"
 
 # ─── Dev / Test Dependencies ───────────────────────────────────────────────────
 [dev-dependencies]

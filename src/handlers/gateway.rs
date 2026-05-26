@@ -2,7 +2,7 @@ use crate::{
     cache::{exact, CacheHit},
     db,
     errors::AppError,
-    gateway::{pipeline, strategies::RoutingStrategy},
+    gateway::{pipeline, smart_router::SmartRouter, strategies::RoutingStrategy},
     middleware::api_key_auth::GatewayAuth,
     middleware::budget::{check_budget, DowngradeDecision},
     pii, pricing,
@@ -98,7 +98,7 @@ pub async fn chat_completions(
     let span = tracing::info_span!(
         "janus.request",
         otel.kind = "server",
-        janus.model = %request.model,
+        janus.model = %request.model,  // may be empty; smart router fills it in inner()
         janus.api_key_id = %api_key.id,
         janus.cache_hit = tracing::field::Empty,
         http.status_code = tracing::field::Empty,
@@ -116,8 +116,52 @@ async fn chat_completions_inner(
     state: Arc<AppState>,
     api_key: crate::models::api_key::ApiKey,
     headers: HeaderMap,
-    request: ChatCompletionRequest,
+    mut request: ChatCompletionRequest,
 ) -> impl IntoResponse {
+    // ── Layer 0 / Smart Router ────────────────────────────────────────────────
+    // When model is absent the Smart Router fills it in before any other gate.
+    // When model is set we skip the router entirely for full backward compat.
+    let routing_decision = if request.model.is_empty() {
+        if !state.config.smart_routing.enabled {
+            return AppError::BadRequest(
+                "The 'model' field is required. Enable smart routing \
+                 (smart_routing.enabled = true) to allow automatic model selection."
+                    .to_string(),
+            )
+            .into_response();
+        }
+        // Parse X-Janus-Tags header for the router's Layer 2 tag matching.
+        let extra_tags = headers
+            .get("x-janus-tags")
+            .and_then(|v| v.to_str().ok())
+            .map(crate::gateway::smart_router::parse_tag_header)
+            .unwrap_or_default();
+
+        match SmartRouter::select(
+            &state.pool,
+            &request,
+            api_key.workspace_id,
+            &extra_tags,
+            &state.config.smart_routing,
+            api_key.allowed_models.as_deref(),
+        )
+        .await
+        {
+            Ok(decision) => {
+                tracing::info!(
+                    model = %decision.model,
+                    reason = %decision.reason.header_value(),
+                    "Smart router selected model"
+                );
+                request.model = decision.model.clone();
+                Some(decision)
+            }
+            Err(e) => return e.into_response(),
+        }
+    } else {
+        None
+    };
+
     // Budget gate — also returns a DowngradeDecision when spend nears the limit.
     let downgrade = {
         let result = tracing::info_span!("janus.budget.check")
@@ -300,6 +344,7 @@ async fn chat_completions_inner(
         {
             Ok((mut response, cache_hit)) => {
                 attach_cache_headers(response.headers_mut(), &cache_hit);
+                attach_routing_headers(response.headers_mut(), &routing_decision);
                 if time_sensitive {
                     response.headers_mut().insert(
                         "x-janus-cache-skip",
@@ -385,6 +430,7 @@ async fn chat_completions_inner(
                     Ok(v) => {
                         let mut response = Json::<Value>(v).into_response();
                         attach_cache_headers(response.headers_mut(), &cache_hit);
+                        attach_routing_headers(response.headers_mut(), &routing_decision);
                         if time_sensitive {
                             response.headers_mut().insert(
                                 "x-janus-cache-skip",
@@ -1225,6 +1271,24 @@ pub async fn legacy_completions(
             .into_response()
         }
         Err(e) => e.into_response(),
+    }
+}
+
+/// Attach smart-routing observability headers when the router was invoked.
+///
+/// `X-Janus-Model-Selected` — the model the router chose (only when model was absent).
+/// `X-Janus-Routing-Reason` — why that model was chosen (tier, rule, tag, etc.).
+fn attach_routing_headers(
+    headers: &mut axum::http::HeaderMap,
+    decision: &Option<crate::gateway::smart_router::RoutingDecision>,
+) {
+    if let Some(d) = decision {
+        if let Ok(v) = HeaderValue::from_str(&d.model) {
+            headers.insert("x-janus-model-selected", v);
+        }
+        if let Ok(v) = HeaderValue::from_str(&d.reason.header_value()) {
+            headers.insert("x-janus-routing-reason", v);
+        }
     }
 }
 

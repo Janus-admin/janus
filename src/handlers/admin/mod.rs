@@ -1,4 +1,6 @@
 pub mod alerts;
+#[cfg(feature = "enterprise")]
+pub mod audit;
 pub mod analytics;
 pub mod cache;
 pub mod docs;
@@ -11,5 +13,6 @@ pub mod prompts;
 pub mod providers;
 pub mod replay;
 pub mod requests;
+pub mod smart_routing;
 pub mod stream;
 pub mod system;

@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                r.workspace_id,\n                w.name AS workspace_name,\n                COALESCE(SUM(r.cost_usd), 0.0)::float8 AS cost_usd,\n                COUNT(*)::bigint AS request_count\n            FROM requests r\n            JOIN workspaces w ON w.id = r.workspace_id\n            WHERE r.workspace_id IS NOT NULL\n              AND r.created_at >= $1\n              AND r.created_at <= $2\n              AND ($3::uuid IS NULL OR r.workspace_id = $3)\n            GROUP BY r.workspace_id, w.name\n            ORDER BY cost_usd DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "workspace_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "workspace_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "cost_usd",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 3,
+        "name": "request_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "19930f7a07fda935f92376dc8e2404e679b9af3b3b33d0db1e54b2275b8a2ef5"
+}

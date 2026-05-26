@@ -3,6 +3,7 @@ use crate::{
     cache::{policy::SemanticCachePolicy, time_guard::TimeGuard, CacheEngine},
     cluster::rate_limit::DbRateLimiter,
     config::{Config, RuntimeConfig},
+    enterprise::EnterpriseExt,
     gateway::{dedup::InFlightDeduplicator, ProviderRegistry},
     middleware::rate_limit::RateLimiter,
     models::api_key::ApiKey,
@@ -55,4 +56,8 @@ pub struct AppState {
     /// In-flight OIDC login state: CSRF token → (PKCE verifier, nonce, idp_id).
     /// Entries are removed on callback (single use) or after 10 minutes (TTL).
     pub oidc_states: Arc<DashMap<String, OidcState>>,
+    /// Enterprise capabilities (audit log, license, policy engine).
+    /// Community builds hold `CommunityEnterprise` (all no-ops).
+    /// Enterprise builds hold `EnterpriseState` (real DB writes + license).
+    pub enterprise: Arc<dyn EnterpriseExt>,
 }

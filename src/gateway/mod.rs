@@ -2,6 +2,7 @@ pub mod circuit_breaker;
 pub mod dedup;
 pub mod pipeline;
 pub mod router;
+pub mod smart_router;
 pub mod strategies;
 pub mod tool_extract;
 

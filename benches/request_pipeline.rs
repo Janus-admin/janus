@@ -35,6 +35,8 @@ fn make_response() -> ChatCompletionResponse {
                 role: "assistant".to_string(),
                 content: serde_json::Value::String("The answer is 42.".to_string()),
                 name: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
             finish_reason: Some("stop".to_string()),
             logprobs: None,

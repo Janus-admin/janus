@@ -191,6 +191,19 @@ pub struct Config {
     // ── SMTP / Email Alerts (V5-L4) ───────────────────────────────────────────
     #[serde(default)]
     pub smtp: SmtpConfig,
+
+    // ── Smart Routing (V5-L6) ─────────────────────────────────────────────────
+    /// Global smart-routing defaults. Per-workspace overrides live in the DB
+    /// (smart_routing_config table). DB values always take precedence over these.
+    #[serde(default)]
+    pub smart_routing: SmartRoutingConfig,
+
+    // ── Enterprise license (optional) ────────────────────────────────────────
+    /// Signed RS256 JWT issued by Janus-admin to licensed customers.
+    /// Set via `JANUS_LICENSE_JWT` env var or `license_jwt` in janus.toml.
+    /// Absent or empty = community edition (all enterprise features disabled).
+    #[serde(default)]
+    pub license_jwt: String,
 }
 
 /// SMTP configuration for email alert delivery (V5-L4).
@@ -223,6 +236,34 @@ pub struct SmtpConfig {
 
 fn default_smtp_port() -> u16 {
     587
+}
+
+/// Global smart-routing configuration (V5-L6).
+///
+/// Per-workspace overrides are stored in the `smart_routing_config` DB table and
+/// always take precedence. These values act as the system-wide fallback.
+///
+/// Example in janus.toml:
+/// ```toml
+/// [smart_routing]
+/// enabled       = true
+/// default_model = "gpt-4o-mini"
+/// ```
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SmartRoutingConfig {
+    /// Enable smart routing globally. When false, requests without a model field
+    /// receive a 400 Bad Request. Default: false.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Fallback model used when no tier match is found and no workspace default
+    /// is configured. Empty string = no global fallback (returns 400).
+    #[serde(default)]
+    pub default_model: String,
+    /// Global per-request cost cap in USD. Overridden per workspace in DB.
+    /// Models whose estimated cost exceeds this are excluded from Layer 1.
+    /// None (default) = no cap.
+    #[serde(default)]
+    pub max_cost_per_request: Option<rust_decimal::Decimal>,
 }
 
 /// Routing configuration for intelligent provider selection.
