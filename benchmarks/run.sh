@@ -239,22 +239,51 @@ errors=$(awk '
     END { print sum+0 }
 ' "$OHA")
 
-# Metrics: counter series may have multiple label-set instances; sum across them.
-# Prometheus text format: `metric_name{labels} value [timestamp]`. The value is
-# at $2 because the metric+labels has no internal whitespace.
-sum_metric() {
-    local file="$1"
-    local name="$2"
-    awk -v m="^$name" '$0 ~ m {sum += $2} END {print sum+0}' "$file" 2>/dev/null
+# Metrics: Janus does NOT export a separate `janus_cache_hits_total` counter.
+# Instead, it tags `janus_requests_total` with a `cache_type` label:
+#   cache_type="exact"    → exact-cache hit
+#   cache_type="semantic" → semantic-cache hit
+#   cache_type="none"     → cache miss; went to provider
+#
+# Prometheus text format: `metric_name{labels} value`. Value is at $2 since the
+# metric+labels has no internal whitespace.
+
+# Total requests across all cache_type values.
+sum_requests() {
+    awk '/^janus_requests_total\{/ {sum += $2} END {print sum+0}' "$1" 2>/dev/null
 }
 
-hits_before=$(sum_metric "$RUN_DIR/metrics-before.txt" "janus_cache_hits_total")
-hits_after=$( sum_metric "$RUN_DIR/metrics-after.txt"  "janus_cache_hits_total")
-reqs_before=$(sum_metric "$RUN_DIR/metrics-before.txt" "janus_requests_total")
-reqs_after=$( sum_metric "$RUN_DIR/metrics-after.txt"  "janus_requests_total")
+# Cache hits = exact + semantic. Use a regex that tolerates label order.
+sum_hits() {
+    awk '
+        /^janus_requests_total\{/ && /cache_type="exact"/   {sum += $2}
+        /^janus_requests_total\{/ && /cache_type="semantic"/ {sum += $2}
+        END {print sum+0}
+    ' "$1" 2>/dev/null
+}
 
-hits_delta=$(awk "BEGIN { print ${hits_after:-0} - ${hits_before:-0} }")
+# Per-type breakdowns for the report (useful to spot semantic vs exact contribution).
+sum_hits_exact() {
+    awk '/^janus_requests_total\{/ && /cache_type="exact"/   {sum += $2} END {print sum+0}' "$1" 2>/dev/null
+}
+sum_hits_semantic() {
+    awk '/^janus_requests_total\{/ && /cache_type="semantic"/ {sum += $2} END {print sum+0}' "$1" 2>/dev/null
+}
+
+reqs_before=$(sum_requests       "$RUN_DIR/metrics-before.txt")
+reqs_after=$( sum_requests       "$RUN_DIR/metrics-after.txt")
+hits_before=$(sum_hits           "$RUN_DIR/metrics-before.txt")
+hits_after=$( sum_hits           "$RUN_DIR/metrics-after.txt")
+exact_before=$(sum_hits_exact    "$RUN_DIR/metrics-before.txt")
+exact_after=$( sum_hits_exact    "$RUN_DIR/metrics-after.txt")
+semantic_before=$(sum_hits_semantic "$RUN_DIR/metrics-before.txt")
+semantic_after=$( sum_hits_semantic "$RUN_DIR/metrics-after.txt")
+
 reqs_delta=$(awk "BEGIN { print ${reqs_after:-0} - ${reqs_before:-0} }")
+hits_delta=$(awk "BEGIN { print ${hits_after:-0} - ${hits_before:-0} }")
+exact_delta=$(awk "BEGIN { print ${exact_after:-0} - ${exact_before:-0} }")
+semantic_delta=$(awk "BEGIN { print ${semantic_after:-0} - ${semantic_before:-0} }")
+misses_delta=$(awk "BEGIN { print ${reqs_delta:-0} - ${hits_delta:-0} }")
 
 hit_ratio="n/a"
 if [ -n "$reqs_delta" ] && [ "$(awk "BEGIN { print ($reqs_delta > 0) }")" = "1" ]; then
@@ -285,7 +314,10 @@ cat > "$RUN_DIR/REPORT.md" <<EOF
 | Latency p95 | $p95 |
 | Latency p99 | $p99 |
 | Total requests (Janus) | ${reqs_delta:-?} |
-| Cache hits (Janus) | ${hits_delta:-?} |
+| Cache hits (total) | ${hits_delta:-?} |
+| Cache hits (exact) | ${exact_delta:-?} |
+| Cache hits (semantic) | ${semantic_delta:-?} |
+| Cache misses (to provider) | ${misses_delta:-?} |
 | Cache hit ratio | $hit_ratio |
 | Errors (oha-reported) | $errors |
 | CPU% (median, steady) | $cpu_med |
@@ -348,7 +380,7 @@ Run complete.
   Profile:     $PROFILE
   Throughput:  $rps req/s
   Latency:     p50=$p50  p95=$p95  p99=$p99
-  Cache hits:  $hits_delta / $reqs_delta (ratio $hit_ratio)
+  Cache hits:  $hits_delta / $reqs_delta (ratio $hit_ratio) — exact=$exact_delta semantic=$semantic_delta misses=$misses_delta
   Errors:      $errors
 
   Full report: $RUN_DIR/REPORT.md
