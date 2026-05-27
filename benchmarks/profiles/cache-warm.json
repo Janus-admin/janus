@@ -1,0 +1,10 @@
+{
+  "model": "gpt-4o-mini",
+  "stream": false,
+  "messages": [
+    { "role": "system", "content": "You answer questions concisely." },
+    { "role": "user", "content": "Janus benchmark canonical cache-warm prompt v1. This prompt is designed to be byte-identical across every request in the cache-warm profile, so the exact-match cache layer should hit on every request after the first." }
+  ],
+  "max_tokens": 100,
+  "temperature": 0
+}

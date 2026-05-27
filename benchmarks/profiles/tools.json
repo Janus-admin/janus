@@ -1,0 +1,45 @@
+{
+  "model": "gpt-4o",
+  "stream": false,
+  "messages": [
+    { "role": "system", "content": "You are a customer-support agent. Use the get_order_status tool when the user asks about an order." },
+    { "role": "user", "content": "Can you check the status of order 12345?" }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_order_status",
+        "description": "Look up the current status of a customer order by ID.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "description": "The unique order identifier."
+            }
+          },
+          "required": ["order_id"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "issue_refund",
+        "description": "Issue a refund for a completed order.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "order_id": { "type": "string" },
+            "amount_cents": { "type": "integer" },
+            "reason": { "type": "string" }
+          },
+          "required": ["order_id", "amount_cents"]
+        }
+      }
+    }
+  ],
+  "max_tokens": 200,
+  "temperature": 0.2
+}

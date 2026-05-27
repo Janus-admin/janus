@@ -1,0 +1,14 @@
+# Benchmark results are local — never committed.
+# We commit history snapshots only via explicit `history/` folder (added later).
+results/
+!results/.gitkeep
+
+# API key cached by seed.sh — file-mode 600 but still secret-bearing.
+.janus_api_key
+
+# Built mock-llm binary; we keep Cargo.lock but not target/.
+mock-llm/target/
+
+# Local artefacts
+*.log
+.tmp/
