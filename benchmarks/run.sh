@@ -47,7 +47,7 @@ WARMUP_SECS="${WARMUP_SECS:-10}"
 
 # Profiles must be on this allow-list so a typo doesn't produce results filed
 # under a non-existent name. Add new profiles here when you add files.
-ALLOWED_PROFILES=("chat-short" "chat-long" "cache-warm" "tools")
+ALLOWED_PROFILES=("chat-short" "chat-long" "cache-warm" "tools" "pure-overhead")
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 log()  { printf '[run] %s\n' "$*" >&2; }

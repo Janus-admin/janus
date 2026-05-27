@@ -1,0 +1,8 @@
+{
+  "model": "gpt-4o-mini",
+  "stream": true,
+  "messages": [
+    { "role": "user", "content": "hi" }
+  ],
+  "max_tokens": 1
+}
