@@ -34,6 +34,30 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::Instrument;
 use uuid::Uuid;
 
+// ── Audit-log task admission control ──────────────────────────────────────────
+
+/// Spawn a fire-and-forget DB write task, but only if the audit semaphore has
+/// capacity. Under extreme sustained load (e.g. >10k RPS where PostgreSQL can't
+/// keep up with per-request inserts), this prevents tokio's task queue from
+/// growing without bound and OOM-killing the process. When permits are
+/// exhausted, the record is dropped and `janus_audit_dropped_total` is bumped.
+fn spawn_audit<F>(sem: &Arc<tokio::sync::Semaphore>, fut: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    match sem.clone().try_acquire_owned() {
+        Ok(permit) => {
+            tokio::spawn(async move {
+                let _permit = permit; // released on drop, frees one slot
+                fut.await;
+            });
+        }
+        Err(_) => {
+            counter!("janus_audit_dropped_total").increment(1);
+        }
+    }
+}
+
 // ── Prompt text extraction ────────────────────────────────────────────────────
 
 /// Concatenate all message content strings for embedding.
@@ -95,6 +119,8 @@ pub async fn run(
     tags: &serde_json::Value,
     // V5-0: route this request is being served on, written to requests.endpoint.
     endpoint: &str,
+    // Bounds concurrent fire-and-forget audit-log tasks (see `spawn_audit`).
+    audit_sem: &Arc<tokio::sync::Semaphore>,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     // V5-0: own the endpoint string so it can be moved into spawned audit-log tasks.
     let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
@@ -111,7 +137,7 @@ pub async fn run(
             {
                 let pool = pool.clone();
                 let hash = hash.clone();
-                tokio::spawn(async move {
+                spawn_audit(audit_sem, async move {
                     let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
                 });
             }
@@ -149,7 +175,7 @@ pub async fn run(
                     {
                         let pool = pool.clone();
                         let hash = hit_hash.clone();
-                        tokio::spawn(async move {
+                        spawn_audit(audit_sem, async move {
                             let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
                         });
                     }
@@ -417,7 +443,7 @@ pub async fn run(
                             );
                             let endpoint_log = endpoint_log_arc.clone();
                             let tags_log = tags.clone();
-                            tokio::spawn(async move {
+                            spawn_audit(audit_sem, async move {
                                 let _ = db::requests::insert_request(
                                     &pool,
                                     Some(api_key_id),
@@ -505,7 +531,7 @@ pub async fn run(
                             let model = effective_request.model.clone();
                             let endpoint_log = endpoint_log_arc.clone();
                             let tags_err = tags.clone();
-                            tokio::spawn(async move {
+                            spawn_audit(audit_sem, async move {
                                 let _ = db::requests::insert_request(
                                     &pool,
                                     Some(api_key_id),
@@ -608,6 +634,8 @@ pub async fn run_streaming(
     tags: serde_json::Value,
     // V5-0: route this stream is being served on, written to requests.endpoint.
     endpoint: &str,
+    // Bounds concurrent fire-and-forget audit-log tasks (see `spawn_audit`).
+    audit_sem: Arc<tokio::sync::Semaphore>,
 ) -> AppResult<(Response, CacheHit)> {
     let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
     // ── Exact cache lookup ────────────────────────────────────────────────────
@@ -623,7 +651,7 @@ pub async fn run_streaming(
             {
                 let pool = pool.clone();
                 let hash = hash.clone();
-                tokio::spawn(async move {
+                spawn_audit(&audit_sem, async move {
                     let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
                 });
             }
@@ -654,7 +682,7 @@ pub async fn run_streaming(
                     {
                         let pool = pool.clone();
                         let hash = hit_hash.clone();
-                        tokio::spawn(async move {
+                        spawn_audit(&audit_sem, async move {
                             let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
                         });
                     }
@@ -770,6 +798,7 @@ pub async fn run_streaming(
                         let embedding_for_write = embedding.clone();
                         let request_body_for_cache =
                             serde_json::to_string(&request).unwrap_or_default();
+                        let audit_sem_stream = audit_sem.clone();
 
                         let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
 
@@ -913,7 +942,7 @@ pub async fn run_streaming(
                             let provider_for_metrics = provider_name.to_string();
                             let model_for_metrics = final_model.clone();
                             let endpoint_log = endpoint_log_arc.clone();
-                            tokio::spawn(async move {
+                            spawn_audit(&audit_sem_stream, async move {
                                 let cost =
                                     db::requests::find_pricing(&pool, provider_name, &final_model)
                                         .await
@@ -1113,6 +1142,7 @@ pub async fn run_with_workspace(
     cache_ttl_secs: u64,
     downgrade_triggered: bool,
     endpoint: &str,
+    audit_sem: &Arc<tokio::sync::Semaphore>,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     let key_with_workspace = ApiKey {
         workspace_id,
@@ -1137,6 +1167,7 @@ pub async fn run_with_workspace(
         None,
         &serde_json::Value::Object(serde_json::Map::new()),
         endpoint,
+        audit_sem,
     )
     .await
 }

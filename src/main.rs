@@ -160,9 +160,28 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!(base_url = %base_url, "Anthropic provider enabled");
         }
 
-        let bedrock = BedrockProvider::new(30).await;
-        providers.push(Arc::new(bedrock));
-        tracing::info!("Bedrock provider enabled");
+        // Only load Bedrock when AWS credentials are present. Without them the
+        // adapter still loads but every request fails with a `dispatch failure`
+        // taking ~50 ms — and because Bedrock is in the priority list, the
+        // failover loop hits it on every model that doesn't have explicit
+        // routing rules, dominating gateway latency and producing a flood of
+        // 503s under load. Operators who want Bedrock just need to set
+        // AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in the environment.
+        let has_aws_creds = std::env::var("AWS_ACCESS_KEY_ID")
+            .map(|v| !v.is_empty())
+            .unwrap_or(false)
+            && std::env::var("AWS_SECRET_ACCESS_KEY")
+                .map(|v| !v.is_empty())
+                .unwrap_or(false);
+        if has_aws_creds {
+            let bedrock = BedrockProvider::new(30).await;
+            providers.push(Arc::new(bedrock));
+            tracing::info!("Bedrock provider enabled");
+        } else {
+            tracing::info!(
+                "Bedrock provider skipped: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set"
+            );
+        }
 
         if !config.gemini_api_key.is_empty() {
             let base_url = resolve_base_url(
@@ -365,6 +384,8 @@ async fn main() -> anyhow::Result<()> {
         "Time-sensitive cache guard initialized"
     );
 
+    let audit_semaphore = Arc::new(tokio::sync::Semaphore::new(config.audit_inflight_max));
+
     let state = Arc::new(AppState {
         pool,
         config,
@@ -382,6 +403,7 @@ async fn main() -> anyhow::Result<()> {
         models_cache: Arc::new(std::sync::Mutex::new(None)),
         oidc_states: Arc::new(dashmap::DashMap::new()),
         enterprise,
+        audit_semaphore,
     });
 
     // ── Background: cache TTL prune (V4-3) ───────────────────────────────────

@@ -60,4 +60,12 @@ pub struct AppState {
     /// Community builds hold `CommunityEnterprise` (all no-ops).
     /// Enterprise builds hold `EnterpriseState` (real DB writes + license).
     pub enterprise: Arc<dyn EnterpriseExt>,
+    /// Bounds the number of concurrent fire-and-forget audit-log tasks.
+    /// Why: each completed request spawns a task that writes 1–4 rows to PostgreSQL.
+    /// Under sustained extreme load (e.g. >10k RPS), the DB can't keep up and the
+    /// spawned tasks accumulate, consuming unbounded memory until OOM. This semaphore
+    /// caps the in-flight audit set; when full, the record is dropped and the
+    /// `janus_audit_dropped_total` counter increments. Normal load (< a few k RPS)
+    /// never triggers this — DB finishes inserts faster than new requests arrive.
+    pub audit_semaphore: Arc<tokio::sync::Semaphore>,
 }

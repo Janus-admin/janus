@@ -217,7 +217,7 @@ pub fn load_from_env() -> LicenseState {
 
     let public_key = load_public_key();
 
-    match validate_jwt(&token, &public_key) {
+    match validate_jwt(&token, public_key) {
         Ok(info) => {
             let state = evaluate_state(info);
             match &state {

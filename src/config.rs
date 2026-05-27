@@ -55,6 +55,15 @@ pub struct Config {
     #[serde(default = "default_cache_max_entries")]
     #[allow(dead_code)] // used in Phase 4 cache size limit
     pub cache_max_entries: u64,
+    /// Max concurrent audit-log writer tasks. Each completed gateway request
+    /// spawns 1–4 fire-and-forget DB writes (request row, daily cost upsert,
+    /// budget add, last-used touch); under sustained extreme throughput the DB
+    /// cannot keep up and these tasks accumulate until OOM. This cap drops
+    /// excess audits (and increments `janus_audit_dropped_total`) instead of
+    /// letting memory grow without bound. Default 2000 keeps audit memory
+    /// under a few MB regardless of incoming rate.
+    #[serde(default = "default_audit_inflight_max")]
+    pub audit_inflight_max: usize,
     #[serde(default = "default_semantic_threshold")]
     #[allow(dead_code)] // used in Phase 5 semantic cache similarity gate
     pub semantic_cache_threshold: f64,
@@ -431,6 +440,9 @@ fn default_cache_ttl_seconds() -> u64 {
 }
 fn default_cache_max_entries() -> u64 {
     100_000
+}
+fn default_audit_inflight_max() -> usize {
+    2_000
 }
 fn default_semantic_threshold() -> f64 {
     0.90

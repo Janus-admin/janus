@@ -145,10 +145,8 @@ fn parts_to_openai_content(parts: &[GeminiPart]) -> Value {
                         "url": format!("data:{};base64,{}", data.mime_type, data.data)
                     }
                 }))
-            } else if let Some(ref text) = p.text {
-                Some(json!({"type": "text", "text": text}))
             } else {
-                None
+                p.text.as_ref().map(|text| json!({"type": "text", "text": text}))
             }
         })
         .collect();
@@ -384,6 +382,7 @@ pub async fn generate_content_handler(
         None,
         &tags,
         endpoint,
+        &state.audit_semaphore,
     )
     .await
     {

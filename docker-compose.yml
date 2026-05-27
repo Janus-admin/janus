@@ -17,8 +17,13 @@ services:
       retries: 5
 
   janus:
-    # To build locally instead: replace `image` with `build: .`
-    image: ghcr.io/Janus-admin/janus:latest
+    # Builds the binary from this checkout. To pull a pre-built image instead,
+    # comment out `build:` and uncomment `image:` (overrides require setting
+    # `JANUS_IMAGE` in your shell or `.env` to a published tag).
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${JANUS_IMAGE:-janus:local}
     restart: unless-stopped
     ports:
       - "8080:8080"

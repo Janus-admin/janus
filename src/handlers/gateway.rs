@@ -339,6 +339,7 @@ async fn chat_completions_inner(
             downgrade_triggered,
             tags.clone(),
             "/v1/chat/completions",
+            state.audit_semaphore.clone(),
         )
         .await
         {
@@ -405,6 +406,7 @@ async fn chat_completions_inner(
             None,
             &tags,
             "/v1/chat/completions",
+            &state.audit_semaphore,
         )
         .await
         {
@@ -1236,6 +1238,7 @@ pub async fn legacy_completions(
         None,
         &serde_json::Value::Object(serde_json::Map::new()),
         "/v1/completions",
+        &state.audit_semaphore,
     )
     .await
     {

@@ -322,6 +322,7 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
         models_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
         enterprise: std::sync::Arc::new(janus::enterprise::CommunityEnterprise),
+        audit_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(10_000)),
     });
 
     let app = janus::routes::create_router(state);

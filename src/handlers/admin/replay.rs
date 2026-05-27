@@ -165,6 +165,7 @@ pub async fn replay_request(
         opts.provider.as_deref(),
         &serde_json::Value::Object(serde_json::Map::new()),
         "/admin/replay",
+        &state.audit_semaphore,
     )
     .await?;
     let latency_ms = start.elapsed().as_millis() as i64;
@@ -345,6 +346,7 @@ pub async fn playground(
         None,
         &serde_json::Value::Object(serde_json::Map::new()),
         "/admin/playground",
+        &state.audit_semaphore,
     )
     .await?;
     let latency_ms = start.elapsed().as_millis() as i64;
