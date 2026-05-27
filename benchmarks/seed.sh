@@ -78,8 +78,17 @@ fi
 log "  → got JWT (length ${#JWT})"
 
 # ── Step 3: PATCH openai provider to point at the mock ────────────────────────
-log "Pointing 'openai' provider at $MOCK_URL ..."
-PATCH_BODY=$(jq -nc --arg url "$MOCK_URL" '{is_enabled:true, base_url:$url}')
+# Janus's OpenAI adapter appends `/chat/completions` to base_url, so base_url
+# must include the `/v1` path segment — exactly mirroring api.openai.com/v1.
+# Strip any trailing slash from $MOCK_URL, ensure it ends with /v1.
+MOCK_BASE="${MOCK_URL%/}"
+case "$MOCK_BASE" in
+    */v1) ;;                  # already has /v1
+    *)    MOCK_BASE="$MOCK_BASE/v1" ;;
+esac
+
+log "Pointing 'openai' provider at $MOCK_BASE ..."
+PATCH_BODY=$(jq -nc --arg url "$MOCK_BASE" '{is_enabled:true, base_url:$url}')
 PATCH_STATUS=$(curl -s -o /tmp/janus-seed-patch.json -w '%{http_code}' \
     -X PATCH "$JANUS_ADMIN_URL/admin/providers/openai" \
     -H "Authorization: Bearer $JWT" \
