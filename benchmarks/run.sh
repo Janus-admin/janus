@@ -215,19 +215,28 @@ log "Parsing results ..."
 OHA="$RUN_DIR/oha.txt"
 
 # oha's "Response time distribution" lines look like "  50.00% in 1.3709 sec".
-# The percentage is always `<num>.00%`, so we match that exact pattern.
-success_rate=$(awk '/^\s*Success rate:/   {print $3; exit}' "$OHA")
-rps=$(          awk '/^\s*Requests\/sec:/ {print $2; exit}' "$OHA")
-p50=$(          awk '/^\s*50\.00%/ {print $3, $4; exit}' "$OHA")
-p95=$(          awk '/^\s*95\.00%/ {print $3, $4; exit}' "$OHA")
-p99=$(          awk '/^\s*99\.00%/ {print $3, $4; exit}' "$OHA")
+# BSD awk (default on macOS) does NOT support `\s` — use `[ \t]` instead.
+success_rate=$(awk '/^[ \t]*Success rate:/   {print $3; exit}' "$OHA")
+rps=$(          awk '/^[ \t]*Requests\/sec:/ {print $2; exit}' "$OHA")
+p50=$(          awk '/^[ \t]*50\.00%/ {print $3, $4; exit}' "$OHA")
+p95=$(          awk '/^[ \t]*95\.00%/ {print $3, $4; exit}' "$OHA")
+p99=$(          awk '/^[ \t]*99\.00%/ {print $3, $4; exit}' "$OHA")
 
-# Errors: count the entries listed under "Error distribution" (one bracketed
-# count per error type). If the section is absent, errors = 0.
+# Errors: parse "Error distribution" section, but EXCLUDE "deadline" aborts —
+# those are oha cancelling in-flight requests when -z time runs out, expected
+# behavior. Real errors are anything else (connection refused, 5xx, etc).
 errors=$(awk '
-    /^Error distribution:/ {in_section=1; next}
-    in_section && /^\s*\[[0-9]+\]/ {sum += $1+0}
-    END {print sum+0}
+    /^Error distribution:/   {in_section=1; next}
+    in_section && /[ \t]*\[[0-9]+\]/ {
+        # Skip lines that mention "deadline" (oha shutdown aborts).
+        if (index($0, "deadline") == 0) {
+            # Extract the count inside [N]
+            match($0, /\[[0-9]+\]/)
+            n = substr($0, RSTART+1, RLENGTH-2)
+            sum += n
+        }
+    }
+    END { print sum+0 }
 ' "$OHA")
 
 # Metrics: counter series may have multiple label-set instances; sum across them.
