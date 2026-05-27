@@ -4,6 +4,7 @@ use super::{
     strategies::RoutingStrategy,
     tool_extract, ProviderRegistry,
 };
+use crate::audit::{AuditChannel, AuditEvent, RequestRecord};
 use crate::db::DbPool;
 use crate::{
     cache::{self, CacheEngine, CacheHit},
@@ -33,30 +34,6 @@ use std::{
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::Instrument;
 use uuid::Uuid;
-
-// ── Audit-log task admission control ──────────────────────────────────────────
-
-/// Spawn a fire-and-forget DB write task, but only if the audit semaphore has
-/// capacity. Under extreme sustained load (e.g. >10k RPS where PostgreSQL can't
-/// keep up with per-request inserts), this prevents tokio's task queue from
-/// growing without bound and OOM-killing the process. When permits are
-/// exhausted, the record is dropped and `janus_audit_dropped_total` is bumped.
-fn spawn_audit<F>(sem: &Arc<tokio::sync::Semaphore>, fut: F)
-where
-    F: std::future::Future<Output = ()> + Send + 'static,
-{
-    match sem.clone().try_acquire_owned() {
-        Ok(permit) => {
-            tokio::spawn(async move {
-                let _permit = permit; // released on drop, frees one slot
-                fut.await;
-            });
-        }
-        Err(_) => {
-            counter!("janus_audit_dropped_total").increment(1);
-        }
-    }
-}
 
 // ── Prompt text extraction ────────────────────────────────────────────────────
 
@@ -119,8 +96,8 @@ pub async fn run(
     tags: &serde_json::Value,
     // V5-0: route this request is being served on, written to requests.endpoint.
     endpoint: &str,
-    // Bounds concurrent fire-and-forget audit-log tasks (see `spawn_audit`).
-    audit_sem: &Arc<tokio::sync::Semaphore>,
+    // Channel into the background audit-log writer.
+    audit: &AuditChannel,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     // V5-0: own the endpoint string so it can be moved into spawned audit-log tasks.
     let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
@@ -134,13 +111,10 @@ pub async fn run(
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
             counter!("janus_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
-            {
-                let pool = pool.clone();
-                let hash = hash.clone();
-                spawn_audit(audit_sem, async move {
-                    let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
-                });
-            }
+            audit.send(AuditEvent::CacheHit {
+                hash: hash.clone(),
+                tokens,
+            });
             crate::metrics::record_request(true);
             let mut resp = (*cached).clone();
             match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
@@ -172,13 +146,10 @@ pub async fn run(
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
                     counter!("janus_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
-                    {
-                        let pool = pool.clone();
-                        let hash = hit_hash.clone();
-                        spawn_audit(audit_sem, async move {
-                            let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
-                        });
-                    }
+                    audit.send(AuditEvent::CacheHit {
+                        hash: hit_hash.clone(),
+                        tokens,
+                    });
                     crate::metrics::record_request(true);
                     let mut resp = (*cached).clone();
                     match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
@@ -429,65 +400,26 @@ pub async fn run(
                         // before the response is moved into the spawned task.
                         let tool_calls = tool_extract::extract(effective_request, &resp);
 
-                        // Fire-and-forget: log request + update budget + last_used + daily_costs.
-                        {
-                            let pool = pool.clone();
-                            let api_key_id = api_key.id;
-                            let workspace_id = api_key.workspace_id;
-                            let provider_name = provider.name();
-                            let model = resp.model.clone();
-                            let (pt, ct, tt) = (
-                                usage.prompt_tokens as i32,
-                                usage.completion_tokens as i32,
-                                usage.total_tokens as i32,
-                            );
-                            let endpoint_log = endpoint_log_arc.clone();
-                            let tags_log = tags.clone();
-                            spawn_audit(audit_sem, async move {
-                                let _ = db::requests::insert_request(
-                                    &pool,
-                                    Some(api_key_id),
-                                    workspace_id,
-                                    provider_name,
-                                    &model,
-                                    Some(pt),
-                                    Some(ct),
-                                    Some(tt),
-                                    cost,
-                                    latency_ms,
-                                    "success",
-                                    false,
-                                    None,
-                                    prompt_version_id,
-                                    downgrade_triggered,
-                                    &endpoint_log,
-                                    tool_calls.as_ref(),
-                                    &tags_log,
-                                )
-                                .await;
-                                let _ = db::analytics::upsert_daily_cost(
-                                    &pool,
-                                    Some(api_key_id),
-                                    workspace_id,
-                                    provider_name,
-                                    &model,
-                                    pt as i64,
-                                    ct as i64,
-                                    cost,
-                                    false,
-                                )
-                                .await;
-                                if let Some(cost_value) = cost {
-                                    if cost_value > Decimal::ZERO {
-                                        let _ = db::api_keys::add_budget_used(
-                                            &pool, api_key_id, cost_value,
-                                        )
-                                        .await;
-                                    }
-                                }
-                                let _ = db::api_keys::update_last_used(&pool, api_key_id).await;
-                            });
-                        }
+                        // Hand the audit data off to the batched writer.
+                        audit.send(AuditEvent::RequestComplete(Box::new(RequestRecord {
+                            api_key_id: Some(api_key.id),
+                            workspace_id: api_key.workspace_id,
+                            provider: provider.name(),
+                            model: resp.model.clone(),
+                            prompt_tokens: Some(usage.prompt_tokens as i32),
+                            completion_tokens: Some(usage.completion_tokens as i32),
+                            total_tokens: Some(usage.total_tokens as i32),
+                            cost,
+                            latency_ms,
+                            status: "success".to_string(),
+                            is_stream: false,
+                            ttfb_ms: None,
+                            prompt_version_id,
+                            downgrade_triggered,
+                            endpoint: endpoint_log_arc.clone(),
+                            tool_calls: tool_calls.clone(),
+                            tags: tags.clone(),
+                        })));
 
                         crate::metrics::record_request(false);
                         match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
@@ -523,38 +455,25 @@ pub async fn run(
                         let elapsed_secs = start.elapsed().as_secs_f64();
                         histogram!("janus_request_duration_seconds", "provider" => provider.name(), "model" => effective_request.model.clone()).record(elapsed_secs);
 
-                        {
-                            let pool = pool.clone();
-                            let api_key_id = api_key.id;
-                            let workspace_id = api_key.workspace_id;
-                            let provider_name = provider.name();
-                            let model = effective_request.model.clone();
-                            let endpoint_log = endpoint_log_arc.clone();
-                            let tags_err = tags.clone();
-                            spawn_audit(audit_sem, async move {
-                                let _ = db::requests::insert_request(
-                                    &pool,
-                                    Some(api_key_id),
-                                    workspace_id,
-                                    provider_name,
-                                    &model,
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                    latency_ms,
-                                    status,
-                                    false,
-                                    None,
-                                    None,
-                                    downgrade_triggered,
-                                    &endpoint_log,
-                                    None,
-                                    &tags_err,
-                                )
-                                .await;
-                            });
-                        }
+                        audit.send(AuditEvent::RequestComplete(Box::new(RequestRecord {
+                            api_key_id: Some(api_key.id),
+                            workspace_id: api_key.workspace_id,
+                            provider: provider.name(),
+                            model: effective_request.model.clone(),
+                            prompt_tokens: None,
+                            completion_tokens: None,
+                            total_tokens: None,
+                            cost: None,
+                            latency_ms,
+                            status: status.to_string(),
+                            is_stream: false,
+                            ttfb_ms: None,
+                            prompt_version_id: None,
+                            downgrade_triggered,
+                            endpoint: endpoint_log_arc.clone(),
+                            tool_calls: None,
+                            tags: tags.clone(),
+                        })));
 
                         if matches!(
                             &e,
@@ -634,8 +553,8 @@ pub async fn run_streaming(
     tags: serde_json::Value,
     // V5-0: route this stream is being served on, written to requests.endpoint.
     endpoint: &str,
-    // Bounds concurrent fire-and-forget audit-log tasks (see `spawn_audit`).
-    audit_sem: Arc<tokio::sync::Semaphore>,
+    // Channel into the background audit-log writer.
+    audit: AuditChannel,
 ) -> AppResult<(Response, CacheHit)> {
     let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
     // ── Exact cache lookup ────────────────────────────────────────────────────
@@ -648,13 +567,10 @@ pub async fn run_streaming(
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
             counter!("janus_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
-            {
-                let pool = pool.clone();
-                let hash = hash.clone();
-                spawn_audit(&audit_sem, async move {
-                    let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
-                });
-            }
+            audit.send(AuditEvent::CacheHit {
+                hash: hash.clone(),
+                tokens,
+            });
             crate::metrics::record_request(true);
             let sse = synthesize_sse_from_cached(&cached);
             return Ok((sse, CacheHit::Exact));
@@ -679,13 +595,10 @@ pub async fn run_streaming(
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
                     counter!("janus_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
-                    {
-                        let pool = pool.clone();
-                        let hash = hit_hash.clone();
-                        spawn_audit(&audit_sem, async move {
-                            let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
-                        });
-                    }
+                    audit.send(AuditEvent::CacheHit {
+                        hash: hit_hash.clone(),
+                        tokens,
+                    });
                     crate::metrics::record_request(true);
                     let sse = synthesize_sse_from_cached(&cached);
                     return Ok((sse, CacheHit::Semantic(score)));
@@ -798,7 +711,7 @@ pub async fn run_streaming(
                         let embedding_for_write = embedding.clone();
                         let request_body_for_cache =
                             serde_json::to_string(&request).unwrap_or_default();
-                        let audit_sem_stream = audit_sem.clone();
+                        let audit_stream = audit.clone();
 
                         let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
 
@@ -942,7 +855,11 @@ pub async fn run_streaming(
                             let provider_for_metrics = provider_name.to_string();
                             let model_for_metrics = final_model.clone();
                             let endpoint_log = endpoint_log_arc.clone();
-                            spawn_audit(&audit_sem_stream, async move {
+                            // Spawn ONE finalize task per stream (bounded by streaming
+                            // concurrency, not by RPS): it looks up pricing, hands the
+                            // audit record off to the batched writer, then persists the
+                            // assembled response to cache.
+                            tokio::spawn(async move {
                                 let cost =
                                     db::requests::find_pricing(&pool, provider_name, &final_model)
                                         .await
@@ -967,49 +884,28 @@ pub async fn run_streaming(
                                     }
                                 }
 
-                                let _ = db::requests::insert_request(
-                                    &pool,
-                                    Some(api_key_id),
-                                    workspace_id,
-                                    provider_name,
-                                    &final_model,
-                                    Some(prompt_tokens as i32),
-                                    Some(completion_tokens as i32),
-                                    Some(total_tokens as i32),
-                                    cost,
-                                    latency_ms,
-                                    stream_status,
-                                    true,
-                                    ttfb_ms,
-                                    prompt_version_id,
-                                    downgrade_triggered,
-                                    &endpoint_log,
-                                    None, // streaming tool_calls audit deferred to V5-1
-                                    &tags_stream,
-                                )
-                                .await;
-                                let _ = db::analytics::upsert_daily_cost(
-                                    &pool,
-                                    Some(api_key_id),
-                                    workspace_id,
-                                    provider_name,
-                                    &final_model,
-                                    prompt_tokens as i64,
-                                    completion_tokens as i64,
-                                    cost,
-                                    false,
-                                )
-                                .await;
-
-                                if let Some(cost_value) = cost {
-                                    if cost_value > Decimal::ZERO {
-                                        let _ = db::api_keys::add_budget_used(
-                                            &pool, api_key_id, cost_value,
-                                        )
-                                        .await;
-                                    }
-                                }
-                                let _ = db::api_keys::update_last_used(&pool, api_key_id).await;
+                                // Hand audit data to the batched writer.
+                                audit_stream.send(AuditEvent::RequestComplete(Box::new(
+                                    RequestRecord {
+                                        api_key_id: Some(api_key_id),
+                                        workspace_id,
+                                        provider: provider_name,
+                                        model: final_model.clone(),
+                                        prompt_tokens: Some(prompt_tokens as i32),
+                                        completion_tokens: Some(completion_tokens as i32),
+                                        total_tokens: Some(total_tokens as i32),
+                                        cost,
+                                        latency_ms,
+                                        status: stream_status.to_string(),
+                                        is_stream: true,
+                                        ttfb_ms,
+                                        prompt_version_id,
+                                        downgrade_triggered,
+                                        endpoint: endpoint_log.clone(),
+                                        tool_calls: None, // streaming tool_calls audit deferred
+                                        tags: tags_stream.clone(),
+                                    },
+                                )));
 
                                 // ── Streaming cache write ─────────────────
                                 // Persist the assembled response so subsequent
@@ -1142,7 +1038,7 @@ pub async fn run_with_workspace(
     cache_ttl_secs: u64,
     downgrade_triggered: bool,
     endpoint: &str,
-    audit_sem: &Arc<tokio::sync::Semaphore>,
+    audit: &AuditChannel,
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     let key_with_workspace = ApiKey {
         workspace_id,
@@ -1167,7 +1063,7 @@ pub async fn run_with_workspace(
         None,
         &serde_json::Value::Object(serde_json::Map::new()),
         endpoint,
-        audit_sem,
+        audit,
     )
     .await
 }

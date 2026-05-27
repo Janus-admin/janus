@@ -55,15 +55,13 @@ pub struct Config {
     #[serde(default = "default_cache_max_entries")]
     #[allow(dead_code)] // used in Phase 4 cache size limit
     pub cache_max_entries: u64,
-    /// Max concurrent audit-log writer tasks. Each completed gateway request
-    /// spawns 1–4 fire-and-forget DB writes (request row, daily cost upsert,
-    /// budget add, last-used touch); under sustained extreme throughput the DB
-    /// cannot keep up and these tasks accumulate until OOM. This cap drops
-    /// excess audits (and increments `janus_audit_dropped_total`) instead of
-    /// letting memory grow without bound. Default 2000 keeps audit memory
-    /// under a few MB regardless of incoming rate.
-    #[serde(default = "default_audit_inflight_max")]
-    pub audit_inflight_max: usize,
+    /// Audit-log channel capacity (number of pending `AuditEvent`s buffered
+    /// in front of the background writer). Hitting this cap drops events
+    /// instead of growing memory; drops are counted in the Prometheus metric
+    /// `janus_audit_dropped_total`. Default 10 000 buffers ~5 seconds of
+    /// extreme traffic and uses a few MB.
+    #[serde(default = "default_audit_channel_capacity")]
+    pub audit_channel_capacity: usize,
     #[serde(default = "default_semantic_threshold")]
     #[allow(dead_code)] // used in Phase 5 semantic cache similarity gate
     pub semantic_cache_threshold: f64,
@@ -441,8 +439,8 @@ fn default_cache_ttl_seconds() -> u64 {
 fn default_cache_max_entries() -> u64 {
     100_000
 }
-fn default_audit_inflight_max() -> usize {
-    2_000
+fn default_audit_channel_capacity() -> usize {
+    crate::audit::DEFAULT_CAPACITY
 }
 fn default_semantic_threshold() -> f64 {
     0.90

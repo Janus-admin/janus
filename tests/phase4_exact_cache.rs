@@ -189,8 +189,9 @@ async fn phase4_cache_stats_show_correct_savings() {
         Some("exact")
     );
 
-    // Since record_hit is asynchronous (fire-and-forget), sleep briefly to let the background update finish.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // Audit writes are batched: events flush at most every 100 ms. Sleep
+    // generously so the writer has at least one full flush cycle to drain.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
     // Check stats.
     let stats = client

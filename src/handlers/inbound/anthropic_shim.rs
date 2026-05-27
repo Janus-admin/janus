@@ -424,7 +424,7 @@ pub async fn messages_handler(
         None,
         &tags,
         "/v1/messages",
-        &state.audit_semaphore,
+        &state.audit,
     )
     .await
     {

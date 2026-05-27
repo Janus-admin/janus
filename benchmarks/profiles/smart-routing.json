@@ -1,0 +1,10 @@
+{
+  "model": "",
+  "stream": true,
+  "messages": [
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "Hi there." }
+  ],
+  "max_tokens": 50,
+  "temperature": 0.7
+}

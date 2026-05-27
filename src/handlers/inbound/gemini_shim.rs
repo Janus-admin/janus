@@ -382,7 +382,7 @@ pub async fn generate_content_handler(
         None,
         &tags,
         endpoint,
-        &state.audit_semaphore,
+        &state.audit,
     )
     .await
     {

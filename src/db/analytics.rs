@@ -12,7 +12,9 @@ use uuid::Uuid;
 
 /// Upsert one row in `daily_costs` for a completed proxy call.
 ///
-/// Called fire-and-forget from `pipeline::run()` and `pipeline::run_streaming()`.
+/// `request_count` is the number of events being merged into this row. The
+/// batched audit writer calls this once per (date, key, ws, provider, model)
+/// after aggregating N raw events, so this value can be >1.
 #[allow(clippy::too_many_arguments)]
 pub async fn upsert_daily_cost(
     pool: &DbPool,
@@ -20,13 +22,13 @@ pub async fn upsert_daily_cost(
     workspace_id: Option<Uuid>,
     provider: &str,
     model: &str,
+    request_count: i64,
+    cache_hits: i64,
     prompt_tokens: i64,
     completion_tokens: i64,
     cost_usd: Option<Decimal>,
-    is_cache_hit: bool,
 ) -> AppResult<()> {
     let cost = cost_usd.unwrap_or(Decimal::ZERO);
-    let cache_hit_count = if is_cache_hit { 1i64 } else { 0i64 };
 
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
@@ -35,13 +37,13 @@ pub async fn upsert_daily_cost(
                  date, api_key_id, workspace_id, provider, model,
                  request_count, cache_hits, prompt_tokens, completion_tokens, total_cost_usd
              )
-             VALUES (CURRENT_DATE, $1, $2, $3, $4, 1, $5, $6, $7, $8)
+             VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (
                  date, provider, model,
                  COALESCE(api_key_id, '00000000-0000-0000-0000-000000000000'::UUID),
                  COALESCE(workspace_id, '00000000-0000-0000-0000-000000000000'::UUID)
              ) DO UPDATE SET
-                 request_count     = daily_costs.request_count + 1,
+                 request_count     = daily_costs.request_count + EXCLUDED.request_count,
                  cache_hits        = daily_costs.cache_hits + EXCLUDED.cache_hits,
                  prompt_tokens     = daily_costs.prompt_tokens + EXCLUDED.prompt_tokens,
                  completion_tokens = daily_costs.completion_tokens + EXCLUDED.completion_tokens,
@@ -51,7 +53,8 @@ pub async fn upsert_daily_cost(
         .bind(workspace_id)
         .bind(provider)
         .bind(model)
-        .bind(cache_hit_count)
+        .bind(request_count)
+        .bind(cache_hits)
         .bind(prompt_tokens)
         .bind(completion_tokens)
         .bind(cost)
@@ -79,9 +82,9 @@ pub async fn upsert_daily_cost(
                  date, api_key_id, workspace_id, provider, model,
                  request_count, cache_hits, prompt_tokens, completion_tokens, total_cost_usd
              )
-             VALUES (date('now'), $1, $2, $3, $4, 1, $5, $6, $7, $8)
+             VALUES (date('now'), $1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (date, provider, model, api_key_id, workspace_id) DO UPDATE SET
-                 request_count     = daily_costs.request_count + 1,
+                 request_count     = daily_costs.request_count + EXCLUDED.request_count,
                  cache_hits        = daily_costs.cache_hits + EXCLUDED.cache_hits,
                  prompt_tokens     = daily_costs.prompt_tokens + EXCLUDED.prompt_tokens,
                  completion_tokens = daily_costs.completion_tokens + EXCLUDED.completion_tokens,
@@ -91,7 +94,8 @@ pub async fn upsert_daily_cost(
         .bind(ws)
         .bind(provider)
         .bind(model)
-        .bind(cache_hit_count)
+        .bind(request_count)
+        .bind(cache_hits)
         .bind(prompt_tokens)
         .bind(completion_tokens)
         .bind(cost_f64)

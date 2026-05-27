@@ -534,6 +534,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         &config.time_sensitive_patterns,
     ));
 
+    let audit = janus::audit::spawn_writer(pool.clone(), 10_000);
     let state = std::sync::Arc::new(janus::state::AppState {
         pool,
         config,
@@ -554,8 +555,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
         oidc_states: std::sync::Arc::new(dashmap::DashMap::new()),
         // Tests always use the community (no-op) enterprise implementation.
         enterprise: std::sync::Arc::new(janus::enterprise::CommunityEnterprise),
-        // Generous bound in tests so no audit drops happen under normal test load.
-        audit_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(10_000)),
+        audit,
     });
 
     let app = janus::routes::create_router(state);

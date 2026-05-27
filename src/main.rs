@@ -384,7 +384,7 @@ async fn main() -> anyhow::Result<()> {
         "Time-sensitive cache guard initialized"
     );
 
-    let audit_semaphore = Arc::new(tokio::sync::Semaphore::new(config.audit_inflight_max));
+    let audit = janus::audit::spawn_writer(pool.clone(), config.audit_channel_capacity);
 
     let state = Arc::new(AppState {
         pool,
@@ -403,7 +403,7 @@ async fn main() -> anyhow::Result<()> {
         models_cache: Arc::new(std::sync::Mutex::new(None)),
         oidc_states: Arc::new(dashmap::DashMap::new()),
         enterprise,
-        audit_semaphore,
+        audit,
     });
 
     // ── Background: cache TTL prune (V4-3) ───────────────────────────────────

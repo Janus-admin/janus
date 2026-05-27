@@ -122,13 +122,19 @@ for _ in $(seq 1 30); do
 done
 
 # ── 7. Build Janus ─────────────────────────────────────────────────────────────
+# SQLX_OFFLINE=true tells sqlx's compile-time query macros to use the prepared
+# `.sqlx/` fingerprints instead of opening a fresh connection to validate every
+# query. Without this, the build connects to whatever DATABASE_URL points at —
+# which on a fresh VM is the PG container we just started but with no schema
+# yet (migrations run at startup, not at compile time), so the build fails on
+# `relation "model_pricing" does not exist`.
 log "Building Janus (release) — first build takes ~5 minutes..."
-cargo build --release 2>&1 | tail -5
+SQLX_OFFLINE=true cargo build --release 2>&1 | tail -5
 log "Janus built."
 
 # ── 8. Build mock-llm ──────────────────────────────────────────────────────────
 log "Building mock-llm..."
-( cd benchmarks/mock-llm && cargo build --release -q )
+( cd benchmarks/mock-llm && SQLX_OFFLINE=true cargo build --release -q )
 log "mock-llm built."
 
 log "Setup complete. Run benchmarks with:"

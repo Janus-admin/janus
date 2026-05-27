@@ -97,6 +97,29 @@ curl -s -X PATCH http://localhost:8080/admin/config \
     -H 'Content-Type: application/json' \
     -d '{"cache_enabled":true}' > /dev/null
 
+# ── Smart-routing profile: model="" forces the router to pick a target ────────
+# Flip the global smart_routing_config row to enabled with gpt-4o-mini as the
+# default so empty-model requests are routed through the V5-L6 router engine.
+log "Enabling smart routing with default model gpt-4o-mini..."
+$SUDO docker compose exec -T db psql -U janus -d janus -c \
+    "UPDATE smart_routing_config SET enabled = true, default_model = 'gpt-4o-mini'
+     WHERE workspace_id IS NULL;" > /dev/null
+
+# Restart the mock back to the realistic-latency profile (was 1ms during
+# pure-overhead). The smart-routing probe runs against the same workload so
+# its numbers compare directly with chat-short.
+kill "$MOCK_PID" 2>/dev/null || true
+sleep 1
+./benchmarks/mock-llm/target/release/mock-llm --port 9999 > /tmp/mock-llm.log 2>&1 &
+MOCK_PID=$!
+sleep 1
+
+./benchmarks/run.sh smart-routing 60s 50
+
+# Restore router to disabled so subsequent runs don't drift behaviour.
+$SUDO docker compose exec -T db psql -U janus -d janus -c \
+    "UPDATE smart_routing_config SET enabled = false WHERE workspace_id IS NULL;" > /dev/null
+
 # ── Summary ────────────────────────────────────────────────────────────────────
 log "All done. Per-profile manifest summary (timestamp / profile / rps / p99 / errors):"
 jq -r '[.timestamp, .profile, .throughput_rps, .latency.p99, .errors] | @tsv' \

@@ -189,7 +189,7 @@ async fn proxy_llm_request(state: &Arc<AppState>, args: Value) -> Result<Value, 
         None,
         &serde_json::Value::Object(serde_json::Map::new()),
         "/mcp/chat",
-        &state.audit_semaphore,
+        &state.audit,
     )
     .await
     {
