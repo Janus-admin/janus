@@ -1,0 +1,43 @@
+# TYPE janus_tokens_total counter
+janus_tokens_total{provider="openai",model="gpt-4o",direction="completion"} 2500
+janus_tokens_total{provider="openai",model="gpt-4o",direction="prompt"} 10000
+janus_tokens_total{provider="openai",model="gpt-4o-mini",direction="completion"} 2600
+janus_tokens_total{provider="openai",model="gpt-4o-mini",direction="prompt"} 10400
+
+# TYPE janus_requests_total counter
+janus_requests_total{cache_type="semantic",status="success"} 1
+janus_requests_total{cache_type="exact",status="success"} 2802518
+janus_requests_total{provider="openai",model="gpt-4o",status="success",cache_type="none"} 50
+janus_requests_total{provider="openai",model="gpt-4o-mini",status="success",cache_type="none"} 52
+
+# TYPE janus_cost_usd_total counter
+janus_cost_usd_total{provider="openai",model="gpt-4o-mini"} 3120
+janus_cost_usd_total{provider="openai",model="gpt-4o"} 87500
+
+# TYPE janus_request_duration_seconds summary
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.5"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.9"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.95"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.99"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.999"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="1"} 0
+janus_request_duration_seconds_sum{provider="openai",model="gpt-4o-mini"} 79.91253091699997
+janus_request_duration_seconds_count{provider="openai",model="gpt-4o-mini"} 52
+janus_request_duration_seconds{provider="openai",model="gpt-4o",quantile="0"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o",quantile="0.5"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o",quantile="0.9"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o",quantile="0.95"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o",quantile="0.99"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o",quantile="0.999"} 0
+janus_request_duration_seconds{provider="openai",model="gpt-4o",quantile="1"} 0
+janus_request_duration_seconds_sum{provider="openai",model="gpt-4o"} 77.816016295
+janus_request_duration_seconds_count{provider="openai",model="gpt-4o"} 50
+
+# HELP janus_cache_size Number of entries in the in-memory cache layer
+# TYPE janus_cache_size gauge
+janus_cache_size{layer="exact"} 3
+janus_cache_size{layer="semantic"} 102
+# HELP janus_cache_hit_ratio Fraction of requests served from cache since process start
+# TYPE janus_cache_hit_ratio gauge
+janus_cache_hit_ratio 0.999964

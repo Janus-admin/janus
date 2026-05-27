@@ -1,0 +1,20 @@
+{
+  "profile": "tools",
+  "duration": "60s",
+  "concurrency": "50",
+  "timestamp": "2026-05-27T16-45-21Z",
+  "throughput_rps": "19235.3993",
+  "latency": {
+    "p50": "2.3743 ms",
+    "p95": "4.8220 ms",
+    "p99": "6.1359 ms"
+  },
+  "requests": 1355292,
+  "cache_hits": 1355291,
+  "cache_hit_ratio": "1.000",
+  "errors": "0",
+  "resources": {
+    "cpu_pct_median": "218.4",
+    "rss_kb_peak": "1460800"
+  }
+}

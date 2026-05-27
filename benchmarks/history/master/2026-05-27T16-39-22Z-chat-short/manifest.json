@@ -1,0 +1,20 @@
+{
+  "profile": "chat-short",
+  "duration": "60s",
+  "concurrency": "50",
+  "timestamp": "2026-05-27T16-39-22Z",
+  "throughput_rps": "20610.6852",
+  "latency": {
+    "p50": "2.2363 ms",
+    "p95": "4.4350 ms",
+    "p99": "5.5921 ms"
+  },
+  "requests": 1412617,
+  "cache_hits": 1412566,
+  "cache_hit_ratio": "1.000",
+  "errors": "0",
+  "resources": {
+    "cpu_pct_median": "185.2",
+    "rss_kb_peak": "1239088"
+  }
+}

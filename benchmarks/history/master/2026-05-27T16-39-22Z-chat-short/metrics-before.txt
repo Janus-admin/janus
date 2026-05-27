@@ -1,0 +1,28 @@
+# TYPE janus_cost_usd_total counter
+janus_cost_usd_total{provider="openai",model="gpt-4o-mini"} 60
+
+# TYPE janus_tokens_total counter
+janus_tokens_total{provider="openai",model="gpt-4o-mini",direction="prompt"} 200
+janus_tokens_total{provider="openai",model="gpt-4o-mini",direction="completion"} 50
+
+# TYPE janus_requests_total counter
+janus_requests_total{provider="openai",model="gpt-4o-mini",status="success",cache_type="none"} 1
+
+# TYPE janus_request_duration_seconds summary
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0"} 0.255186708
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.5"} 0.2552019696307806
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.9"} 0.2552019696307806
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.95"} 0.2552019696307806
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.99"} 0.2552019696307806
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="0.999"} 0.2552019696307806
+janus_request_duration_seconds{provider="openai",model="gpt-4o-mini",quantile="1"} 0.255186708
+janus_request_duration_seconds_sum{provider="openai",model="gpt-4o-mini"} 0.255186708
+janus_request_duration_seconds_count{provider="openai",model="gpt-4o-mini"} 1
+
+# HELP janus_cache_size Number of entries in the in-memory cache layer
+# TYPE janus_cache_size gauge
+janus_cache_size{layer="exact"} 1
+janus_cache_size{layer="semantic"} 1
+# HELP janus_cache_hit_ratio Fraction of requests served from cache since process start
+# TYPE janus_cache_hit_ratio gauge
+janus_cache_hit_ratio 0.000000
