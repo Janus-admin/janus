@@ -37,7 +37,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILES_DIR="$HERE/profiles"
 RESULTS_DIR="$HERE/results"
 
-JANUS_BASE="${JANUS_BASE:-http://localhost:8080}"
+# Use 127.0.0.1 explicitly, not localhost.
+# On macOS, `localhost` resolves to ::1 (IPv6) first; oha doesn't fall back to
+# IPv4, so it fails with "Connection refused" when Janus listens on 0.0.0.0
+# (IPv4-only). curl is more forgiving and works either way.
+JANUS_BASE="${JANUS_BASE:-http://127.0.0.1:8080}"
 JANUS_API_KEY="${JANUS_API_KEY:-}"
 WARMUP_SECS="${WARMUP_SECS:-10}"
 
@@ -210,26 +214,42 @@ fi
 log "Parsing results ..."
 OHA="$RUN_DIR/oha.txt"
 
-# oha's output has a "Summary:" block we can grep. We extract a few key fields.
-total_reqs=$(grep -E '^\s*Success rate' "$OHA" 2>/dev/null | awk '{print $NF}' || echo "")
-rps=$(grep -E '^\s*Requests/sec' "$OHA" 2>/dev/null | awk '{print $NF}' || echo "")
-p50=$(grep -E '50%\s+in' "$OHA" 2>/dev/null | head -1 | awk '{print $3, $4}' || echo "")
-p95=$(grep -E '95%\s+in' "$OHA" 2>/dev/null | head -1 | awk '{print $3, $4}' || echo "")
-p99=$(grep -E '99%\s+in' "$OHA" 2>/dev/null | head -1 | awk '{print $3, $4}' || echo "")
-errors=$(grep -E 'Error distribution' -A 50 "$OHA" 2>/dev/null | tail -n +2 | grep -c '^\[' || echo 0)
+# oha's "Response time distribution" lines look like "  50.00% in 1.3709 sec".
+# The percentage is always `<num>.00%`, so we match that exact pattern.
+success_rate=$(awk '/^\s*Success rate:/   {print $3; exit}' "$OHA")
+rps=$(          awk '/^\s*Requests\/sec:/ {print $2; exit}' "$OHA")
+p50=$(          awk '/^\s*50\.00%/ {print $3, $4; exit}' "$OHA")
+p95=$(          awk '/^\s*95\.00%/ {print $3, $4; exit}' "$OHA")
+p99=$(          awk '/^\s*99\.00%/ {print $3, $4; exit}' "$OHA")
 
-# Diff cache hit counters from /metrics.
-hits_before=$(grep -E '^janus_cache_hits_total' "$RUN_DIR/metrics-before.txt" 2>/dev/null | awk '{print $NF}' || echo 0)
-hits_after=$( grep -E '^janus_cache_hits_total' "$RUN_DIR/metrics-after.txt"  2>/dev/null | awk '{print $NF}' || echo 0)
+# Errors: count the entries listed under "Error distribution" (one bracketed
+# count per error type). If the section is absent, errors = 0.
+errors=$(awk '
+    /^Error distribution:/ {in_section=1; next}
+    in_section && /^\s*\[[0-9]+\]/ {sum += $1+0}
+    END {print sum+0}
+' "$OHA")
+
+# Metrics: counter series may have multiple label-set instances; sum across them.
+# Prometheus text format: `metric_name{labels} value [timestamp]`. The value is
+# at $2 because the metric+labels has no internal whitespace.
+sum_metric() {
+    local file="$1"
+    local name="$2"
+    awk -v m="^$name" '$0 ~ m {sum += $2} END {print sum+0}' "$file" 2>/dev/null
+}
+
+hits_before=$(sum_metric "$RUN_DIR/metrics-before.txt" "janus_cache_hits_total")
+hits_after=$( sum_metric "$RUN_DIR/metrics-after.txt"  "janus_cache_hits_total")
+reqs_before=$(sum_metric "$RUN_DIR/metrics-before.txt" "janus_requests_total")
+reqs_after=$( sum_metric "$RUN_DIR/metrics-after.txt"  "janus_requests_total")
+
 hits_delta=$(awk "BEGIN { print ${hits_after:-0} - ${hits_before:-0} }")
-
-reqs_before=$(grep -E '^janus_requests_total' "$RUN_DIR/metrics-before.txt" 2>/dev/null | awk '{print $NF}' || echo 0)
-reqs_after=$( grep -E '^janus_requests_total' "$RUN_DIR/metrics-after.txt"  2>/dev/null | awk '{print $NF}' || echo 0)
 reqs_delta=$(awk "BEGIN { print ${reqs_after:-0} - ${reqs_before:-0} }")
 
 hit_ratio="n/a"
-if [ "${reqs_delta%.*}" != "0" ] && [ -n "$reqs_delta" ]; then
-    hit_ratio=$(awk "BEGIN { if ($reqs_delta > 0) printf \"%.3f\", $hits_delta / $reqs_delta; else print \"n/a\" }")
+if [ -n "$reqs_delta" ] && [ "$(awk "BEGIN { print ($reqs_delta > 0) }")" = "1" ]; then
+    hit_ratio=$(awk "BEGIN { printf \"%.3f\", $hits_delta / $reqs_delta }")
 fi
 
 # Process samples — pull steady-state median and peak.
@@ -251,11 +271,12 @@ cat > "$RUN_DIR/REPORT.md" <<EOF
 | Metric | Value |
 |---|---:|
 | Throughput | $rps req/s |
+| Success rate (oha) | $success_rate |
 | Latency p50 | $p50 |
 | Latency p95 | $p95 |
 | Latency p99 | $p99 |
-| Total requests | ${reqs_delta:-?} |
-| Cache hits | ${hits_delta:-?} |
+| Total requests (Janus) | ${reqs_delta:-?} |
+| Cache hits (Janus) | ${hits_delta:-?} |
 | Cache hit ratio | $hit_ratio |
 | Errors (oha-reported) | $errors |
 | CPU% (median, steady) | $cpu_med |
