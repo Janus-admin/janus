@@ -120,6 +120,13 @@ sleep 1
 $SUDO docker compose exec -T db psql -U janus -d janus -c \
     "UPDATE smart_routing_config SET enabled = false WHERE workspace_id IS NULL;" > /dev/null
 
+# ── Mixed workload: 60% cache-hit / 40% cache-miss in parallel ────────────────
+# Realistic traffic shape: most prompts repeat, a minority are unique.
+# Runs two oha processes side-by-side (30 hit + 20 miss = 50 conn) so the
+# numbers compare directly with the single-profile runs above.
+log "Running mixed workload (60/40 cache hit/miss)..."
+bash benchmarks/mixed-workload.sh 60s
+
 # ── Summary ────────────────────────────────────────────────────────────────────
 log "All done. Per-profile manifest summary (timestamp / profile / rps / p99 / errors):"
 jq -r '[.timestamp, .profile, .throughput_rps, .latency.p99, .errors] | @tsv' \

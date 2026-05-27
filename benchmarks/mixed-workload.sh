@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# mixed-workload.sh — simulates a 70% cache-hit / 30% cache-miss workload.
+# mixed-workload.sh — simulates a 60% cache-hit / 40% cache-miss workload.
 #
 # Runs two oha instances in parallel:
-#   - HIT  process: 35 concurrent connections → chat-short (already in cache)
-#   - MISS process: 15 concurrent connections → mixed-miss  (unique prompt, goes to provider)
+#   - HIT  process: 30 concurrent connections → chat-short (already in cache)
+#   - MISS process: 20 concurrent connections → mixed-miss  (unique prompt, goes to provider)
 #
-# Combined: 50 total concurrent connections, ~70/30 split.
+# Combined: 50 total concurrent connections, ~60/40 split.
 #
 # Usage: ./benchmarks/mixed-workload.sh [duration] [output-dir]
 #   duration   default 60s
@@ -34,16 +34,16 @@ HIT_FILE="$HERE/profiles/chat-short.json"
 MISS_FILE="$HERE/profiles/mixed-miss.json"
 
 echo "[mixed] Warming up cache (10s) ..."
-oha -z 10s -c 35 -m POST \
+oha -z 10s -c 30 -m POST \
     -H "Authorization: Bearer $JANUS_API_KEY" \
     -H "Content-Type: application/json" \
     -D "$HIT_FILE" \
     --disable-color \
     "$JANUS_BASE/v1/chat/completions" > /dev/null 2>&1
 
-echo "[mixed] Running mixed workload: duration=$DURATION 35 hit + 15 miss connections"
+echo "[mixed] Running mixed workload: duration=$DURATION 30 hit + 20 miss connections"
 
-oha -z "$DURATION" -c 35 -m POST \
+oha -z "$DURATION" -c 30 -m POST \
     -H "Authorization: Bearer $JANUS_API_KEY" \
     -H "Content-Type: application/json" \
     -D "$HIT_FILE" \
@@ -51,7 +51,7 @@ oha -z "$DURATION" -c 35 -m POST \
     "$JANUS_BASE/v1/chat/completions" > "$OUTDIR/oha-hit.txt" 2>&1 &
 PID_HIT=$!
 
-oha -z "$DURATION" -c 15 -m POST \
+oha -z "$DURATION" -c 20 -m POST \
     -H "Authorization: Bearer $JANUS_API_KEY" \
     -H "Content-Type: application/json" \
     -D "$MISS_FILE" \
@@ -87,14 +87,14 @@ P99_MISS=$(parse_p99 "$OUTDIR/oha-miss.txt")
 cat > "$OUTDIR/REPORT.md" <<EOF
 # Mixed Workload Benchmark — $TS
 
-**Duration:** $DURATION  |  **Total concurrency:** 50 (35 hit + 15 miss)  |  **Split:** ~70% cache hit / 30% cache miss
+**Duration:** $DURATION  |  **Total concurrency:** 50 (30 hit + 20 miss)  |  **Split:** ~60% cache hit / 40% cache miss
 
 ## Results
 
 | Stream | Concurrency | Throughput | p50 | p99 |
 |---|---|---|---|---|
-| Cache HIT (chat-short) | 35 | ${RPS_HIT} req/s | ${P50_HIT} | ${P99_HIT} |
-| Cache MISS (mixed-miss) | 15 | ${RPS_MISS} req/s | ${P50_MISS} | ${P99_MISS} |
+| Cache HIT (chat-short) | 30 | ${RPS_HIT} req/s | ${P50_HIT} | ${P99_HIT} |
+| Cache MISS (mixed-miss) | 20 | ${RPS_MISS} req/s | ${P50_MISS} | ${P99_MISS} |
 | **Combined** | **50** | **${RPS_TOTAL} req/s** | — | — |
 
 ## Artefacts
@@ -106,8 +106,8 @@ echo ""
 echo "────────────────────────────────────────────────────────────────────────────────"
 echo "Mixed workload complete."
 echo ""
-echo "  Cache HIT  (35 conn):  ${RPS_HIT} req/s   p50=${P50_HIT}   p99=${P99_HIT}"
-echo "  Cache MISS (15 conn):  ${RPS_MISS} req/s  p50=${P50_MISS}  p99=${P99_MISS}"
+echo "  Cache HIT  (30 conn):  ${RPS_HIT} req/s   p50=${P50_HIT}   p99=${P99_HIT}"
+echo "  Cache MISS (20 conn):  ${RPS_MISS} req/s  p50=${P50_MISS}  p99=${P99_MISS}"
 echo "  Combined total:        ${RPS_TOTAL} req/s"
 echo ""
 echo "  Full report: $OUTDIR/REPORT.md"
