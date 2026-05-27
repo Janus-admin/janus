@@ -5,6 +5,9 @@ CHANGELOG.md
 CONFIGURATION.md
 docs/
 
+# ─── Claude Code local settings (may contain credentials) ────────────────────
+.claude/settings.local.json
+
 # ─── Secrets (NEVER commit these) ────────────────────────────────────────────
 .env
 .env.local
