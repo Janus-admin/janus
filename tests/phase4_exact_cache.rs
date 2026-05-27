@@ -189,8 +189,8 @@ async fn phase4_cache_stats_show_correct_savings() {
         Some("exact")
     );
 
-    // Both upsert and record_hit are awaited synchronously in the pipeline,
-    // so no sleep needed here.
+    // Since record_hit is asynchronous (fire-and-forget), sleep briefly to let the background update finish.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     // Check stats.
     let stats = client

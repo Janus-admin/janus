@@ -12,7 +12,7 @@ use crate::{
 use dashmap::DashMap;
 use serde_json::Value;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 /// Ephemeral state stored per OIDC login attempt.
@@ -30,7 +30,7 @@ pub struct AppState {
     pub config: Config,
     /// Runtime-mutable config fields (logging flags, cache settings, max_retries).
     /// Updated by `PATCH /admin/config` without restart.
-    pub runtime_config: Arc<RwLock<RuntimeConfig>>,
+    pub runtime_config: Arc<arc_swap::ArcSwap<RuntimeConfig>>,
     pub providers: Arc<ProviderRegistry>,
     pub key_cache: Arc<DashMap<[u8; 32], ApiKey>>,
     pub rate_limiter: Arc<RateLimiter>,

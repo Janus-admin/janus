@@ -3,6 +3,7 @@ CLAUDE.md
 AGENTS.md
 CHANGELOG.md
 CONFIGURATION.md
+docs/
 
 # ─── Secrets (NEVER commit these) ────────────────────────────────────────────
 .env

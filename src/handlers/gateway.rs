@@ -260,7 +260,7 @@ async fn chat_completions_inner(
     };
 
     // Snapshot mutable config once per request.
-    let rc = state.runtime_config.read().await;
+    let rc = state.runtime_config.load();
 
     // Bypass cache when disabled globally or when the client sends X-Janus-Cache: false.
     let explicit_bypass = !rc.cache_enabled
@@ -1043,7 +1043,7 @@ pub async fn embeddings(
         return e.into_response();
     }
 
-    let bypass_cache = !state.runtime_config.read().await.cache_enabled;
+    let bypass_cache = !state.runtime_config.load().cache_enabled;
 
     let hash = exact::compute_embedding_hash(&request);
 
@@ -1198,7 +1198,7 @@ pub async fn legacy_completions(
         metadata: None,
     };
 
-    let rc = state.runtime_config.read().await;
+    let rc = state.runtime_config.load();
     let bypass_cache = !rc.cache_enabled;
     let max_retries = rc.max_retries;
     drop(rc);

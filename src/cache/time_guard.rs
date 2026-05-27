@@ -1,28 +1,30 @@
 use crate::providers::ChatCompletionRequest;
-use regex::Regex;
+use regex::RegexSet;
 
 /// Detects prompts that are inherently time-bound (e.g. "current price", "today").
 ///
 /// When a request matches, it is excluded from both cache lookup and cache write.
 /// The set of patterns is configured via `time_sensitive_patterns` in janus.toml.
 pub struct TimeGuard {
-    patterns: Vec<Regex>,
+    patterns: RegexSet,
 }
 
 impl TimeGuard {
     /// Compile the configured pattern list into a `TimeGuard`.
     /// Invalid regex patterns are logged and skipped — the rest still apply.
     pub fn new(raw_patterns: &[String]) -> Self {
-        let patterns = raw_patterns
-            .iter()
-            .filter_map(|p| match Regex::new(p) {
-                Ok(re) => Some(re),
+        let mut valid_patterns = Vec::new();
+        for p in raw_patterns {
+            match regex::Regex::new(p) {
+                Ok(_) => {
+                    valid_patterns.push(p.clone());
+                }
                 Err(e) => {
                     tracing::warn!(pattern = %p, error = %e, "Invalid time-sensitive pattern — skipping");
-                    None
                 }
-            })
-            .collect();
+            }
+        }
+        let patterns = RegexSet::new(valid_patterns).unwrap_or_else(|_| RegexSet::new(&["a^"]).unwrap());
         Self { patterns }
     }
 
@@ -33,10 +35,8 @@ impl TimeGuard {
         }
         for msg in &request.messages {
             let text = extract_text_content(&msg.content);
-            for pattern in &self.patterns {
-                if pattern.is_match(&text) {
-                    return true;
-                }
+            if self.patterns.is_match(&text) {
+                return true;
             }
         }
         false

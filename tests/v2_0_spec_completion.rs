@@ -541,7 +541,7 @@ async fn v2_0_circuit_skips_open_provider_and_fails_over() {
         }
     }
 
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
     let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
@@ -663,7 +663,7 @@ async fn v2_0_tpm_rate_limit_enforced_when_token_budget_exhausted() {
         providers,
         key_cache.clone(),
     ));
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
     let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());

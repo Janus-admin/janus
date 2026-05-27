@@ -42,23 +42,27 @@ pub async fn patch_config(
     Json(body): Json<PatchConfigRequest>,
 ) -> AppResult<Json<Value>> {
     require_role(Role::Admin, &auth.0, &state).await?;
-    let mut rc = state.runtime_config.write().await;
+    state.runtime_config.rcu(|old| {
+        let mut rc = (**old).clone();
+        if let Some(v) = body.log_request_bodies {
+            rc.log_request_bodies = v;
+        }
+        if let Some(v) = body.log_response_bodies {
+            rc.log_response_bodies = v;
+        }
+        if let Some(v) = body.cache_enabled {
+            rc.cache_enabled = v;
+        }
+        if let Some(v) = body.max_retries {
+            rc.max_retries = v;
+        }
+        if let Some(v) = body.semantic_cache_threshold {
+            rc.semantic_cache_threshold = v;
+        }
+        Arc::new(rc)
+    });
 
-    if let Some(v) = body.log_request_bodies {
-        rc.log_request_bodies = v;
-    }
-    if let Some(v) = body.log_response_bodies {
-        rc.log_response_bodies = v;
-    }
-    if let Some(v) = body.cache_enabled {
-        rc.cache_enabled = v;
-    }
-    if let Some(v) = body.max_retries {
-        rc.max_retries = v;
-    }
-    if let Some(v) = body.semantic_cache_threshold {
-        rc.semantic_cache_threshold = v;
-    }
+    let rc = state.runtime_config.load();
 
     Ok(Json(json!({
         "data": {
@@ -86,7 +90,7 @@ pub async fn patch_config(
 )]
 pub async fn get_config(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
     let c = &state.config;
-    let rc = state.runtime_config.read().await;
+    let rc = state.runtime_config.load();
     Ok(Json(json!({
         "data": {
             // Server

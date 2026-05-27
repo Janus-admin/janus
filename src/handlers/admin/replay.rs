@@ -132,7 +132,7 @@ pub async fn replay_request(
 
     let bypass_cache = opts.skip_cache.unwrap_or(false);
     let key = admin_key();
-    let rc = state.runtime_config.read().await;
+    let rc = state.runtime_config.load();
     let max_retries = rc.max_retries;
     drop(rc);
 
@@ -312,7 +312,7 @@ pub async fn playground(
         serde_json::from_value(body).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     let key = admin_key();
-    let rc = state.runtime_config.read().await;
+    let rc = state.runtime_config.load();
     let max_retries = rc.max_retries;
     drop(rc);
 

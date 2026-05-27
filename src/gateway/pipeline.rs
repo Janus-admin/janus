@@ -13,8 +13,8 @@ use crate::{
     plugins::{self, PluginError, RequestPlugin},
     pricing,
     providers::{
-        ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice,
-        ChunkDelta, ProviderError,
+        ChatChoice, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
+        ChatMessage, ChunkChoice, ChunkDelta, ProviderError, UsageData,
     },
 };
 use axum::response::{
@@ -98,19 +98,6 @@ pub async fn run(
 ) -> AppResult<(ChatCompletionResponse, CacheHit)> {
     // V5-0: own the endpoint string so it can be moved into spawned audit-log tasks.
     let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
-    // Clone request so plugins can mutate it without affecting the caller.
-    let mut request = request.clone();
-
-    // ── Plugin before_request chain ───────────────────────────────────────────
-    match plugins::run_before(plugin_chain, &mut request, api_key).await {
-        Ok(()) => {}
-        Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
-        Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
-        Err(PluginError::Warning(_)) => {} // already logged in run_before
-    }
-
-    let request = &request; // reborrow as shared ref for the rest of the pipeline
-
     // ── Exact cache lookup ────────────────────────────────────────────────────
     let hash = cache::exact::compute_hash(request);
 
@@ -121,7 +108,13 @@ pub async fn run(
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
             counter!("janus_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
-            let _ = db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
+            {
+                let pool = pool.clone();
+                let hash = hash.clone();
+                tokio::spawn(async move {
+                    let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
+                });
+            }
             crate::metrics::record_request(true);
             let mut resp = (*cached).clone();
             match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
@@ -153,7 +146,13 @@ pub async fn run(
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
                     counter!("janus_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
-                    let _ = db::cache::record_hit(pool, &hit_hash, tokens, Decimal::ZERO).await;
+                    {
+                        let pool = pool.clone();
+                        let hash = hit_hash.clone();
+                        tokio::spawn(async move {
+                            let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
+                        });
+                    }
                     crate::metrics::record_request(true);
                     let mut resp = (*cached).clone();
                     match plugins::run_after(plugin_chain, request, &mut resp, api_key).await {
@@ -166,6 +165,19 @@ pub async fn run(
             }
         }
     }
+
+    // Clone request so plugins can mutate it without affecting the caller.
+    let mut request = request.clone();
+
+    // ── Plugin before_request chain ───────────────────────────────────────────
+    match plugins::run_before(plugin_chain, &mut request, api_key).await {
+        Ok(()) => {}
+        Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
+        Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
+        Err(PluginError::Warning(_)) => {} // already logged in run_before
+    }
+
+    let request = &request; // reborrow as shared ref for the rest of the pipeline
 
     // ── In-flight deduplication ───────────────────────────────────────────────
     // Reuses the SHA-256 already computed for exact-cache — no extra hashing.
@@ -587,9 +599,10 @@ pub async fn run_streaming(
     fallback_models: Vec<String>,
     prompt_version_id: Option<Uuid>,
     plugin_chain: Arc<Vec<Box<dyn RequestPlugin>>>,
-    // Cache TTL in seconds. Streaming responses are not currently cached, so this is
-    // reserved for future use when streaming cache writes are added.
-    _cache_ttl_secs: u64,
+    // Cache TTL in seconds. Streaming responses are buffered as they pass through
+    // and persisted as a non-streaming response on clean completion, so subsequent
+    // identical requests (streaming or not) hit cache via synthesize_sse_from_cached.
+    cache_ttl_secs: u64,
     downgrade_triggered: bool,
     // V5-L3: tags extracted from request metadata + X-Janus-Tags header.
     tags: serde_json::Value,
@@ -597,14 +610,6 @@ pub async fn run_streaming(
     endpoint: &str,
 ) -> AppResult<(Response, CacheHit)> {
     let endpoint_log_arc: Arc<str> = Arc::from(endpoint);
-    // ── Plugin before_request chain ───────────────────────────────────────────
-    match plugins::run_before(&plugin_chain, &mut request, &api_key).await {
-        Ok(()) => {}
-        Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
-        Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
-        Err(PluginError::Warning(_)) => {}
-    }
-
     // ── Exact cache lookup ────────────────────────────────────────────────────
     let hash = cache::exact::compute_hash(&request);
 
@@ -615,7 +620,13 @@ pub async fn run_streaming(
             let tokens = cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
             counter!("janus_requests_total", "cache_type" => "exact", "status" => "success")
                 .increment(1);
-            let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
+            {
+                let pool = pool.clone();
+                let hash = hash.clone();
+                tokio::spawn(async move {
+                    let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
+                });
+            }
             crate::metrics::record_request(true);
             let sse = synthesize_sse_from_cached(&cached);
             return Ok((sse, CacheHit::Exact));
@@ -640,13 +651,27 @@ pub async fn run_streaming(
                     let tokens =
                         cached.usage.prompt_tokens as i64 + cached.usage.completion_tokens as i64;
                     counter!("janus_requests_total", "cache_type" => "semantic", "status" => "success").increment(1);
-                    let _ = db::cache::record_hit(&pool, &hit_hash, tokens, Decimal::ZERO).await;
+                    {
+                        let pool = pool.clone();
+                        let hash = hit_hash.clone();
+                        tokio::spawn(async move {
+                            let _ = db::cache::record_hit(&pool, &hash, tokens, Decimal::ZERO).await;
+                        });
+                    }
                     crate::metrics::record_request(true);
                     let sse = synthesize_sse_from_cached(&cached);
                     return Ok((sse, CacheHit::Semantic(score)));
                 }
             }
         }
+    }
+
+    // ── Plugin before_request chain ───────────────────────────────────────────
+    match plugins::run_before(&plugin_chain, &mut request, &api_key).await {
+        Ok(()) => {}
+        Err(PluginError::BadRequest(msg)) => return Err(AppError::BadRequest(msg)),
+        Err(PluginError::Forbidden(msg)) => return Err(AppError::Forbidden(msg)),
+        Err(PluginError::Warning(_)) => {}
     }
 
     // ── Provider loop ─────────────────────────────────────────────────────────
@@ -666,6 +691,11 @@ pub async fn run_streaming(
     models_to_try.extend(fallback_models.iter().cloned());
 
     for model_attempt in &models_to_try {
+        // Mirror the non-streaming path (line ~259): only cache when serving the
+        // primary model — fallback responses would poison the cache key (hash of
+        // the original request) with content the user never explicitly requested.
+        let is_primary_model = model_attempt == &request.model;
+
         let mut request_for_model;
         let effective_request = if model_attempt == &request.model {
             &request
@@ -731,6 +761,16 @@ pub async fn run_streaming(
                         let model = effective_request.model.clone();
                         let tags_stream = tags.clone();
 
+                        // State captured into the spawn so the stream can be persisted
+                        // to cache after a clean finish (mirrors the non-streaming path).
+                        // Pre-serialise the ORIGINAL request (not effective_request) so
+                        // the stored req_body matches the hash key.
+                        let hash_for_cache = hash.clone();
+                        let cache_for_write = cache.clone();
+                        let embedding_for_write = embedding.clone();
+                        let request_body_for_cache =
+                            serde_json::to_string(&request).unwrap_or_default();
+
                         let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
 
                         tokio::spawn(async move {
@@ -741,6 +781,13 @@ pub async fn run_streaming(
                             // 6.3: Track whether the stream ended cleanly or with a
                             // provider error so the request log reflects reality.
                             let mut stream_status = "success";
+
+                            // Cache-write state: accumulate text content, capture
+                            // finish_reason, distinguish clean-end from client-abort.
+                            let mut accumulated_content = String::new();
+                            let mut finish_reason_str: Option<String> = None;
+                            let mut stream_completed = false;
+                            let mut client_disconnected = false;
 
                             tokio::pin!(provider_stream);
 
@@ -759,11 +806,16 @@ pub async fn run_streaming(
                                             provider = provider_name,
                                             "Client disconnected — cancelling provider stream"
                                         );
+                                        client_disconnected = true;
                                         break;
                                     }
 
                                     chunk_opt = provider_stream.next() => {
-                                        let Some(chunk_result) = chunk_opt else { break };
+                                        let Some(chunk_result) = chunk_opt else {
+                                            // Provider closed the stream naturally.
+                                            stream_completed = true;
+                                            break;
+                                        };
 
                                         // Record TTFB on first byte received (error or data).
                                         if ttfb_ms.is_none() {
@@ -802,6 +854,22 @@ pub async fn run_streaming(
                                                         {
                                                             completion_tokens += 1;
                                                         }
+                                                    }
+                                                }
+
+                                                // Buffer content + capture finish_reason
+                                                // for the cache-write step below.
+                                                for choice in &chunk.choices {
+                                                    if let Some(c) = choice.delta.content.as_deref()
+                                                    {
+                                                        accumulated_content.push_str(c);
+                                                    }
+                                                    if let Some(fr) = &choice.finish_reason {
+                                                        finish_reason_str = Some(fr.clone());
+                                                        // Provider has signalled end-of-completion.
+                                                        // We may still get a trailing usage chunk
+                                                        // before the stream closes.
+                                                        stream_completed = true;
                                                     }
                                                 }
 
@@ -913,6 +981,101 @@ pub async fn run_streaming(
                                     }
                                 }
                                 let _ = db::api_keys::update_last_used(&pool, api_key_id).await;
+
+                                // ── Streaming cache write ─────────────────
+                                // Persist the assembled response so subsequent
+                                // identical requests (streaming or not) hit
+                                // cache via synthesize_sse_from_cached().
+                                //
+                                // Guards:
+                                //  - !bypass_cache:        client opted in
+                                //  - is_primary_model:     don't cache fallback
+                                //                          model under the
+                                //                          original request hash
+                                //  - stream_completed:     provider closed the
+                                //                          stream cleanly
+                                //  - !client_disconnected: don't cache truncated
+                                //                          responses
+                                //  - stream_status=success not a mid-stream error
+                                //  - completion_tokens > 0 we have content
+                                //  - !accumulated_content.is_empty()
+                                let should_cache = !bypass_cache
+                                    && is_primary_model
+                                    && stream_completed
+                                    && !client_disconnected
+                                    && stream_status == "success"
+                                    && completion_tokens > 0
+                                    && !accumulated_content.is_empty();
+
+                                if should_cache {
+                                    let synthetic_resp = ChatCompletionResponse {
+                                        id: format!("chatcmpl-{}", Uuid::new_v4()),
+                                        object: "chat.completion".to_string(),
+                                        created: std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .map(|d| d.as_secs())
+                                            .unwrap_or(0),
+                                        model: final_model.clone(),
+                                        choices: vec![ChatChoice {
+                                            index: 0,
+                                            message: ChatMessage {
+                                                role: "assistant".to_string(),
+                                                content: serde_json::Value::String(
+                                                    accumulated_content,
+                                                ),
+                                                name: None,
+                                                tool_calls: None,
+                                                tool_call_id: None,
+                                            },
+                                            finish_reason: finish_reason_str
+                                                .or_else(|| Some("stop".to_string())),
+                                            logprobs: None,
+                                        }],
+                                        usage: UsageData {
+                                            prompt_tokens,
+                                            completion_tokens,
+                                            total_tokens: prompt_tokens + completion_tokens,
+                                        },
+                                    };
+
+                                    let resp_body = serde_json::to_string(&synthetic_resp)
+                                        .unwrap_or_default();
+
+                                    cache_for_write.insert_with_ttl(
+                                        hash_for_cache.clone(),
+                                        Arc::new(synthetic_resp),
+                                        cache_ttl_secs,
+                                    );
+
+                                    let req_body = crate::pii::scrub(&request_body_for_cache)
+                                        .into_owned();
+                                    let _ = db::cache::upsert_entry(
+                                        &pool,
+                                        &hash_for_cache,
+                                        provider_name,
+                                        &final_model,
+                                        &req_body,
+                                        &resp_body,
+                                        Some(prompt_tokens as i32),
+                                        Some(completion_tokens as i32),
+                                        cost,
+                                        cache_ttl_secs,
+                                    )
+                                    .await;
+
+                                    if let Some(emb) = embedding_for_write {
+                                        cache_for_write
+                                            .semantic_insert(emb.clone(), hash_for_cache.clone());
+                                        let emb_bytes =
+                                            crate::cache::semantic::f32_vec_to_bytes(&emb);
+                                        let _ = db::cache::save_embedding(
+                                            &pool,
+                                            &hash_for_cache,
+                                            &emb_bytes,
+                                        )
+                                        .await;
+                                    }
+                                }
                             });
                         });
 
@@ -1020,18 +1183,16 @@ fn synthesize_sse_from_cached(resp: &ChatCompletionResponse) -> Response {
         usage: Some(resp.usage.clone()),
     };
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(4);
-    tokio::spawn(async move {
-        if let Ok(data) = serde_json::to_string(&chunk_content) {
-            let _ = tx.send(Ok(Event::default().data(data))).await;
-        }
-        if let Ok(data) = serde_json::to_string(&chunk_done) {
-            let _ = tx.send(Ok(Event::default().data(data))).await;
-        }
-        let _ = tx.send(Ok(Event::default().data("[DONE]"))).await;
-    });
+    let mut events: Vec<Result<Event, Infallible>> = Vec::new();
+    if let Ok(data) = serde_json::to_string(&chunk_content) {
+        events.push(Ok(Event::default().data(data)));
+    }
+    if let Ok(data) = serde_json::to_string(&chunk_done) {
+        events.push(Ok(Event::default().data(data)));
+    }
+    events.push(Ok(Event::default().data("[DONE]")));
 
-    Sse::new(ReceiverStream::new(rx))
+    Sse::new(futures_util::stream::iter(events))
         .keep_alive(KeepAlive::default())
         .into_response()
 }

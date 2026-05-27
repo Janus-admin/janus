@@ -166,7 +166,7 @@ async fn proxy_llm_request(state: &Arc<AppState>, args: Value) -> Result<Value, 
     let strategy = RoutingStrategy::Priority;
 
     let max_retries = {
-        let rc = state.runtime_config.read().await;
+        let rc = state.runtime_config.load();
         rc.max_retries
     };
 

@@ -318,7 +318,7 @@ pub async fn generate_content_handler(
         }
     }
 
-    let rc = state.runtime_config.read().await;
+    let rc = state.runtime_config.load();
     let cache_enabled = rc.cache_enabled;
     let max_retries = rc.max_retries;
     drop(rc);

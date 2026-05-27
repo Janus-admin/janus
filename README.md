@@ -2,9 +2,10 @@
 
 **One base_url. Every model. Every provider. Your VPC.**
 
-[![License: ELv2](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/ghcr.io-Janus--admin%2Fjanus-blue?logo=docker&logoColor=white)](https://github.com/Janus-admin/janus/pkgs/container/janus)
+[![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-orange.svg)](LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/janusadmin/janus?logo=docker&logoColor=white)](https://hub.docker.com/r/janusadmin/janus)
 [![Prometheus](https://img.shields.io/badge/prometheus-native-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io)
+[![GitHub Stars](https://img.shields.io/github/stars/Janus-admin/janus?style=flat&logo=github)](https://github.com/Janus-admin/janus/stargazers)
 [![Rust](https://img.shields.io/badge/built%20with-Rust-orange?logo=rust)](https://www.rust-lang.org)
 [![CI](https://github.com/Janus-admin/janus/actions/workflows/ci.yml/badge.svg)](https://github.com/Janus-admin/janus/actions)
 
@@ -237,7 +238,7 @@ Both projects proxy LLM requests, enforce budgets, and expose an OpenAI-compatib
 | **Import from LiteLLM** | ✅ `janus import litellm` | — |
 | **Kubernetes Helm chart** | ✅ | ✅ |
 | **Python ecosystem** | ❌ | ✅ large |
-| **License** | Elastic License 2.0 | MIT |
+| **License** | BUSL-1.1 | MIT |
 
 > **Overhead figures** are estimates based on architecture — Rust/axum single-threaded dispatch vs Python/asyncio with GIL. Run your own benchmark; results vary by workload.
 
@@ -516,7 +517,7 @@ Users are provisioned JIT on first login. Group claims map to Janus RBAC roles.
 
 ## Contributing
 
-Janus is source-available under the Elastic License 2.0. PRs are welcome.
+Janus is source-available under the Business Source License 1.1. PRs are welcome.
 
 **Before submitting:**
 
@@ -541,7 +542,7 @@ For questions and ideas use [GitHub Discussions](https://github.com/Janus-admin/
 
 ## License
 
-[Elastic License 2.0 (ELv2)](LICENSE) — free to self-host, modify, and contribute back. You may not offer Janus as a hosted managed service to third parties.
+[Business Source License 1.1](LICENSE) — free to self-host, modify, and contribute. You may not offer Janus as a hosted managed service to third parties without a commercial license.
 
 ---
 

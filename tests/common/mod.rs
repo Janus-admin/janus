@@ -351,6 +351,7 @@ pub async fn spawn_app_with_cluster_warmed(openai_base_url: String, node_id: &st
 // ── Internal implementation ───────────────────────────────────────────────────
 
 async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
+    let _ = tracing_subscriber::fmt::try_init();
     load_env();
 
     let mut config = janus::config::Config::load().expect("Failed to load config");
@@ -525,7 +526,7 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
 

@@ -1,5 +1,5 @@
 use crate::{
-    db::api_keys::{sha256_bytes, sha256_hex},
+    db::api_keys::sha256_bytes,
     errors::AppError,
     models::api_key::ApiKey,
     state::AppState,
@@ -69,7 +69,14 @@ where
         // Rotation grace-period check (V3-5):
         // If the presented hash does not match the current key_sha256, the caller
         // is using the old (pre-rotation) key. Verify the grace window is still open.
-        let presented_hex = sha256_hex(token);
+        let presented_hex = {
+            use std::fmt::Write;
+            let mut s = String::with_capacity(64);
+            for b in &key_bytes {
+                let _ = write!(s, "{:02x}", b);
+            }
+            s
+        };
         let is_previous_hash = api_key
             .key_sha256
             .as_deref()

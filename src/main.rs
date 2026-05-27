@@ -353,7 +353,7 @@ async fn main() -> anyhow::Result<()> {
 
     let (event_tx, _) = tokio::sync::broadcast::channel(1_000);
 
-    let runtime_config = Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
 

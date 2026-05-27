@@ -299,7 +299,7 @@ async fn v3_5_old_key_rejected_after_grace_period_expires() {
     let rate_limiter = janus::middleware::rate_limit::RateLimiter::new(60);
     let cache = Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
-    let runtime_config = Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
 

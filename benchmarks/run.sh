@@ -104,7 +104,7 @@ fi
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 log "Checking Janus at $JANUS_BASE ..."
-curl -s -f -m 5 "$JANUS_BASE/health" >/dev/null \
+curl -s -f -m 15 "$JANUS_BASE/health" >/dev/null \
     || fail "Janus not reachable at $JANUS_BASE" 3
 
 # Verify the API key actually works against the gateway. We do a HEAD-equivalent

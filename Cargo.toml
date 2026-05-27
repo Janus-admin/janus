@@ -3,7 +3,7 @@ name = "janus"
 version = "0.1.0"
 edition = "2021"
 description = "Self-hosted AI gateway — proxy, caching, observability"
-license = "Elastic-2.0"
+license = "BUSL-1.1"
 repository = "https://github.com/Janus-admin/janus"
 homepage = "https://github.com/Janus-admin/janus"
 

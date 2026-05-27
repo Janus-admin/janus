@@ -109,7 +109,7 @@ async fn spawn_app_sqlite(tmp: &TempDir) -> (String, MockServer, janus::db::DbPo
         janus::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
     let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
 
@@ -388,7 +388,7 @@ async fn v2_1_sqlite_rate_limit_enforced() {
         janus::middleware::rate_limit::RateLimiter::new(config.rate_limit_window_secs);
     let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
 
@@ -494,7 +494,7 @@ async fn v2_1_sqlite_budget_limit_blocks_request() {
     let rate_limiter = janus::middleware::rate_limit::RateLimiter::new(60);
     let cache = std::sync::Arc::new(janus::cache::CacheEngine::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(64);
-    let runtime_config = std::sync::Arc::new(tokio::sync::RwLock::new(
+    let runtime_config = std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
         janus::config::RuntimeConfig::from(&config),
     ));
 

@@ -51,7 +51,7 @@ impl Modify for SecurityAddon {
         version = "0.1.0",
         description = "Janus is a self-hosted AI gateway: OpenAI-compatible proxy for chat/embeddings/images/audio, with caching, cost tracking, alerts, and per-workspace RBAC.\n\nTwo authentication systems coexist:\n- **Admin API** (`/admin/*`, `/api/v1/auth/*`): JWT bearer token from dashboard login.\n- **Gateway API** (`/v1/*`): `jn-sk-...` API key as `Authorization: Bearer <key>`.\n\nGateway endpoints are OpenAI request/response compatible — clients change only the `base_url`.",
         contact(name = "Janus", url = "https://github.com/Janus-admin/janus"),
-        license(name = "Elastic-2.0", url = "https://www.elastic.co/licensing/elastic-license"),
+        license(name = "BUSL-1.1", url = "https://github.com/Janus-admin/janus/blob/master/LICENSE"),
     ),
     servers(
         (url = "http://localhost:8080", description = "Local dev server"),
