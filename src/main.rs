@@ -107,6 +107,27 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::pool::connect(&config.database_url).await?;
     tracing::info!("Database connected and migrations applied");
 
+    // ── First-run admin seeding ───────────────────────────────────────────────
+    // If ADMIN_EMAIL + ADMIN_PASSWORD are set and the users table is empty,
+    // create the admin account automatically so Docker users don't need to
+    // call the register endpoint manually.
+    if let (Some(email), Some(password)) = (
+        config.admin_email.as_deref().filter(|s| !s.is_empty()),
+        config.admin_password.as_deref().filter(|s| !s.is_empty()),
+    ) {
+        match janus::db::users::count(&pool).await {
+            Ok(0) => match bcrypt::hash(password, bcrypt::DEFAULT_COST) {
+                Ok(hash) => match janus::db::users::create(&pool, email, &hash, "Admin").await {
+                    Ok(_) => tracing::info!(email = %email, "First-run admin account created"),
+                    Err(e) => tracing::warn!("Admin seed failed (non-fatal): {e}"),
+                },
+                Err(e) => tracing::warn!("Admin seed: bcrypt hash failed (non-fatal): {e}"),
+            },
+            Ok(_) => tracing::debug!("Admin seed skipped — users already exist"),
+            Err(e) => tracing::warn!("Admin seed: could not count users (non-fatal): {e}"),
+        }
+    }
+
     // ── Doctor mode ───────────────────────────────────────────────────────────
     if args.doctor {
         let report = janus::doctor::run_checks(&pool, &config).await;

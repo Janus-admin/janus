@@ -43,6 +43,18 @@ jwt_expiration_hours = 24
 # Required. Generate: openssl rand -base64 32
 encryption_key = "your-encryption-key-here"
 
+# ── First-run admin account ────────────────────────────────────────────────────
+# When the database is empty on first startup, Janus creates this admin account
+# automatically. Idempotent — safe to leave set after the first run.
+# Change admin_password before exposing Janus to the internet.
+admin_email    = "admin@example.com"
+admin_password = "changeme"
+
+# Set to true to allow unauthenticated self-registration via
+# POST /api/v1/auth/register. Default: false (registration is closed
+# once any user exists). The very first account is always allowed.
+# allow_registration = false
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # LOGGING
 # ═══════════════════════════════════════════════════════════════════════════════

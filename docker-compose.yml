@@ -37,6 +37,13 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       RUST_LOG: ${RUST_LOG:-info}
+      # First-run admin account. Created automatically when the users table is
+      # empty. Idempotent — safe to leave set after the first run.
+      # Change the password before exposing Janus to the internet.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      # Set to true to re-enable open self-registration (not recommended).
+      # ALLOW_REGISTRATION: "false"
     depends_on:
       db:
         condition: service_healthy

@@ -156,6 +156,10 @@ struct TestAppOpts {
     /// When set, configure SMTP to write .eml files to this directory instead of sending.
     /// Used by V5-L4 email alert tests.
     smtp_file_dir: Option<String>,
+    /// Allow self-registration via POST /api/v1/auth/register.
+    /// Default: true (tests always need to register users).
+    /// Set to false to test the registration-closed behavior.
+    allow_registration: bool,
 }
 
 impl Default for TestAppOpts {
@@ -176,6 +180,7 @@ impl Default for TestAppOpts {
             downgrade_strategy: None,
             downgrade_to_model: None,
             smtp_file_dir: None,
+            allow_registration: true,
         }
     }
 }
@@ -332,6 +337,18 @@ pub async fn spawn_app_with_smtp_file_dir(smtp_file_dir: &str) -> String {
     .await
 }
 
+/// Start app with self-registration disabled (`allow_registration = false`).
+///
+/// Use this to test the registration-closed behavior: the first account can
+/// still be created (bootstrap), but all subsequent attempts return 403.
+pub async fn spawn_app_registration_closed() -> String {
+    spawn_app_from_opts(TestAppOpts {
+        allow_registration: false,
+        ..Default::default()
+    })
+    .await
+}
+
 /// Spawn app in cluster mode, warm the cache from DB, and load all active DB keys.
 ///
 /// Use this when starting a "second node" that needs to see keys and cache entries
@@ -358,6 +375,9 @@ async fn spawn_app_from_opts(opts: TestAppOpts) -> String {
 
     // Override the rate-limit window if requested (e.g. 1 s for fast tests).
     config.rate_limit_window_secs = opts.rate_limit_window_secs;
+
+    // Tests control registration behaviour explicitly; default is open.
+    config.allow_registration = opts.allow_registration;
 
     // Configure SMTP file transport for email alert tests.
     if let Some(ref dir) = opts.smtp_file_dir {

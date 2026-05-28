@@ -15,6 +15,19 @@ pub async fn register(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterRequest>,
 ) -> AppResult<Json<AuthResponse>> {
+    // Registration is closed by default after the first user exists.
+    // The very first account (user count = 0) is always allowed as a bootstrap fallback.
+    // Set ALLOW_REGISTRATION=true to re-enable open self-registration.
+    if !state.config.allow_registration {
+        let user_count = db::users::count(&state.pool).await?;
+        if user_count > 0 {
+            return Err(AppError::Forbidden(
+                "Registration is closed. Contact your administrator or set ALLOW_REGISTRATION=true."
+                    .to_string(),
+            ));
+        }
+    }
+
     if db::users::find_by_email(&state.pool, &req.email)
         .await?
         .is_some()

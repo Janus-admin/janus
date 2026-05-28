@@ -15,10 +15,13 @@ Thank you for your interest in contributing to Janus!
 ```bash
 git clone https://github.com/Janus-admin/janus.git
 cd janus
-cp .env.example .env
-docker compose up -d postgres
+cp .env.example .env          # contains ADMIN_EMAIL / ADMIN_PASSWORD for first-run seeding
+docker compose up -d db       # starts Postgres only
 cargo build
+cargo run                     # creates the admin account on first startup, then serves
 ```
+
+On first `cargo run`, Janus creates an admin account using `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env` (defaults: `admin@example.com` / `changeme`). Log in at `http://localhost:8080`.
 
 ### Running Tests
 

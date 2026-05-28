@@ -91,6 +91,13 @@ pub async fn list(pool: &DbPool, page: i64, per_page: i64) -> AppResult<Vec<User
     Ok(users)
 }
 
+pub async fn count(pool: &DbPool) -> AppResult<i64> {
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.0)
+}
+
 pub async fn mark_tour_complete(pool: &DbPool, id: Uuid) -> AppResult<()> {
     sqlx::query(
         "UPDATE users SET tour_completed_at = NOW() WHERE id = $1 AND tour_completed_at IS NULL",

@@ -211,6 +211,26 @@ pub struct Config {
     /// Absent or empty = community edition (all enterprise features disabled).
     #[serde(default)]
     pub license_jwt: String,
+
+    // ── First-run admin setup ─────────────────────────────────────────────────
+    /// Email for the auto-created admin account on first startup.
+    /// Only used when the users table is empty. Idempotent after first run.
+    /// Set via ADMIN_EMAIL env var or in janus.toml.
+    #[serde(default)]
+    pub admin_email: Option<String>,
+
+    /// Password for the auto-created admin account.
+    /// Required when admin_email is set. Stored as bcrypt hash.
+    /// Set via ADMIN_PASSWORD env var or in janus.toml.
+    #[serde(default)]
+    pub admin_password: Option<String>,
+
+    /// Allow unauthenticated self-registration via POST /api/v1/auth/register.
+    /// Default: false — registration is closed once any user exists.
+    /// The very first account can always be created (bootstrap fallback).
+    /// Set ALLOW_REGISTRATION=true to re-enable open registration.
+    #[serde(default)]
+    pub allow_registration: bool,
 }
 
 /// SMTP configuration for email alert delivery (V5-L4).

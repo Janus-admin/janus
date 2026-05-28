@@ -19,7 +19,9 @@ Janus is a **self-hosted AI gateway** written in Rust. It sits between your appl
 git clone https://github.com/Janus-admin/janus && cd janus && cp .env.example .env && docker compose up -d
 ```
 
-Edit `.env` to add your API keys, then open `http://localhost:8080`.
+Edit `.env` to add your provider API keys. On first startup Janus creates the admin account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in your `.env` — defaults are `admin@example.com` / `changeme`. **Change the password before exposing Janus to the internet.**
+
+Open `http://localhost:8080` and log in.
 
 Interactive API explorer (no auth required): `http://localhost:8080/admin/docs`
 
@@ -82,11 +84,13 @@ Your app
 ```bash
 git clone https://github.com/Janus-admin/janus
 cd janus
-cp .env.example .env            # add your API keys here
+cp .env.example .env            # set your API keys, secrets, and admin credentials
 docker compose up -d
 ```
 
-This starts Janus + Postgres. Dashboard at `http://localhost:8080`.
+This starts Janus + Postgres. On first startup Janus creates an admin account from `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your `.env` (defaults: `admin@example.com` / `changeme`). Log in at `http://localhost:8080`.
+
+> Change `ADMIN_PASSWORD` before exposing port 8080 to the internet.
 
 ### Option B — Single Docker container (existing Postgres)
 
@@ -95,6 +99,8 @@ docker run -d --name janus -p 8080:8080 \
   -e DATABASE_URL="postgres://user:pass@host:5432/janus" \
   -e JWT_SECRET="$(openssl rand -base64 32)" \
   -e ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+  -e ADMIN_EMAIL="admin@yourcompany.com" \
+  -e ADMIN_PASSWORD="$(openssl rand -base64 16)" \
   -e OPENAI_API_KEY="sk-..." \
   ghcr.io/Janus-admin/janus:latest
 ```
@@ -103,9 +109,11 @@ docker run -d --name janus -p 8080:8080 \
 
 ```bash
 git clone https://github.com/Janus-admin/janus && cd janus
-cp janus.toml.example janus.toml   # edit with your Postgres URL + provider keys
+cp janus.toml.example janus.toml   # edit with your Postgres URL, provider keys, and admin credentials
 cargo run --release
 ```
+
+On first startup with no users in the database, Janus creates the admin account from `admin_email` / `admin_password` in `janus.toml` (or the `ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars). If those are not set, you can self-register at `POST /api/v1/auth/register` — registration closes automatically after the first account is created.
 
 ---
 
@@ -422,6 +430,14 @@ database_url     = "postgres://janus:pass@localhost:5432/janus"
 jwt_secret       = "$(openssl rand -base64 32)"
 encryption_key   = "$(openssl rand -base64 32)"
 
+# First-run admin account — created on startup when the users table is empty.
+# Remove after first run, or leave set (safe — idempotent).
+admin_email      = "admin@yourcompany.com"
+admin_password   = "changeme"
+
+# Set to true to re-enable open self-registration (not recommended).
+# allow_registration = false
+
 openai_api_key   = "sk-..."
 anthropic_api_key = "sk-ant-..."
 gemini_api_key   = ""
@@ -582,9 +598,10 @@ Janus is source-available under the Business Source License 1.1. PRs are welcome
 ```bash
 git clone https://github.com/Janus-admin/janus
 cd janus
-cp janus.toml.example janus.toml   # edit with your Postgres URL + provider keys
+cp .env.example .env               # set ADMIN_EMAIL / ADMIN_PASSWORD + provider keys
+docker compose up -d db            # start Postgres
 cargo test
-cargo run
+cargo run                          # creates admin account on first startup
 ```
 
 For bug reports use [GitHub Issues](https://github.com/Janus-admin/janus/issues).
