@@ -60,7 +60,7 @@ impl HnswIndex {
 
 impl EmbeddingIndex for HnswIndex {
     fn lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().expect("HNSW index mutex poisoned");
         if inner.count == 0 {
             return None;
         }
@@ -80,7 +80,7 @@ impl EmbeddingIndex for HnswIndex {
     }
 
     fn insert(&self, embedding: Vec<f32>, hash: String) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().expect("HNSW index mutex poisoned");
         let id = inner.count;
         inner.hnsw.insert((&embedding, id));
         inner.id_to_hash.insert(id, hash);
@@ -88,11 +88,14 @@ impl EmbeddingIndex for HnswIndex {
     }
 
     fn clear(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().expect("HNSW index mutex poisoned");
         *inner = HnswInner::new(self.max_nb_connection, self.ef_construction);
     }
 
     fn len(&self) -> usize {
-        self.inner.lock().unwrap().count
+        self.inner
+            .lock()
+            .expect("HNSW index mutex poisoned")
+            .count
     }
 }

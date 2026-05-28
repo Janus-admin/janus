@@ -1,5 +1,5 @@
 use crate::{config::BudgetDowngradeConfig, errors::AppError, models::api_key::ApiKey};
-use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 
 /// Decision returned alongside a passing budget check.
 ///
@@ -68,14 +68,16 @@ pub fn check_budget(
         return Ok(DowngradeDecision::None);
     };
 
-    let spend_pct = key
-        .budget_used
-        .to_f64()
-        .zip(limit.to_f64())
-        .map(|(used, lim)| if lim > 0.0 { used / lim * 100.0 } else { 0.0 })
-        .unwrap_or(0.0);
+    // Money never touches f64 (CLAUDE.md §10).  Compute the percentage in
+    // Decimal so the threshold compare matches the precision used everywhere
+    // else in the spend pipeline.
+    let spend_pct = if limit > Decimal::ZERO {
+        (key.budget_used * Decimal::from(100)) / limit
+    } else {
+        Decimal::ZERO
+    };
 
-    if spend_pct < threshold as f64 {
+    if spend_pct < Decimal::from(threshold) {
         return Ok(DowngradeDecision::None);
     }
 

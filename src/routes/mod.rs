@@ -21,7 +21,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // Gateway routes with 1MB size limit (audio multipart raised to 25MB below)
+    // Gateway routes with 25MB size limit (matches OpenAI's documented limit;
+    // accommodates vision payloads with base64-encoded images).
     let gateway_routes = Router::new()
         .route(
             "/v1/chat/completions",
@@ -52,9 +53,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/v1beta/models/:model_action",
             post(handlers::inbound::gemini_shim::generate_content_handler),
         )
-        .layer(RequestBodyLimitLayer::new(1024 * 1024)); // 1MB
+        .layer(RequestBodyLimitLayer::new(25 * 1024 * 1024)); // 25MB
 
-    // Audio upload gets a higher cap (matches OpenAI's 25MB file limit).
+    // Audio upload uses the same cap (matches OpenAI's 25MB file limit).
     let audio_upload_routes = Router::new()
         .route(
             "/v1/audio/transcriptions",

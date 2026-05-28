@@ -22,6 +22,11 @@ janus.toml
 sqlx-data.json
 .cargo/config.toml
 
+# ─── Local scratch / perf experiments (never committed) ──────────────────────
+# Quick throwaway .rs files used for benchmarking / one-off experiments,
+# plus any compiled binaries produced from them.
+scratch*
+
 # ─── Janus Runtime Files ──────────────────────────────────────────────────────
 janus.db
 janus_cache.idx

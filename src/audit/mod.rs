@@ -231,6 +231,11 @@ async fn flush(
         requests.clear();
     }
 
+    // Each stage below emits a `tracing::warn!` and bumps the
+    // `janus_audit_flush_errors_total{stage=...}` counter on failure so a
+    // chronically failing DB shows up in Prometheus rather than silently
+    // dropping audit rows.
+
     // 2. cache_entries hit-counter updates (one UPDATE per distinct hash).
     if !cache_hits.is_empty() {
         let mut grouped: HashMap<String, i64> = HashMap::new();
@@ -238,13 +243,19 @@ async fn flush(
             *grouped.entry(h).or_insert(0) += t;
         }
         for (hash, tokens) in grouped {
-            let _ = crate::db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await;
+            if let Err(e) =
+                crate::db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await
+            {
+                tracing::warn!(error = %e, hash = %hash, "audit: record_hit failed");
+                counter!("janus_audit_flush_errors_total", "stage" => "cache_hit")
+                    .increment(1);
+            }
         }
     }
 
     // 3. daily_costs upsert (one row per (date, key, ws, provider, model)).
     for (key, acc) in daily_costs.drain() {
-        let _ = crate::db::analytics::upsert_daily_cost(
+        if let Err(e) = crate::db::analytics::upsert_daily_cost(
             pool,
             key.api_key_id,
             key.workspace_id,
@@ -256,17 +267,27 @@ async fn flush(
             acc.completion_tokens,
             if acc.cost > Decimal::ZERO { Some(acc.cost) } else { None },
         )
-        .await;
+        .await
+        {
+            tracing::warn!(error = %e, provider = key.provider, model = %key.model, "audit: upsert_daily_cost failed");
+            counter!("janus_audit_flush_errors_total", "stage" => "daily_costs").increment(1);
+        }
     }
 
     // 4. budget add (one UPDATE per api_key with summed cost).
     for (api_key_id, amount) in budget.drain() {
-        let _ = crate::db::api_keys::add_budget_used(pool, api_key_id, amount).await;
+        if let Err(e) = crate::db::api_keys::add_budget_used(pool, api_key_id, amount).await {
+            tracing::warn!(error = %e, api_key_id = %api_key_id, "audit: add_budget_used failed");
+            counter!("janus_audit_flush_errors_total", "stage" => "budget").increment(1);
+        }
     }
 
     // 5. last_used touch (one UPDATE per api_key).
     for api_key_id in last_used.drain() {
-        let _ = crate::db::api_keys::update_last_used(pool, api_key_id).await;
+        if let Err(e) = crate::db::api_keys::update_last_used(pool, api_key_id).await {
+            tracing::warn!(error = %e, api_key_id = %api_key_id, "audit: update_last_used failed");
+            counter!("janus_audit_flush_errors_total", "stage" => "last_used").increment(1);
+        }
     }
 }
 

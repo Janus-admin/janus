@@ -860,9 +860,28 @@ pub async fn run_streaming(
                             // audit record off to the batched writer, then persists the
                             // assembled response to cache.
                             tokio::spawn(async move {
-                                let cost =
-                                    db::requests::find_pricing(&pool, provider_name, &final_model)
-                                        .await
+                                // Pricing-lookup errors used to be silently swallowed by
+                                // `.ok().flatten()`; emit a metric + warn so a missing /
+                                // misconfigured model_pricing row surfaces in dashboards.
+                                let pricing_lookup = db::requests::find_pricing(
+                                    &pool,
+                                    provider_name,
+                                    &final_model,
+                                )
+                                .await;
+                                if let Err(ref e) = pricing_lookup {
+                                    tracing::warn!(
+                                        error = %e,
+                                        provider = provider_name,
+                                        model = %final_model,
+                                        "streaming: find_pricing failed; cost will be unrecorded for this request"
+                                    );
+                                    counter!("janus_pricing_lookup_errors_total",
+                                             "provider" => provider_name.to_string(),
+                                             "model" => final_model.clone())
+                                        .increment(1);
+                                }
+                                let cost = pricing_lookup
                                         .ok()
                                         .flatten()
                                         .map(|(input_price, output_price)| {

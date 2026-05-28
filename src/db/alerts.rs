@@ -137,6 +137,11 @@ mod pg {
         }
     }
 
+    // SAFETY: SELECT_COLS is a compile-time constant — never user input —
+    // so the `format!()`-built SQL below is not an injection vector.  The const
+    // exists only to avoid duplicating this 14-column list across the 4 query
+    // sites in this module.  All user-supplied values go through `$N` bind
+    // parameters (or are passed via `.bind(...)` on `sqlx::query_as`).
     const SELECT_COLS: &str =
         "id, workspace_id, name, type AS alert_type, threshold, window_minutes,
          is_active, webhook_url, webhook_format, webhook_secret,
@@ -402,6 +407,11 @@ mod lite {
         }
     }
 
+    // SAFETY: SELECT_COLS is a compile-time constant — never user input —
+    // so the `format!()`-built SQL below is not an injection vector.  The const
+    // exists only to avoid duplicating this 14-column list across the 4 query
+    // sites in this module.  All user-supplied values go through `$N` bind
+    // parameters (or are passed via `.bind(...)` on `sqlx::query_as`).
     const SELECT_COLS: &str =
         "id, workspace_id, name, type AS alert_type, threshold, window_minutes,
          is_active, webhook_url, webhook_format, webhook_secret,
