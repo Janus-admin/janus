@@ -13,17 +13,55 @@ Janus is a **self-hosted AI gateway** written in Rust. It sits between your appl
 
 ---
 
-## One-Line Install
+## Getting Started
+
+> **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) installed.
+
+### Step 1 — Clone the repository
 
 ```bash
-git clone https://github.com/Janus-admin/janus && cd janus && cp .env.example .env && docker compose up -d
+git clone https://github.com/Janus-admin/janus
+cd janus
 ```
 
-Edit `.env` to add your provider API keys. On first startup Janus creates the admin account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in your `.env` — defaults are `admin@example.com` / `changeme`. **Change the password before exposing Janus to the internet.**
+### Step 2 — Configure your environment
 
-Open `http://localhost:8080` and log in.
+```bash
+cp .env.example .env
+```
 
-Interactive API explorer (no auth required): `http://localhost:8080/admin/docs`
+Open `.env` and fill in the required values:
+
+```bash
+# Required — generate with: openssl rand -base64 32
+JWT_SECRET=your-secret-here
+ENCRYPTION_KEY=your-encryption-key-here
+
+# Admin account — created automatically on first startup
+ADMIN_EMAIL=admin@yourcompany.com
+ADMIN_PASSWORD=your-strong-password
+
+# Add at least one provider key
+OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+# GEMINI_API_KEY=...
+```
+
+> **Security:** change `ADMIN_PASSWORD` before exposing port 8080 to the internet.
+
+### Step 3 — Start Janus
+
+```bash
+docker compose up -d
+```
+
+This starts Janus and a Postgres database. On first startup, Janus automatically creates your admin account using the credentials from step 2.
+
+### Step 4 — Log in
+
+Open **http://localhost:8080** in your browser and log in with the email and password you set in step 2.
+
+Interactive API explorer (no auth required): **http://localhost:8080/admin/docs**
 
 ---
 
@@ -77,22 +115,11 @@ Your app
 
 ---
 
-## Quickstart
+## Other Install Options
 
-### Option A — Docker Compose (recommended)
+### Docker Compose — see [Getting Started](#getting-started) above (recommended)
 
-```bash
-git clone https://github.com/Janus-admin/janus
-cd janus
-cp .env.example .env            # set your API keys, secrets, and admin credentials
-docker compose up -d
-```
-
-This starts Janus + Postgres. On first startup Janus creates an admin account from `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your `.env` (defaults: `admin@example.com` / `changeme`). Log in at `http://localhost:8080`.
-
-> Change `ADMIN_PASSWORD` before exposing port 8080 to the internet.
-
-### Option B — Single Docker container (existing Postgres)
+### Single Docker container (existing Postgres)
 
 ```bash
 docker run -d --name janus -p 8080:8080 \
@@ -105,7 +132,7 @@ docker run -d --name janus -p 8080:8080 \
   ghcr.io/Janus-admin/janus:latest
 ```
 
-### Option C — From source
+### From source
 
 ```bash
 git clone https://github.com/Janus-admin/janus && cd janus
