@@ -118,3 +118,35 @@ bash benchmarks/run-all-cloud.sh    # runs the realistic profiles
 # Optional, dedicated-CPU host only:
 bash benchmarks/bench-overhead-probe.sh
 ```
+
+---
+
+## Re-verification on `aef0bba` (2026-05-28)
+
+The same workload was re-run on the same hardware class (CPX31 — the
+current Hetzner name for the plan formerly listed as CPX32) on commit
+`aef0bba` (`async EmbeddingIndex` + `spawn_blocking` embed, on top of
+`3276793` hardening / observability). Full report:
+[`cloud-hetzner-cpx31-2026-05-28-aef0bba/REPORT.md`](../cloud-hetzner-cpx31-2026-05-28-aef0bba/REPORT.md).
+
+| Profile | `689f9bd` RPS / p99 | `aef0bba` RPS / p99 | Δ RPS | Δ p99 |
+|---------|--------------------:|--------------------:|------:|------:|
+| chat-short | 40,694 / 3.01 ms | **51,227 / 2.99 ms** | **+26 %** | ≈ 0 % |
+| chat-long  | 37,405 / 3.47 ms | **45,053 / 3.08 ms** | **+20 %** | **−11 %** |
+| tools      | 40,262 / 2.99 ms | **46,898 / 3.02 ms** | **+16 %** | ≈ 0 % |
+| cache-warm | 46,747 / 2.67 ms | **55,451 / 2.84 ms** | **+19 %** | +6 % |
+
+Pure-overhead probe: `689f9bd` measured 2.25 ms p99; `aef0bba` measured
+**2.18 ms** (60 s run) and **2.32 ms** (30 s run) — same within shared-CPU
+noise floor. **No regression.** Realistic-profile throughput rose 16–26 %
+across the board on the same hardware while p99 stayed flat or improved
+on `chat-long`.
+
+Likely contributors over the 3-commit gap:
+- `aef0bba`: `spawn_blocking` around ONNX inference + async `EmbeddingIndex`
+  trait removes executor stalls under cache load.
+- `3276793`: audit-writer error observability, PII pattern expansion
+  (sub-microsecond regression, invisible at request scale).
+
+The exact attribution between the two commits cannot be isolated from
+these numbers alone; both ship together as one upgrade.
