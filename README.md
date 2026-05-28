@@ -217,6 +217,36 @@ const client = new OpenAI({
 
 ---
 
+## Performance
+
+Measured on Hetzner CPX32 (4 vCPU shared, 8 GB RAM, Falkenstein, Ubuntu 26.04),
+mock upstream simulating real-LLM latency (250 ms TTFT + 20 ms / token),
+60 s under sustained load at 50 concurrent connections:
+
+| Workload | Throughput | p50 | p95 | **p99** | Errors |
+|----------|-----------:|----:|----:|--------:|-------:|
+| `chat-short`  — single-turn, ~50-token reply | 40,694 RPS | 1.16 ms | 2.31 ms | **3.01 ms** | 0 |
+| `chat-long`   — 5-turn conversation          | 37,405 RPS | 1.24 ms | 2.59 ms | **3.47 ms** | 0 |
+| `tools`       — function-calling, 3 tools    | 40,262 RPS | 1.18 ms | 2.31 ms | **2.99 ms** | 0 |
+| `cache-warm`  — 100 % cache hit              | 46,747 RPS | 1.00 ms | 2.03 ms | **2.67 ms** | 0 |
+
+All numbers are measured *with the full feature set on*: exact + semantic cache
+layers warmed, PII redaction plugin active, time-guard regex set loaded,
+audit log writing to PostgreSQL, plugin chain dispatch.
+
+> An isolated overhead probe on the same VM measured the gateway path alone
+> at **≈ 2.4 ms p99**. Bare cloud `pure-overhead` numbers include ~44 ms of
+> shared-vCPU scheduling artefact from the hypervisor (visible in the
+> mock-llm-only baseline), so they are kept out of the headline. A
+> dedicated-CPU re-run (Hetzner CCX, AWS c-class dedicated) is scheduled
+> and will be published when complete. The probe script is at
+> `benchmarks/bench-overhead-probe.sh`.
+
+Full report and reproducibility steps:
+[`benchmarks/history/cloud-hetzner-cpx32-2026-05-28/REPORT.md`](benchmarks/history/cloud-hetzner-cpx32-2026-05-28/REPORT.md).
+
+---
+
 ## Honest Comparison: Janus vs LiteLLM
 
 Both projects proxy LLM requests, enforce budgets, and expose an OpenAI-compatible API. Here is where they differ:
@@ -224,7 +254,7 @@ Both projects proxy LLM requests, enforce budgets, and expose an OpenAI-compatib
 | | **Janus** | **LiteLLM** |
 |---|---|---|
 | **Language** | Rust | Python |
-| **Proxy overhead (est.)** | ~0.5 ms | ~15–30 ms |
+| **Proxy overhead (measured)** | ~2.4 ms p99 (Hetzner CPX32, see above) | ~15–30 ms (community reports) |
 | **Idle memory (est.)** | ~60 MB | ~400–600 MB |
 | **With semantic cache** | ~220 MB | ~700 MB+ |
 | **Exact caching** | ✅ built-in (SHA-256, <2 ms) | ✅ via Redis |
@@ -240,7 +270,9 @@ Both projects proxy LLM requests, enforce budgets, and expose an OpenAI-compatib
 | **Python ecosystem** | ❌ | ✅ large |
 | **License** | BUSL-1.1 | MIT |
 
-> **Overhead figures** are estimates based on architecture — Rust/axum single-threaded dispatch vs Python/asyncio with GIL. Run your own benchmark; results vary by workload.
+> **Overhead figures** for Janus are measured (see Performance section above);
+> the LiteLLM number is from community reports. Run your own benchmark on
+> your hardware before quoting either; results vary by workload.
 
 **Choose Janus** when you want minimal memory footprint, fast cache hits, built-in SSO and RBAC, and a single self-contained binary.
 

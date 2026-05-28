@@ -153,25 +153,11 @@ log "Running benchmarks..."
 ./benchmarks/run.sh tools      60s 50
 ./benchmarks/run.sh cache-warm 60s 50
 
-# ── Pure-overhead profile: mock at 1ms TTFB, cache disabled ───────────────────
-log "Running pure-overhead (mock at 1ms TTFT, cache disabled)..."
-start_mock --port 9999 --ttft-ms 1 --tpot-ms 0 --output-tokens 1
-
-JWT=$(login_jwt)
-[ -n "$JWT" ] || fail "could not log in as bench user"
-curl -sf -X PATCH http://localhost:8080/admin/config \
-    -H "Authorization: Bearer $JWT" \
-    -H 'Content-Type: application/json' \
-    -d '{"cache_enabled":false}' > /dev/null || fail "cache disable PATCH failed"
-
-./benchmarks/run.sh pure-overhead 60s 50
-
-# Re-enable cache for subsequent runs.
-JWT=$(login_jwt)
-curl -sf -X PATCH http://localhost:8080/admin/config \
-    -H "Authorization: Bearer $JWT" \
-    -H 'Content-Type: application/json' \
-    -d '{"cache_enabled":true}' > /dev/null || fail "cache re-enable PATCH failed"
+# Note: the "pure-overhead" profile (mock at 1ms TTFT, cache disabled) was
+# removed from the default sweep because shared-vCPU cloud hosts inflate the
+# number with hypervisor scheduling latency that has nothing to do with
+# Janus. Run it manually with `bash benchmarks/bench-overhead-probe.sh` on
+# a DEDICATED-CPU host if you want an isolated gateway-overhead number.
 
 # ── Smart-routing profile: model="" forces V5-L6 router to pick a target ──────
 # smart_routing_config has a singleton NULL-workspace row used as global default.
