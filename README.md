@@ -219,31 +219,51 @@ const client = new OpenAI({
 
 ## Performance
 
-Measured on Hetzner CPX32 (4 vCPU shared, 8 GB RAM, Falkenstein, Ubuntu 26.04),
-mock upstream simulating real-LLM latency (250 ms TTFT + 20 ms / token),
-60 s under sustained load at 50 concurrent connections:
+Measured on Hetzner CCX23 (4 vCPU **dedicated** AMD EPYC, 16 GB RAM, Ubuntu
+26.04), mock upstream simulating real-LLM latency (250 ms TTFT + 20 ms /
+token), 60 s under sustained load at 50 concurrent connections:
 
 | Workload | Throughput | p50 | p95 | **p99** | Errors |
 |----------|-----------:|----:|----:|--------:|-------:|
-| `chat-short`  — single-turn, ~50-token reply | 40,694 RPS | 1.16 ms | 2.31 ms | **3.01 ms** | 0 |
-| `chat-long`   — 5-turn conversation          | 37,405 RPS | 1.24 ms | 2.59 ms | **3.47 ms** | 0 |
-| `tools`       — function-calling, 3 tools    | 40,262 RPS | 1.18 ms | 2.31 ms | **2.99 ms** | 0 |
-| `cache-warm`  — 100 % cache hit              | 46,747 RPS | 1.00 ms | 2.03 ms | **2.67 ms** | 0 |
+| `chat-short`    — single-turn, ~50-token reply | 67,920 RPS | 0.63 ms | 1.56 ms | **2.12 ms** | 0 |
+| `chat-long`     — 5-turn conversation          | 61,385 RPS | 0.71 ms | 1.74 ms | **2.40 ms** | 0 |
+| `tools`         — function-calling, 3 tools    | 64,469 RPS | 0.64 ms | 1.83 ms | **2.97 ms** | 0 |
+| `cache-warm`    — 100 % cache hit              | 73,790 RPS | 0.58 ms | 1.50 ms | **2.12 ms** | 0 |
+| `smart-routing` — V5-L6 router on every req    | 95,596 RPS | 0.43 ms | 1.08 ms | **1.52 ms** | 0 |
 
-All numbers are measured *with the full feature set on*: exact + semantic cache
-layers warmed, PII redaction plugin active, time-guard regex set loaded,
-audit log writing to PostgreSQL, plugin chain dispatch.
+All numbers are measured *with the full feature set on*: exact + semantic
+cache layers warmed, PII redaction plugin active, time-guard regex set
+loaded, audit log writing to PostgreSQL, plugin chain dispatch, and (for
+the smart-routing row) the 4-layer V5-L6 routing engine evaluating every
+request.
 
-> An isolated overhead probe on the same VM measured the gateway path alone
-> at **≈ 2.4 ms p99**. Bare cloud `pure-overhead` numbers include ~44 ms of
-> shared-vCPU scheduling artefact from the hypervisor (visible in the
-> mock-llm-only baseline), so they are kept out of the headline. A
-> dedicated-CPU re-run (Hetzner CCX, AWS c-class dedicated) is scheduled
-> and will be published when complete. The probe script is at
-> `benchmarks/bench-overhead-probe.sh`.
+### Isolated gateway overhead: **0.84 ms p99**
 
-Full report and reproducibility steps:
-[`benchmarks/history/cloud-hetzner-cpx32-2026-05-28/REPORT.md`](benchmarks/history/cloud-hetzner-cpx32-2026-05-28/REPORT.md).
+An isolated overhead probe (cache disabled, mock at 1 ms TTFT) subtracts
+the mock-llm baseline from the full-stack run on the same host:
+
+| | p99 |
+|---|---:|
+| Mock-llm alone, no Janus in path | 44.15 ms |
+| Janus + mock-llm, cache disabled | 44.99 ms |
+| **Inferred Janus-only overhead** | **0.84 ms** |
+
+(The 44 ms floor is a `tokio::time::sleep(1ms)` artefact inside mock-llm
+under 50 concurrent SSE streams — present whether Janus is in the path
+or not. The probe script is at [`benchmarks/bench-overhead-probe.sh`](benchmarks/bench-overhead-probe.sh).)
+
+### Shared- vs dedicated-vCPU comparison (same workload, two Hetzner classes)
+
+| Profile | CPX32 shared / 4 vCPU | CCX23 dedicated / 4 vCPU | Δ p99 | Δ RPS |
+|---------|----------------------:|-------------------------:|------:|------:|
+| chat-short | 40,694 / 3.01 ms | **67,920 / 2.12 ms** | −30 % | +67 % |
+| chat-long  | 37,405 / 3.47 ms | **61,385 / 2.40 ms** | −31 % | +64 % |
+| tools      | 40,262 / 2.99 ms | **64,469 / 2.97 ms** | ≈ 0 % | +60 % |
+| cache-warm | 46,747 / 2.67 ms | **73,790 / 2.12 ms** | −21 % | +58 % |
+
+Full reports:
+- [CCX23 dedicated](benchmarks/history/cloud-hetzner-ccx23-2026-05-28/REPORT.md)
+- [CPX32 shared](benchmarks/history/cloud-hetzner-cpx32-2026-05-28/REPORT.md)
 
 ---
 
@@ -254,7 +274,7 @@ Both projects proxy LLM requests, enforce budgets, and expose an OpenAI-compatib
 | | **Janus** | **LiteLLM** |
 |---|---|---|
 | **Language** | Rust | Python |
-| **Proxy overhead (measured)** | ~2.4 ms p99 (Hetzner CPX32, see above) | ~15–30 ms (community reports) |
+| **Proxy overhead (measured)** | **0.84 ms p99** (Hetzner CCX23 dedicated, see Performance section) | ~15–30 ms (community reports) |
 | **Idle memory (est.)** | ~60 MB | ~400–600 MB |
 | **With semantic cache** | ~220 MB | ~700 MB+ |
 | **Exact caching** | ✅ built-in (SHA-256, <2 ms) | ✅ via Redis |
