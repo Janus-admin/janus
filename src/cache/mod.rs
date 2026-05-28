@@ -179,12 +179,12 @@ impl CacheEngine {
         self.embedding_hot.insert(hash, response);
     }
 
-    pub fn clear(&self) {
+    pub async fn clear(&self) {
         self.hot.clear();
         self.hot_expiry.clear();
         self.embedding_hot.clear();
         if let Some(ref sc) = self.semantic {
-            sc.clear();
+            sc.clear().await;
         }
     }
 
@@ -205,14 +205,17 @@ impl CacheEngine {
     // ── Semantic cache operations ─────────────────────────────────────────────
 
     /// Look up the most similar cached embedding. Returns `(hash, score)` if found.
-    pub fn semantic_lookup(&self, embedding: &[f32]) -> Option<(String, f32)> {
-        self.semantic.as_ref()?.lookup(embedding)
+    pub async fn semantic_lookup(&self, embedding: &[f32]) -> Option<(String, f32)> {
+        match self.semantic.as_ref() {
+            Some(sc) => sc.lookup(embedding).await,
+            None => None,
+        }
     }
 
-    /// Insert a new embedding into the in-memory semantic index.
-    pub fn semantic_insert(&self, embedding: Vec<f32>, hash: String) {
+    /// Insert a new embedding into the semantic index.
+    pub async fn semantic_insert(&self, embedding: Vec<f32>, hash: String) {
         if let Some(ref sc) = self.semantic {
-            sc.insert(embedding, hash);
+            sc.insert(embedding, hash).await;
         }
     }
 
@@ -244,7 +247,8 @@ impl CacheEngine {
 
                     if let Some(ref emb_bytes) = entry.embedding {
                         let embedding = semantic::bytes_to_f32_vec(emb_bytes);
-                        self.semantic_insert(embedding, entry.prompt_hash.clone());
+                        self.semantic_insert(embedding, entry.prompt_hash.clone())
+                            .await;
                     }
                 }
                 loaded

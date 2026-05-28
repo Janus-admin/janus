@@ -1,4 +1,5 @@
 use super::EmbeddingIndex;
+use async_trait::async_trait;
 use std::sync::RwLock;
 
 struct Entry {
@@ -10,6 +11,12 @@ struct Entry {
 ///
 /// Cosine similarity between two unit vectors equals their dot product, so
 /// no explicit normalization is needed at lookup time.
+///
+/// The async trait methods run their (synchronous, in-memory) bodies inline.
+/// At realistic cache sizes (< 10k entries) the scan completes in microseconds
+/// to low single-digit milliseconds; offloading to `spawn_blocking` would add
+/// thread-hop overhead without benefit.  If your cache ever grows past ~100k
+/// entries, switch to `HnswIndex` instead.
 pub struct LinearIndex {
     entries: RwLock<Vec<Entry>>,
 }
@@ -28,8 +35,9 @@ impl Default for LinearIndex {
     }
 }
 
+#[async_trait]
 impl EmbeddingIndex for LinearIndex {
-    fn lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
+    async fn lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
         let entries = self.entries.read().ok()?;
         let mut best_score = threshold;
         let mut best_hash: Option<String> = None;
@@ -45,19 +53,19 @@ impl EmbeddingIndex for LinearIndex {
         best_hash.map(|h| (h, best_score))
     }
 
-    fn insert(&self, embedding: Vec<f32>, hash: String) {
+    async fn insert(&self, embedding: Vec<f32>, hash: String) {
         if let Ok(mut entries) = self.entries.write() {
             entries.push(Entry { embedding, hash });
         }
     }
 
-    fn clear(&self) {
+    async fn clear(&self) {
         if let Ok(mut entries) = self.entries.write() {
             entries.clear();
         }
     }
 
-    fn len(&self) -> usize {
+    async fn len(&self) -> usize {
         self.entries.read().map(|e| e.len()).unwrap_or(0)
     }
 }

@@ -9,7 +9,10 @@ use std::sync::Arc;
 pub async fn prometheus_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     metrics::set_exact_cache_size(state.cache.len());
 
-    let semantic_len = state.cache.semantic.as_ref().map(|s| s.len()).unwrap_or(0);
+    let semantic_len = match state.cache.semantic.as_ref() {
+        Some(s) => s.len().await,
+        None => 0,
+    };
     metrics::set_semantic_cache_size(semantic_len);
 
     let output = metrics::render_metrics();

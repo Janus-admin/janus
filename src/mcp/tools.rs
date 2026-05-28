@@ -319,7 +319,7 @@ async fn get_cache_stats(state: &Arc<AppState>) -> Result<Value, String> {
 }
 
 async fn flush_cache(state: &Arc<AppState>) -> Result<Value, String> {
-    state.cache.clear();
+    state.cache.clear().await;
     metrics::set_exact_cache_size(0);
     metrics::set_semantic_cache_size(0);
 

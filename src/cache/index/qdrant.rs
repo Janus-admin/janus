@@ -14,14 +14,13 @@
 
 use super::EmbeddingIndex;
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Remote Qdrant vector index that implements `EmbeddingIndex`.
 ///
-/// Sync trait methods (`lookup`, `insert`, `clear`) bridge to async Qdrant gRPC
-/// calls via `tokio::task::block_in_place`. This requires a multi-threaded tokio
-/// runtime, which axum provides in production. Tests must use
-/// `#[tokio::test(flavor = "multi_thread")]` when calling these methods directly.
+/// Trait methods are async and `.await` the Qdrant gRPC client directly — no
+/// `block_in_place` parking and no requirement on the tokio runtime flavor.
 pub struct QdrantIndex {
     client: qdrant_client::Qdrant,
     collection: String,
@@ -74,34 +73,9 @@ impl QdrantIndex {
     }
 }
 
+#[async_trait]
 impl EmbeddingIndex for QdrantIndex {
-    fn lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.qdrant_lookup(query, threshold))
-        })
-    }
-
-    fn insert(&self, embedding: Vec<f32>, hash: String) {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.qdrant_insert(embedding, hash))
-        });
-    }
-
-    fn clear(&self) {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.qdrant_clear())
-        });
-    }
-
-    fn len(&self) -> usize {
-        self.count.load(Ordering::Relaxed)
-    }
-}
-
-// ── Async helpers (called from sync trait methods via block_in_place) ─────────
-
-impl QdrantIndex {
-    async fn qdrant_lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
+    async fn lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
         use qdrant_client::qdrant::SearchPointsBuilder;
 
         let results = self
@@ -119,7 +93,7 @@ impl QdrantIndex {
         Some((hash, point.score))
     }
 
-    async fn qdrant_insert(&self, embedding: Vec<f32>, hash: String) {
+    async fn insert(&self, embedding: Vec<f32>, hash: String) {
         use qdrant_client::qdrant::{PointStruct, UpsertPointsBuilder};
 
         let id = hash_to_point_id(&hash);
@@ -138,7 +112,7 @@ impl QdrantIndex {
         }
     }
 
-    async fn qdrant_clear(&self) {
+    async fn clear(&self) {
         use qdrant_client::qdrant::{CreateCollectionBuilder, Distance, VectorParamsBuilder};
 
         // Delete and recreate the collection — the only reliable way to clear
@@ -152,6 +126,10 @@ impl QdrantIndex {
             )
             .await;
         self.count.store(0, Ordering::Relaxed);
+    }
+
+    async fn len(&self) -> usize {
+        self.count.load(Ordering::Relaxed)
     }
 }
 

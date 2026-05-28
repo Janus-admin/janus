@@ -1,4 +1,5 @@
 use super::EmbeddingIndex;
+use async_trait::async_trait;
 use hnsw_rs::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -58,8 +59,13 @@ impl HnswIndex {
     }
 }
 
+#[async_trait]
 impl EmbeddingIndex for HnswIndex {
-    fn lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
+    // The HNSW search itself is CPU-bound but bounded in time (log N on a
+    // graph of ~100k nodes); running it inline inside `async fn` is fine and
+    // avoids the cost of `spawn_blocking`.  The Mutex is held only for the
+    // duration of the operation — never across an `.await`.
+    async fn lookup(&self, query: &[f32], threshold: f32) -> Option<(String, f32)> {
         let inner = self.inner.lock().expect("HNSW index mutex poisoned");
         if inner.count == 0 {
             return None;
@@ -79,7 +85,7 @@ impl EmbeddingIndex for HnswIndex {
         }
     }
 
-    fn insert(&self, embedding: Vec<f32>, hash: String) {
+    async fn insert(&self, embedding: Vec<f32>, hash: String) {
         let mut inner = self.inner.lock().expect("HNSW index mutex poisoned");
         let id = inner.count;
         inner.hnsw.insert((&embedding, id));
@@ -87,12 +93,12 @@ impl EmbeddingIndex for HnswIndex {
         inner.count += 1;
     }
 
-    fn clear(&self) {
+    async fn clear(&self) {
         let mut inner = self.inner.lock().expect("HNSW index mutex poisoned");
         *inner = HnswInner::new(self.max_nb_connection, self.ef_construction);
     }
 
-    fn len(&self) -> usize {
+    async fn len(&self) -> usize {
         self.inner
             .lock()
             .expect("HNSW index mutex poisoned")

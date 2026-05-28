@@ -4,6 +4,10 @@ use crate::cache::index::{linear::LinearIndex, EmbeddingIndex};
 ///
 /// `SemanticCache::new(threshold)` uses the O(n) `LinearIndex` (backwards compatible).
 /// `SemanticCache::with_index(index, threshold)` accepts any index backend.
+///
+/// All methods are async because the underlying `EmbeddingIndex` trait is async
+/// — the in-memory backends (Linear, Hnsw) complete synchronously inside their
+/// `async fn` bodies, while `QdrantIndex` performs real network I/O.
 pub struct SemanticCache {
     index: Box<dyn EmbeddingIndex>,
     threshold: f32,
@@ -25,25 +29,25 @@ impl SemanticCache {
 
     /// Return the hash and similarity score of the most similar cached entry,
     /// or `None` if no entry exceeds the configured threshold.
-    pub fn lookup(&self, query: &[f32]) -> Option<(String, f32)> {
-        self.index.lookup(query, self.threshold)
+    pub async fn lookup(&self, query: &[f32]) -> Option<(String, f32)> {
+        self.index.lookup(query, self.threshold).await
     }
 
     /// Add a new entry. Does not deduplicate — exact-cache hash uniqueness is assumed.
-    pub fn insert(&self, embedding: Vec<f32>, prompt_hash: String) {
-        self.index.insert(embedding, prompt_hash);
+    pub async fn insert(&self, embedding: Vec<f32>, prompt_hash: String) {
+        self.index.insert(embedding, prompt_hash).await;
     }
 
-    pub fn len(&self) -> usize {
-        self.index.len()
+    pub async fn len(&self) -> usize {
+        self.index.len().await
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.index.is_empty()
+    pub async fn is_empty(&self) -> bool {
+        self.index.is_empty().await
     }
 
-    pub fn clear(&self) {
-        self.index.clear();
+    pub async fn clear(&self) {
+        self.index.clear().await;
     }
 }
 

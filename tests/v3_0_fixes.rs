@@ -55,53 +55,55 @@ fn unit_embedding(dim: usize) -> Vec<f32> {
 }
 
 // ─── V3-0 Fix 1: SemanticCache::clear() ──────────────────────────────────────
+// SemanticCache and CacheEngine semantic/clear methods are async since D.2;
+// tests that touch them become #[tokio::test].
 
-#[test]
-fn v3_0_semantic_cache_clear_empties_entries() {
+#[tokio::test]
+async fn v3_0_semantic_cache_clear_empties_entries() {
     let sc = SemanticCache::new(0.90);
-    assert_eq!(sc.len(), 0);
+    assert_eq!(sc.len().await, 0);
 
-    sc.insert(unit_embedding(384), "hash-1".to_string());
-    sc.insert(unit_embedding(384), "hash-2".to_string());
-    assert_eq!(sc.len(), 2);
+    sc.insert(unit_embedding(384), "hash-1".to_string()).await;
+    sc.insert(unit_embedding(384), "hash-2".to_string()).await;
+    assert_eq!(sc.len().await, 2);
 
-    sc.clear();
-    assert_eq!(sc.len(), 0);
+    sc.clear().await;
+    assert_eq!(sc.len().await, 0);
 }
 
-#[test]
-fn v3_0_semantic_lookup_returns_none_after_clear() {
+#[tokio::test]
+async fn v3_0_semantic_lookup_returns_none_after_clear() {
     let sc = SemanticCache::new(0.80);
     let emb = unit_embedding(384);
-    sc.insert(emb.clone(), "hash-abc".to_string());
+    sc.insert(emb.clone(), "hash-abc".to_string()).await;
 
     // Verify it's findable before clear.
-    assert!(sc.lookup(&emb).is_some());
+    assert!(sc.lookup(&emb).await.is_some());
 
-    sc.clear();
+    sc.clear().await;
 
     // Must not be found after clear.
-    assert!(sc.lookup(&emb).is_none());
+    assert!(sc.lookup(&emb).await.is_none());
 }
 
-#[test]
-fn v3_0_semantic_cache_insert_after_clear_works() {
+#[tokio::test]
+async fn v3_0_semantic_cache_insert_after_clear_works() {
     let sc = SemanticCache::new(0.80);
     let emb = unit_embedding(384);
 
-    sc.insert(emb.clone(), "first".to_string());
-    sc.clear();
-    assert_eq!(sc.len(), 0);
+    sc.insert(emb.clone(), "first".to_string()).await;
+    sc.clear().await;
+    assert_eq!(sc.len().await, 0);
 
-    sc.insert(emb.clone(), "second".to_string());
-    assert_eq!(sc.len(), 1);
-    assert!(sc.lookup(&emb).is_some());
+    sc.insert(emb.clone(), "second".to_string()).await;
+    assert_eq!(sc.len().await, 1);
+    assert!(sc.lookup(&emb).await.is_some());
 }
 
 // ─── V3-0 Fix 2: CacheEngine::clear() flushes both layers ───────────────────
 
-#[test]
-fn v3_0_flush_cache_clears_hot_layer() {
+#[tokio::test]
+async fn v3_0_flush_cache_clears_hot_layer() {
     let engine = CacheEngine::new();
     let req = dummy_request("What is Rust?");
     let hash = compute_hash(&req);
@@ -110,12 +112,12 @@ fn v3_0_flush_cache_clears_hot_layer() {
     engine.insert(hash.clone(), resp);
     assert!(!engine.is_empty());
 
-    engine.clear();
+    engine.clear().await;
     assert!(engine.is_empty(), "hot layer must be empty after clear");
 }
 
-#[test]
-fn v3_0_exact_cache_hit_does_not_occur_after_flush() {
+#[tokio::test]
+async fn v3_0_exact_cache_hit_does_not_occur_after_flush() {
     let engine = CacheEngine::new();
     let req = dummy_request("What is Rust?");
     let hash = compute_hash(&req);
@@ -124,7 +126,7 @@ fn v3_0_exact_cache_hit_does_not_occur_after_flush() {
     engine.insert(hash.clone(), resp);
     assert!(engine.lookup(&hash).is_some());
 
-    engine.clear();
+    engine.clear().await;
     assert!(
         engine.lookup(&hash).is_none(),
         "exact hit must not occur after flush"
@@ -161,8 +163,8 @@ fn v3_0_regression_different_prompts_have_different_hashes() {
     assert_ne!(compute_hash(&req1), compute_hash(&req2));
 }
 
-#[test]
-fn v3_0_regression_semantic_cache_threshold_respected() {
+#[tokio::test]
+async fn v3_0_regression_semantic_cache_threshold_respected() {
     // threshold = 1.0 means only a perfect match returns a hit.
     let sc = SemanticCache::new(1.0);
     let emb_a = unit_embedding(384);
@@ -171,15 +173,17 @@ fn v3_0_regression_semantic_cache_threshold_respected() {
     let mut emb_b = unit_embedding(384);
     emb_b[0] *= 2.0;
 
-    sc.insert(emb_a.clone(), "hash-perfect".to_string());
+    sc.insert(emb_a.clone(), "hash-perfect".to_string()).await;
 
     // Perfect match should hit (dot product of identical unit vectors = 1.0).
     // Note: threshold is exclusive (score > threshold), so score must be > 1.0
     // which is impossible. Use a threshold just below 1.0 to test near-match.
     let sc_near = SemanticCache::new(0.99);
-    sc_near.insert(emb_a.clone(), "hash-near".to_string());
+    sc_near
+        .insert(emb_a.clone(), "hash-near".to_string())
+        .await;
     assert!(
-        sc_near.lookup(&emb_a).is_some(),
+        sc_near.lookup(&emb_a).await.is_some(),
         "identical vectors must hit"
     );
 
@@ -187,9 +191,11 @@ fn v3_0_regression_semantic_cache_threshold_respected() {
     let sc_strict = SemanticCache::new(0.99);
     // All-zeros vector has zero cosine similarity with anything.
     let zero_emb = vec![0.0f32; 384];
-    sc_strict.insert(emb_a.clone(), "hash-x".to_string());
+    sc_strict
+        .insert(emb_a.clone(), "hash-x".to_string())
+        .await;
     assert!(
-        sc_strict.lookup(&zero_emb).is_none(),
+        sc_strict.lookup(&zero_emb).await.is_none(),
         "zero vector must not match"
     );
 }

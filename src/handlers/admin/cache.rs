@@ -85,7 +85,7 @@ pub async fn flush_cache(State(state): State<Arc<AppState>>, auth: AuthUser) -> 
     if let Err(e) = require_role(Role::Admin, &auth.0, &state).await {
         return e.into_response();
     }
-    state.cache.clear();
+    state.cache.clear().await;
     metrics::set_exact_cache_size(0);
     metrics::set_semantic_cache_size(0);
 

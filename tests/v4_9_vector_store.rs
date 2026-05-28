@@ -71,15 +71,15 @@ async fn v4_9_qdrant_insert_and_find() {
     };
 
     // Clean state.
-    index.clear();
+    index.clear().await;
 
     let embedding = vec![1.0_f32, 0.0, 0.0, 0.0];
     let hash = "aabbccdd00112233".repeat(4); // 64-char fake SHA-256 hash
 
-    index.insert(embedding.clone(), hash.clone());
+    index.insert(embedding.clone(), hash.clone()).await;
 
     // Exact query should be above any reasonable threshold (similarity = 1.0).
-    let result = index.lookup(&embedding, 0.9);
+    let result = index.lookup(&embedding, 0.9).await;
     assert!(result.is_some(), "Exact lookup after insert must succeed");
     let (found_hash, score) = result.unwrap();
     assert_eq!(found_hash, hash, "Returned hash must match inserted hash");
@@ -94,12 +94,12 @@ async fn v4_9_qdrant_lookup_returns_above_threshold_match() {
         return;
     };
 
-    index.clear();
+    index.clear().await;
 
     // Insert a unit vector pointing in the (1, 0, 0, 0) direction.
     let base: Vec<f32> = vec![1.0, 0.0, 0.0, 0.0];
     let hash = "deadbeef00000000".repeat(4);
-    index.insert(base.clone(), hash.clone());
+    index.insert(base.clone(), hash.clone()).await;
 
     // Query with a close-but-not-identical unit vector in the same direction.
     // Cosine similarity ≈ 1.0 after normalization — should exceed 0.9.
@@ -108,7 +108,7 @@ async fn v4_9_qdrant_lookup_returns_above_threshold_match() {
     let len = (query.iter().map(|x| x * x).sum::<f32>()).sqrt();
     let query_norm: Vec<f32> = query.iter().map(|x| x / len).collect();
 
-    let result = index.lookup(&query_norm, 0.9);
+    let result = index.lookup(&query_norm, 0.9).await;
     assert!(
         result.is_some(),
         "Similar vector lookup must return a match above threshold"
@@ -125,15 +125,15 @@ async fn v4_9_qdrant_clear_empties_collection() {
 
     let embedding = vec![1.0_f32, 0.0, 0.0, 0.0];
     let hash = "cafebabe11223344".repeat(4);
-    index.insert(embedding.clone(), hash);
+    index.insert(embedding.clone(), hash).await;
 
-    index.clear();
+    index.clear().await;
 
     // len() resets to 0.
-    assert_eq!(index.len(), 0, "len() must be 0 after clear()");
+    assert_eq!(index.len().await, 0, "len() must be 0 after clear()");
 
     // Lookup must return None on an empty collection.
-    let result = index.lookup(&embedding, 0.5);
+    let result = index.lookup(&embedding, 0.5).await;
     assert!(
         result.is_none(),
         "Lookup on cleared collection must return None"
@@ -141,23 +141,23 @@ async fn v4_9_qdrant_clear_empties_collection() {
 }
 
 /// The HNSW backend must be unaffected by the Qdrant feature.
-#[test]
-fn v4_9_regression_hnsw_backend_unchanged() {
+#[tokio::test]
+async fn v4_9_regression_hnsw_backend_unchanged() {
     use janus::cache::index::{hnsw::HnswIndex, EmbeddingIndex};
 
     let index = HnswIndex::new(16, 200);
-    assert_eq!(index.len(), 0);
+    assert_eq!(index.len().await, 0);
 
     let embedding = vec![1.0_f32, 0.0, 0.0, 0.0];
     let hash = "ffffffff00000000".repeat(4);
-    index.insert(embedding.clone(), hash.clone());
+    index.insert(embedding.clone(), hash.clone()).await;
 
-    assert_eq!(index.len(), 1);
+    assert_eq!(index.len().await, 1);
 
-    let result = index.lookup(&embedding, 0.9);
+    let result = index.lookup(&embedding, 0.9).await;
     assert!(result.is_some(), "HNSW lookup must still work after V4-9");
     assert_eq!(result.unwrap().0, hash);
 
-    index.clear();
-    assert_eq!(index.len(), 0);
+    index.clear().await;
+    assert_eq!(index.len().await, 0);
 }

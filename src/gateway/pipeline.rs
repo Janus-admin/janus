@@ -129,18 +129,28 @@ pub async fn run(
     // ── Semantic cache lookup ─────────────────────────────────────────────────
     // Compute embedding once; reuse it after provider call to populate the index.
     // Skip when bypass_semantic is set (policy exclusion or cache fully bypassed).
-    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic && cache.model.is_some()
-    {
-        let text = prompt_text(request);
-        cache.model.as_ref().and_then(|m| m.embed(&text).ok())
+    // ONNX inference runs on the blocking pool so it doesn't stall a tokio
+    // worker thread for the tens-to-hundreds of ms an embedding takes.
+    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic {
+        if let Some(model) = cache.model.clone() {
+            let text = prompt_text(request);
+            tokio::task::spawn_blocking(move || model.embed(&text).ok())
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        }
     } else {
         None
     };
 
     if !bypass_cache && !bypass_semantic {
         if let Some(ref emb) = embedding {
-            let semantic_hit = tracing::info_span!("janus.cache.semantic_lookup")
-                .in_scope(|| cache.semantic_lookup(emb));
+            let semantic_hit = cache
+                .semantic_lookup(emb)
+                .instrument(tracing::info_span!("janus.cache.semantic_lookup"))
+                .await;
             if let Some((hit_hash, score)) = semantic_hit {
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
@@ -379,7 +389,7 @@ pub async fn run(
                             .await;
 
                             if let Some(emb) = embedding.as_ref() {
-                                cache.semantic_insert(emb.clone(), hash.clone());
+                                cache.semantic_insert(emb.clone(), hash.clone()).await;
                                 let emb_bytes = crate::cache::semantic::f32_vec_to_bytes(emb);
                                 let _ = db::cache::save_embedding(pool, &hash, &emb_bytes).await;
                             }
@@ -578,18 +588,28 @@ pub async fn run_streaming(
     }
 
     // ── Semantic cache lookup ─────────────────────────────────────────────────
-    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic && cache.model.is_some()
-    {
-        let text = prompt_text(&request);
-        cache.model.as_ref().and_then(|m| m.embed(&text).ok())
+    // Same off-loading pattern as the non-streaming path: ONNX inference runs
+    // on the blocking pool so we don't pin a tokio worker thread.
+    let embedding: Option<Vec<f32>> = if !bypass_cache && !bypass_semantic {
+        if let Some(model) = cache.model.clone() {
+            let text = prompt_text(&request);
+            tokio::task::spawn_blocking(move || model.embed(&text).ok())
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        }
     } else {
         None
     };
 
     if !bypass_cache && !bypass_semantic {
         if let Some(ref emb) = embedding {
-            let semantic_hit = tracing::info_span!("janus.cache.semantic_lookup")
-                .in_scope(|| cache.semantic_lookup(emb));
+            let semantic_hit = cache
+                .semantic_lookup(emb)
+                .instrument(tracing::info_span!("janus.cache.semantic_lookup"))
+                .await;
             if let Some((hit_hash, score)) = semantic_hit {
                 if let Some(cached) = cache.lookup(&hit_hash) {
                     let tokens =
@@ -1009,7 +1029,8 @@ pub async fn run_streaming(
 
                                     if let Some(emb) = embedding_for_write {
                                         cache_for_write
-                                            .semantic_insert(emb.clone(), hash_for_cache.clone());
+                                            .semantic_insert(emb.clone(), hash_for_cache.clone())
+                                            .await;
                                         let emb_bytes =
                                             crate::cache::semantic::f32_vec_to_bytes(&emb);
                                         let _ = db::cache::save_embedding(
