@@ -13,7 +13,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/janus
+  # GHCR (and any Docker registry) requires lowercase repo names.
+  # The org slug `janus-admin` is already lowercase, but hardcoding it
+  # avoids any future tripping if someone forks under a mixed-case name.
+  IMAGE_NAME: ghcr.io/janus-admin/janus
 
 permissions:
   contents: write    # required to upload release assets
@@ -60,19 +63,19 @@ jobs:
         run: |
           mkdir -p dist
           cd target/${{ matrix.target }}/release
-          tar czf ../../../dist/janus-${{ github.ref_name || inputs.tag }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz janus
+          tar czf ../../../dist/janus-${{ inputs.tag || github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz janus
 
       - name: Package (macOS zip)
         if: matrix.os == 'darwin'
         run: |
           mkdir -p dist
           cd target/${{ matrix.target }}/release
-          zip -q ../../../dist/janus-${{ github.ref_name || inputs.tag }}-${{ matrix.os }}-${{ matrix.arch }}.zip janus
+          zip -q ../../../dist/janus-${{ inputs.tag || github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip janus
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || inputs.tag }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: dist/janus-*
           fail_on_unmatched_files: true
           # If the release already exists (e.g. created from the UI), append
@@ -102,7 +105,7 @@ jobs:
       - name: Resolve tag name
         id: tag
         run: |
-          NAME="${{ github.ref_name || inputs.tag }}"
+          NAME="${{ inputs.tag || github.ref_name }}"
           # strip leading 'v' for image tag — semver-style image tags don't usually carry 'v'
           STRIPPED="${NAME#v}"
           echo "version=$STRIPPED" >> "$GITHUB_OUTPUT"
