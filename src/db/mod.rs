@@ -1,8 +1,8 @@
 pub mod alerts;
-#[cfg(feature = "enterprise")]
-pub mod audit;
 pub mod analytics;
 pub mod api_keys;
+#[cfg(feature = "enterprise")]
+pub mod audit;
 pub mod cache;
 pub mod identities;
 pub mod pool;

@@ -261,10 +261,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let enterprise_routes = Router::new()
         // In community builds, expose only the license endpoint so the dashboard
         // can discover the edition without getting a 404.
-        .route(
-            "/admin/enterprise/license",
-            get(community_license_handler),
-        )
+        .route("/admin/enterprise/license", get(community_license_handler))
         .route_layer(axum::middleware::from_extractor_with_state::<
             AuthUser,
             Arc<AppState>,

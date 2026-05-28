@@ -367,8 +367,7 @@ async fn main() -> anyhow::Result<()> {
         janus::enterprise::real::EnterpriseState::new(pool.clone());
 
     #[cfg(not(feature = "enterprise"))]
-    let enterprise: Arc<dyn EnterpriseExt> =
-        Arc::new(janus::enterprise::CommunityEnterprise);
+    let enterprise: Arc<dyn EnterpriseExt> = Arc::new(janus::enterprise::CommunityEnterprise);
 
     let (event_tx, _) = tokio::sync::broadcast::channel(1_000);
 
@@ -456,8 +455,7 @@ async fn main() -> anyhow::Result<()> {
     {
         let enterprise_for_refresh = state.enterprise.clone();
         tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
             interval.tick().await; // skip the first immediate tick
             loop {
                 interval.tick().await;

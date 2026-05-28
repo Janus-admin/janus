@@ -101,14 +101,15 @@ pub enum LicenseState {
 
 impl LicenseState {
     pub fn is_active(&self) -> bool {
-        matches!(self, LicenseState::Active(_) | LicenseState::Degraded { .. })
+        matches!(
+            self,
+            LicenseState::Active(_) | LicenseState::Degraded { .. }
+        )
     }
 
     pub fn has_feature(&self, f: &LicenseFeature) -> bool {
         match self {
-            LicenseState::Active(info) | LicenseState::Degraded { info, .. } => {
-                info.has_feature(f)
-            }
+            LicenseState::Active(info) | LicenseState::Degraded { info, .. } => info.has_feature(f),
             _ => false,
         }
     }
@@ -229,7 +230,10 @@ pub fn load_from_env() -> LicenseState {
                         "Enterprise license active"
                     );
                 }
-                LicenseState::Degraded { info: i, grace_days_left } => {
+                LicenseState::Degraded {
+                    info: i,
+                    grace_days_left,
+                } => {
                     tracing::warn!(
                         org = %i.sub,
                         grace_days_left,

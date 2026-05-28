@@ -102,8 +102,14 @@ pub async fn create_key(
     state.key_cache.insert(key_bytes, key.clone());
 
     state.enterprise.audit(
-        AuditEvent::new("key.create", "api_key", Some(id.to_string()), Some(auth.0.sub), Some(auth.0.email.clone()))
-            .with_metadata(serde_json::json!({ "name": body.name })),
+        AuditEvent::new(
+            "key.create",
+            "api_key",
+            Some(id.to_string()),
+            Some(auth.0.sub),
+            Some(auth.0.email.clone()),
+        )
+        .with_metadata(serde_json::json!({ "name": body.name })),
     );
 
     let response = CreateApiKeyResponse {

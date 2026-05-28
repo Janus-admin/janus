@@ -24,7 +24,8 @@ impl TimeGuard {
                 }
             }
         }
-        let patterns = RegexSet::new(valid_patterns).unwrap_or_else(|_| RegexSet::new(["a^"]).unwrap());
+        let patterns =
+            RegexSet::new(valid_patterns).unwrap_or_else(|_| RegexSet::new(["a^"]).unwrap());
         Self { patterns }
     }
 

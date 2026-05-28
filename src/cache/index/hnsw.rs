@@ -99,9 +99,6 @@ impl EmbeddingIndex for HnswIndex {
     }
 
     async fn len(&self) -> usize {
-        self.inner
-            .lock()
-            .expect("HNSW index mutex poisoned")
-            .count
+        self.inner.lock().expect("HNSW index mutex poisoned").count
     }
 }

@@ -14,7 +14,10 @@ use crate::{
     db::audit::{self as db_audit, AuditFilter},
     enterprise::license::LicenseState,
     errors::AppResult,
-    middleware::{jwt::AuthUser, rbac::{require_role, Role}},
+    middleware::{
+        jwt::AuthUser,
+        rbac::{require_role, Role},
+    },
     state::AppState,
 };
 use axum::{
@@ -45,8 +48,12 @@ pub struct AuditQuery {
     pub per_page: i64,
 }
 
-fn default_page() -> i64 { 1 }
-fn default_per_page() -> i64 { 50 }
+fn default_page() -> i64 {
+    1
+}
+fn default_per_page() -> i64 {
+    50
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ExportQuery {
@@ -58,7 +65,9 @@ pub struct ExportQuery {
     pub format: String,
 }
 
-fn default_format() -> String { "ndjson".into() }
+fn default_format() -> String {
+    "ndjson".into()
+}
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
@@ -215,7 +224,10 @@ pub async fn get_license(
                 "expires_at": info.expires_at(),
             }
         }),
-        LicenseState::Degraded { info, grace_days_left } => json!({
+        LicenseState::Degraded {
+            info,
+            grace_days_left,
+        } => json!({
             "data": {
                 "state": "degraded",
                 "org": info.sub,

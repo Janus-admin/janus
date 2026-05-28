@@ -1,5 +1,4 @@
 pub mod alerts;
-pub mod enterprise;
 pub mod analytics;
 pub mod audit;
 pub mod auth;
@@ -12,6 +11,7 @@ pub mod dashboard;
 pub mod db;
 pub mod demo;
 pub mod doctor;
+pub mod enterprise;
 pub mod errors;
 pub mod gateway;
 pub mod handlers;

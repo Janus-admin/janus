@@ -177,9 +177,15 @@ pub async fn create_idp(
     let view = IdpView::try_from(idp)?;
 
     state.enterprise.audit(
-        AuditEvent::new("idp.create", "identity_provider", Some(view.id.to_string()), Some(auth.0.sub), Some(auth.0.email.clone()))
-            .with_workspace(workspace_id)
-            .with_metadata(serde_json::json!({ "name": req.name, "discovery_url": req.discovery_url })),
+        AuditEvent::new(
+            "idp.create",
+            "identity_provider",
+            Some(view.id.to_string()),
+            Some(auth.0.sub),
+            Some(auth.0.email.clone()),
+        )
+        .with_workspace(workspace_id)
+        .with_metadata(serde_json::json!({ "name": req.name, "discovery_url": req.discovery_url })),
     );
 
     Ok((StatusCode::CREATED, Json(json!({ "data": view }))))

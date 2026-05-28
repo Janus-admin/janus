@@ -61,12 +61,11 @@ async fn get_workspace_id(base_url: &str, token: &str) -> uuid::Uuid {
 /// Test 1: Short single message → micro tier (score 0–3)
 #[test]
 fn v5_l6_short_prompt_scores_micro() {
-    let request = serde_json::from_value::<janus::providers::ChatCompletionRequest>(
-        serde_json::json!({
+    let request =
+        serde_json::from_value::<janus::providers::ChatCompletionRequest>(serde_json::json!({
             "messages": [{"role": "user", "content": "Hi there!"}]
-        }),
-    )
-    .unwrap();
+        }))
+        .unwrap();
 
     let profile = SmartRouter::profile_request(&request, &HashMap::new());
     assert_eq!(
@@ -113,13 +112,12 @@ fn v5_l6_complex_prompt_scores_premium() {
 /// Test 3: Tool use present → complexity score ≥ 2 (tools add 2 pts)
 #[test]
 fn v5_l6_tools_raise_complexity_score() {
-    let request = serde_json::from_value::<janus::providers::ChatCompletionRequest>(
-        serde_json::json!({
+    let request =
+        serde_json::from_value::<janus::providers::ChatCompletionRequest>(serde_json::json!({
             "messages": [{"role": "user", "content": "Call the function"}],
             "tools": [{"type": "function", "function": {"name": "get_weather"}}]
-        }),
-    )
-    .unwrap();
+        }))
+        .unwrap();
 
     let profile = SmartRouter::profile_request(&request, &HashMap::new());
     assert!(profile.needs_functions, "needs_functions should be true");
@@ -133,8 +131,8 @@ fn v5_l6_tools_raise_complexity_score() {
 /// Test 4: Vision content detected correctly
 #[test]
 fn v5_l6_image_url_sets_needs_vision() {
-    let request = serde_json::from_value::<janus::providers::ChatCompletionRequest>(
-        serde_json::json!({
+    let request =
+        serde_json::from_value::<janus::providers::ChatCompletionRequest>(serde_json::json!({
             "messages": [{
                 "role": "user",
                 "content": [
@@ -142,12 +140,14 @@ fn v5_l6_image_url_sets_needs_vision() {
                     {"type": "image_url", "image_url": {"url": "https://example.com/img.png"}}
                 ]
             }]
-        }),
-    )
-    .unwrap();
+        }))
+        .unwrap();
 
     let profile = SmartRouter::profile_request(&request, &HashMap::new());
-    assert!(profile.needs_vision, "needs_vision should be true when image_url present");
+    assert!(
+        profile.needs_vision,
+        "needs_vision should be true when image_url present"
+    );
 }
 
 /// Test 5: Tag parsing — header format "key=val,key2=val2"

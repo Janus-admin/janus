@@ -243,12 +243,9 @@ async fn flush(
             *grouped.entry(h).or_insert(0) += t;
         }
         for (hash, tokens) in grouped {
-            if let Err(e) =
-                crate::db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await
-            {
+            if let Err(e) = crate::db::cache::record_hit(pool, &hash, tokens, Decimal::ZERO).await {
                 tracing::warn!(error = %e, hash = %hash, "audit: record_hit failed");
-                counter!("janus_audit_flush_errors_total", "stage" => "cache_hit")
-                    .increment(1);
+                counter!("janus_audit_flush_errors_total", "stage" => "cache_hit").increment(1);
             }
         }
     }
@@ -265,7 +262,11 @@ async fn flush(
             0, // cache_hit aggregation handled separately
             acc.prompt_tokens,
             acc.completion_tokens,
-            if acc.cost > Decimal::ZERO { Some(acc.cost) } else { None },
+            if acc.cost > Decimal::ZERO {
+                Some(acc.cost)
+            } else {
+                None
+            },
         )
         .await
         {

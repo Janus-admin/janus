@@ -883,12 +883,9 @@ pub async fn run_streaming(
                                 // Pricing-lookup errors used to be silently swallowed by
                                 // `.ok().flatten()`; emit a metric + warn so a missing /
                                 // misconfigured model_pricing row surfaces in dashboards.
-                                let pricing_lookup = db::requests::find_pricing(
-                                    &pool,
-                                    provider_name,
-                                    &final_model,
-                                )
-                                .await;
+                                let pricing_lookup =
+                                    db::requests::find_pricing(&pool, provider_name, &final_model)
+                                        .await;
                                 if let Err(ref e) = pricing_lookup {
                                     tracing::warn!(
                                         error = %e,
@@ -899,19 +896,18 @@ pub async fn run_streaming(
                                     counter!("janus_pricing_lookup_errors_total",
                                              "provider" => provider_name.to_string(),
                                              "model" => final_model.clone())
-                                        .increment(1);
+                                    .increment(1);
                                 }
-                                let cost = pricing_lookup
-                                        .ok()
-                                        .flatten()
-                                        .map(|(input_price, output_price)| {
-                                            pricing::calculate_cost(
-                                                prompt_tokens,
-                                                completion_tokens,
-                                                input_price,
-                                                output_price,
-                                            )
-                                        });
+                                let cost = pricing_lookup.ok().flatten().map(
+                                    |(input_price, output_price)| {
+                                        pricing::calculate_cost(
+                                            prompt_tokens,
+                                            completion_tokens,
+                                            input_price,
+                                            output_price,
+                                        )
+                                    },
+                                );
 
                                 // Record cost metrics in async block
                                 if let Some(cost_value) = cost {
@@ -1002,8 +998,8 @@ pub async fn run_streaming(
                                         },
                                     };
 
-                                    let resp_body = serde_json::to_string(&synthetic_resp)
-                                        .unwrap_or_default();
+                                    let resp_body =
+                                        serde_json::to_string(&synthetic_resp).unwrap_or_default();
 
                                     cache_for_write.insert_with_ttl(
                                         hash_for_cache.clone(),
@@ -1011,8 +1007,8 @@ pub async fn run_streaming(
                                         cache_ttl_secs,
                                     );
 
-                                    let req_body = crate::pii::scrub(&request_body_for_cache)
-                                        .into_owned();
+                                    let req_body =
+                                        crate::pii::scrub(&request_body_for_cache).into_owned();
                                     let _ = db::cache::upsert_entry(
                                         &pool,
                                         &hash_for_cache,

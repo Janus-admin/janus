@@ -118,9 +118,7 @@ pub async fn get_config(
     AuthUser(user): AuthUser,
     Path(workspace_id): Path<Uuid>,
 ) -> impl axum::response::IntoResponse {
-    if let Err(e) =
-        require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await
-    {
+    if let Err(e) = require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await {
         return e.into_response();
     }
 
@@ -150,9 +148,7 @@ pub async fn put_config(
     Path(workspace_id): Path<Uuid>,
     Json(body): Json<UpsertConfigRequest>,
 ) -> impl axum::response::IntoResponse {
-    if let Err(e) =
-        require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await
-    {
+    if let Err(e) = require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await {
         return e.into_response();
     }
 
@@ -183,9 +179,7 @@ pub async fn list_rules(
     AuthUser(user): AuthUser,
     Path(workspace_id): Path<Uuid>,
 ) -> impl axum::response::IntoResponse {
-    if let Err(e) =
-        require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await
-    {
+    if let Err(e) = require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await {
         return e.into_response();
     }
 
@@ -206,9 +200,7 @@ pub async fn create_rule(
     Path(workspace_id): Path<Uuid>,
     Json(body): Json<CreateRuleRequest>,
 ) -> impl axum::response::IntoResponse {
-    if let Err(e) =
-        require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await
-    {
+    if let Err(e) = require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await {
         return e.into_response();
     }
 
@@ -247,9 +239,7 @@ pub async fn update_rule(
     Path((workspace_id, rule_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<UpdateRuleRequest>,
 ) -> impl axum::response::IntoResponse {
-    if let Err(e) =
-        require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await
-    {
+    if let Err(e) = require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await {
         return e.into_response();
     }
 
@@ -273,9 +263,7 @@ pub async fn delete_rule(
     AuthUser(user): AuthUser,
     Path((workspace_id, rule_id)): Path<(Uuid, Uuid)>,
 ) -> impl axum::response::IntoResponse {
-    if let Err(e) =
-        require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await
-    {
+    if let Err(e) = require_role_in_workspace(Role::ApiManager, &user, workspace_id, &state).await {
         return e.into_response();
     }
 
@@ -284,4 +272,3 @@ pub async fn delete_rule(
         Err(e) => e.into_response(),
     }
 }
-

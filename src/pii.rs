@@ -101,7 +101,7 @@ fn luhn(s: &str) -> bool {
             }
         })
         .sum();
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// Redact only matches that pass `predicate`; leave others as-is.
@@ -163,7 +163,10 @@ mod tests {
         // NOT be redacted.  1234 5678 9012 3456 fails Luhn.
         let input = "Order #1234 5678 9012 3456 confirmed";
         let out = scrub(input);
-        assert!(!out.contains("[CC-REDACTED]"), "expected order number to pass through unchanged, got: {out}");
+        assert!(
+            !out.contains("[CC-REDACTED]"),
+            "expected order number to pass through unchanged, got: {out}"
+        );
         assert!(out.contains("1234"));
     }
 
@@ -172,7 +175,10 @@ mod tests {
         // 378282246310005 is a documented Amex test number that passes Luhn.
         let input = "Amex: 3782 822463 10005";
         let out = scrub(input);
-        assert!(out.contains("[CC-REDACTED]"), "expected redaction, got: {out}");
+        assert!(
+            out.contains("[CC-REDACTED]"),
+            "expected redaction, got: {out}"
+        );
     }
 
     #[test]
@@ -200,7 +206,10 @@ mod tests {
         for phone in ["(555) 123-4567", "555-123-4567", "555.123.4567"] {
             let input = format!("Call me at {phone} tomorrow");
             let out = scrub(&input);
-            assert!(out.contains("[PHONE-REDACTED]"), "expected redaction for {phone}, got: {out}");
+            assert!(
+                out.contains("[PHONE-REDACTED]"),
+                "expected redaction for {phone}, got: {out}"
+            );
             assert!(!out.contains(phone), "raw phone leaked for {phone}: {out}");
         }
     }
@@ -210,7 +219,10 @@ mod tests {
         for phone in ["+1 555 123 4567", "+44 20 7946 0958", "+33-1-23-45-67-89"] {
             let input = format!("Reach me on {phone} please");
             let out = scrub(&input);
-            assert!(out.contains("[PHONE-REDACTED]"), "expected redaction for {phone}, got: {out}");
+            assert!(
+                out.contains("[PHONE-REDACTED]"),
+                "expected redaction for {phone}, got: {out}"
+            );
         }
     }
 
@@ -228,7 +240,10 @@ mod tests {
         // 999.999.999.999 is not a valid IP; the octet alternation caps at 255.
         let input = "Build version 999.999.999.999";
         let out = scrub(input);
-        assert!(!out.contains("[IP-REDACTED]"), "out-of-range octets should not match, got: {out}");
+        assert!(
+            !out.contains("[IP-REDACTED]"),
+            "out-of-range octets should not match, got: {out}"
+        );
     }
 
     #[test]

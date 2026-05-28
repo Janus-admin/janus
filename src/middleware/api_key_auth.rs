@@ -1,8 +1,5 @@
 use crate::{
-    db::api_keys::sha256_bytes,
-    errors::AppError,
-    models::api_key::ApiKey,
-    state::AppState,
+    db::api_keys::sha256_bytes, errors::AppError, models::api_key::ApiKey, state::AppState,
 };
 use axum::{
     extract::{FromRef, FromRequestParts},

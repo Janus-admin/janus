@@ -95,12 +95,18 @@ pub async fn update_provider(
         .ok_or_else(|| crate::errors::AppError::NotFound(format!("Provider {id}")))?;
 
     state.enterprise.audit(
-        AuditEvent::new("provider.update", "provider", Some(id.clone()), Some(auth.0.sub), Some(auth.0.email.clone()))
-            .with_metadata(serde_json::json!({
-                "provider_id": id,
-                "is_enabled": body.is_enabled,
-                "priority": body.priority,
-            })),
+        AuditEvent::new(
+            "provider.update",
+            "provider",
+            Some(id.clone()),
+            Some(auth.0.sub),
+            Some(auth.0.email.clone()),
+        )
+        .with_metadata(serde_json::json!({
+            "provider_id": id,
+            "is_enabled": body.is_enabled,
+            "priority": body.priority,
+        })),
     );
 
     Ok(Json(json!({ "data": ProviderView::from(provider) })))

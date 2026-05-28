@@ -1,0 +1,6 @@
+#!/bin/sh
+# Strip Co-Authored-By: Claude lines automatically
+sed -i '' '/^Co-Authored-By: Claude/d' "$1"
+sed -i '' '/^Co-Authored-By:.*anthropic/d' "$1"
+# Remove trailing blank lines
+perl -i -0pe 's/\n+$/\n/' "$1"

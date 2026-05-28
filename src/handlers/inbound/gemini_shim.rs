@@ -146,7 +146,9 @@ fn parts_to_openai_content(parts: &[GeminiPart]) -> Value {
                     }
                 }))
             } else {
-                p.text.as_ref().map(|text| json!({"type": "text", "text": text}))
+                p.text
+                    .as_ref()
+                    .map(|text| json!({"type": "text", "text": text}))
             }
         })
         .collect();
@@ -328,11 +330,9 @@ pub async fn generate_content_handler(
             .map(|v| v.eq_ignore_ascii_case("false"))
             .unwrap_or(false);
     let bypass_semantic = bypass_cache
-        || !state.semantic_policy.allows(
-            &openai_req.model,
-            "/v1beta/models",
-            &api_key.name,
-        );
+        || !state
+            .semantic_policy
+            .allows(&openai_req.model, "/v1beta/models", &api_key.name);
 
     let strategy = match &downgrade {
         DowngradeDecision::UseStrategy(s) => RoutingStrategy::from_db_str(s),

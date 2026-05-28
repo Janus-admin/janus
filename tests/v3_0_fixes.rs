@@ -179,9 +179,7 @@ async fn v3_0_regression_semantic_cache_threshold_respected() {
     // Note: threshold is exclusive (score > threshold), so score must be > 1.0
     // which is impossible. Use a threshold just below 1.0 to test near-match.
     let sc_near = SemanticCache::new(0.99);
-    sc_near
-        .insert(emb_a.clone(), "hash-near".to_string())
-        .await;
+    sc_near.insert(emb_a.clone(), "hash-near".to_string()).await;
     assert!(
         sc_near.lookup(&emb_a).await.is_some(),
         "identical vectors must hit"
@@ -191,9 +189,7 @@ async fn v3_0_regression_semantic_cache_threshold_respected() {
     let sc_strict = SemanticCache::new(0.99);
     // All-zeros vector has zero cosine similarity with anything.
     let zero_emb = vec![0.0f32; 384];
-    sc_strict
-        .insert(emb_a.clone(), "hash-x".to_string())
-        .await;
+    sc_strict.insert(emb_a.clone(), "hash-x".to_string()).await;
     assert!(
         sc_strict.lookup(&zero_emb).await.is_none(),
         "zero vector must not match"

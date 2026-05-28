@@ -112,37 +112,35 @@ fn anthropic_content_to_openai(content: &Value) -> Value {
         Value::Array(blocks) => {
             let parts: Vec<Value> = blocks
                 .iter()
-                .filter_map(|b| {
-                    match b.get("type")?.as_str()? {
-                        "text" => {
-                            let text = b.get("text")?.as_str()?;
-                            Some(json!({"type": "text", "text": text}))
-                        }
-                        "image" => {
-                            let source = b.get("source")?;
-                            match source.get("type")?.as_str()? {
-                                "base64" => {
-                                    let media_type = source.get("media_type")?.as_str()?;
-                                    let data = source.get("data")?.as_str()?;
-                                    Some(json!({
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": format!("data:{};base64,{}", media_type, data)
-                                        }
-                                    }))
-                                }
-                                "url" => {
-                                    let url = source.get("url")?.as_str()?;
-                                    Some(json!({
-                                        "type": "image_url",
-                                        "image_url": {"url": url}
-                                    }))
-                                }
-                                _ => None,
-                            }
-                        }
-                        _ => None,
+                .filter_map(|b| match b.get("type")?.as_str()? {
+                    "text" => {
+                        let text = b.get("text")?.as_str()?;
+                        Some(json!({"type": "text", "text": text}))
                     }
+                    "image" => {
+                        let source = b.get("source")?;
+                        match source.get("type")?.as_str()? {
+                            "base64" => {
+                                let media_type = source.get("media_type")?.as_str()?;
+                                let data = source.get("data")?.as_str()?;
+                                Some(json!({
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": format!("data:{};base64,{}", media_type, data)
+                                    }
+                                }))
+                            }
+                            "url" => {
+                                let url = source.get("url")?.as_str()?;
+                                Some(json!({
+                                    "type": "image_url",
+                                    "image_url": {"url": url}
+                                }))
+                            }
+                            _ => None,
+                        }
+                    }
+                    _ => None,
                 })
                 .collect();
             Value::Array(parts)

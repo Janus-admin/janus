@@ -1,7 +1,7 @@
 pub mod alerts;
+pub mod analytics;
 #[cfg(feature = "enterprise")]
 pub mod audit;
-pub mod analytics;
 pub mod cache;
 pub mod docs;
 pub mod idp;

@@ -179,9 +179,15 @@ pub async fn add_member(
     let view = MemberView::from(member);
 
     state.enterprise.audit(
-        AuditEvent::new("member.add", "workspace_member", Some(user_id.to_string()), Some(auth.0.sub), Some(auth.0.email.clone()))
-            .with_workspace(workspace_id)
-            .with_metadata(serde_json::json!({ "email": body.email, "role": body.role })),
+        AuditEvent::new(
+            "member.add",
+            "workspace_member",
+            Some(user_id.to_string()),
+            Some(auth.0.sub),
+            Some(auth.0.email.clone()),
+        )
+        .with_workspace(workspace_id)
+        .with_metadata(serde_json::json!({ "email": body.email, "role": body.role })),
     );
 
     Ok((StatusCode::CREATED, Json(json!({ "data": view }))))
@@ -221,9 +227,15 @@ pub async fn update_member(
     db_rbac::update_member_role(&state.pool, workspace_id, user_id, &body.role).await?;
 
     state.enterprise.audit(
-        AuditEvent::new("member.update", "workspace_member", Some(user_id.to_string()), Some(auth.0.sub), Some(auth.0.email.clone()))
-            .with_workspace(workspace_id)
-            .with_metadata(serde_json::json!({ "new_role": body.role })),
+        AuditEvent::new(
+            "member.update",
+            "workspace_member",
+            Some(user_id.to_string()),
+            Some(auth.0.sub),
+            Some(auth.0.email.clone()),
+        )
+        .with_workspace(workspace_id)
+        .with_metadata(serde_json::json!({ "new_role": body.role })),
     );
 
     Ok(Json(json!({ "data": { "role": body.role } })))
@@ -254,8 +266,14 @@ pub async fn remove_member(
     db_rbac::remove_member(&state.pool, workspace_id, user_id).await?;
 
     state.enterprise.audit(
-        AuditEvent::new("member.remove", "workspace_member", Some(user_id.to_string()), Some(auth.0.sub), Some(auth.0.email.clone()))
-            .with_workspace(workspace_id),
+        AuditEvent::new(
+            "member.remove",
+            "workspace_member",
+            Some(user_id.to_string()),
+            Some(auth.0.sub),
+            Some(auth.0.email.clone()),
+        )
+        .with_workspace(workspace_id),
     );
 
     Ok(StatusCode::NO_CONTENT)

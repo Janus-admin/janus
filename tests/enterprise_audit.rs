@@ -143,7 +143,10 @@ mod enterprise_audit {
         let state = janus::enterprise::license::evaluate_state(info);
 
         assert!(
-            matches!(state, janus::enterprise::license::LicenseState::Expired { .. }),
+            matches!(
+                state,
+                janus::enterprise::license::LicenseState::Expired { .. }
+            ),
             "expected Expired, got {state:?}"
         );
         // Expired state has no features.
@@ -174,7 +177,17 @@ mod enterprise_audit {
             let tampered: String = sig
                 .chars()
                 .enumerate()
-                .map(|(i, c)| if i == 5 { if c == 'A' { 'B' } else { 'A' } } else { c })
+                .map(|(i, c)| {
+                    if i == 5 {
+                        if c == 'A' {
+                            'B'
+                        } else {
+                            'A'
+                        }
+                    } else {
+                        c
+                    }
+                })
                 .collect();
             sig = tampered;
             parts[2] = Box::leak(sig.into_boxed_str());
@@ -205,7 +218,10 @@ mod enterprise_audit {
 
         assert_eq!(event.action, "key.create");
         assert_eq!(event.resource_type, "api_key");
-        assert_eq!(event.resource_id.as_deref(), Some(&resource.to_string() as &str));
+        assert_eq!(
+            event.resource_id.as_deref(),
+            Some(&resource.to_string() as &str)
+        );
         assert_eq!(event.actor_user_id, Some(actor));
         assert_eq!(event.metadata["name"], "test-key");
     }
@@ -213,8 +229,8 @@ mod enterprise_audit {
     // Test 8 — community no-op: CommunityEnterprise audit is a true no-op
     #[test]
     fn community_enterprise_is_noop() {
-        use janus::enterprise::{AuditEvent, CommunityEnterprise, EnterpriseExt};
         use janus::enterprise::license::LicenseState;
+        use janus::enterprise::{AuditEvent, CommunityEnterprise, EnterpriseExt};
 
         let ce = CommunityEnterprise;
         // These should all return without panicking.

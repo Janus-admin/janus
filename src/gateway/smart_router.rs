@@ -225,9 +225,7 @@ impl SmartRouter {
             {
                 Ok(Some(meta_decision)) => return Ok(meta_decision),
                 Ok(None) | Err(_) => {
-                    tracing::debug!(
-                        "Meta-classifier timed out or failed — using heuristic result"
-                    );
+                    tracing::debug!("Meta-classifier timed out or failed — using heuristic result");
                 }
             }
         }
@@ -360,8 +358,15 @@ impl SmartRouter {
             "investigate",
             "synthesize",
         ];
-        const STRUCTURAL_PATTERNS: &[&str] =
-            &["```", "def ", "fn ", "class ", "SELECT ", "function ", "import "];
+        const STRUCTURAL_PATTERNS: &[&str] = &[
+            "```",
+            "def ",
+            "fn ",
+            "class ",
+            "SELECT ",
+            "function ",
+            "import ",
+        ];
 
         let all_text: String = request
             .messages
@@ -377,9 +382,7 @@ impl SmartRouter {
             .count()
             .min(2) as u8;
 
-        let struct_pts = STRUCTURAL_PATTERNS
-            .iter()
-            .any(|p| all_text.contains(p)) as u8;
+        let struct_pts = STRUCTURAL_PATTERNS.iter().any(|p| all_text.contains(p)) as u8;
 
         score = score
             .saturating_add(verb_pts)
@@ -443,8 +446,8 @@ impl SmartRouter {
         if let Some(max) = max_cost {
             let est_in = Decimal::from(profile.token_estimate);
             let est_out = Decimal::from(profile.token_estimate / 2 + 100);
-            let est_cost =
-                (est_in * model.input_per_1m + est_out * model.output_per_1m) / Decimal::from(1_000_000);
+            let est_cost = (est_in * model.input_per_1m + est_out * model.output_per_1m)
+                / Decimal::from(1_000_000);
             if est_cost > max {
                 return false;
             }
