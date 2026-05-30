@@ -224,6 +224,75 @@ async fn chat_completions_inner(
         }
     }
 
+    // Deactivated model check: if the model exists in the catalogue but is inactive,
+    // return a clear error instead of letting it fall through to providers.
+    {
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+        let inactive: Option<bool> = sqlx::query_scalar(
+            "SELECT TRUE FROM model_pricing WHERE model_id = $1 AND is_active = FALSE LIMIT 1",
+        )
+        .bind(&request.model)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten();
+
+        #[cfg(feature = "sqlite")]
+        let inactive: Option<bool> = sqlx::query_scalar(
+            "SELECT 1 FROM model_pricing WHERE model_id = ?1 AND is_active = 0 LIMIT 1",
+        )
+        .bind(&request.model)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|_: i64| true);
+
+        if inactive == Some(true) {
+            return AppError::BadRequest(format!(
+                "Model '{}' is currently unavailable or has been deprecated. \
+                 Please use an active model.",
+                request.model
+            ))
+            .into_response();
+        }
+    }
+
+    // Chat-capability check: reject audio/image models sent to the chat endpoint.
+    // These models remain in the catalogue for audio/image routing but cannot
+    // handle text chat requests.
+    {
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+        let chat_check: Option<bool> = sqlx::query_scalar(
+            "SELECT supports_chat FROM model_pricing WHERE model_id = $1 AND is_active = TRUE LIMIT 1"
+        )
+        .bind(&request.model)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten();
+
+        #[cfg(feature = "sqlite")]
+        let chat_check: Option<bool> = sqlx::query_scalar(
+            "SELECT supports_chat FROM model_pricing WHERE model_id = ?1 AND is_active = 1 LIMIT 1",
+        )
+        .bind(&request.model)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|v: i64| v != 0);
+
+        if chat_check == Some(false) {
+            return AppError::BadRequest(format!(
+                "Model '{}' does not support chat completions. \
+                 Use the appropriate endpoint (e.g. /v1/audio/transcriptions for audio models).",
+                request.model
+            ))
+            .into_response();
+        }
+    }
+
     // ── Prompt injection (X-Janus-Prompt header) ─────────────────────────────
     // If the caller supplies a prompt ID we load the active version, render the
     // template with variables from X-Janus-Variables, and prepend the result to
@@ -1275,6 +1344,273 @@ pub async fn legacy_completions(
         }
         Err(e) => e.into_response(),
     }
+}
+
+// ── POST /v1/chat/completions/multi ──────────────────────────────────────────
+
+/// Request body for the multi-model parallel completion endpoint.
+///
+/// Identical to a standard chat completion request except `models` replaces `model`,
+/// and `stream` is not accepted (streaming is not supported in multi-model mode).
+#[derive(serde::Deserialize)]
+pub struct MultiCompletionRequest {
+    /// One or more model identifiers to query in parallel. Must be non-empty.
+    pub models: Vec<String>,
+    pub messages: Vec<crate::providers::ChatMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logit_bias: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Result for a single model in a multi-model parallel completion.
+#[derive(serde::Serialize)]
+pub struct MultiModelResult {
+    /// The model that was queried.
+    pub model: String,
+    /// Successful response (OpenAI format), present on success.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<crate::providers::ChatCompletionResponse>,
+    /// Error message, present when the model call failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Wall-clock time from request dispatch to response (milliseconds).
+    pub latency_ms: i64,
+}
+
+/// Response body for `POST /v1/chat/completions/multi`.
+#[derive(serde::Serialize)]
+pub struct MultiCompletionResponse {
+    pub results: Vec<MultiModelResult>,
+}
+
+/// POST /v1/chat/completions/multi
+///
+/// Sends the same prompt to every model listed in `models` **in parallel** and
+/// returns all results in a single response.  Each element in `results` contains
+/// either a standard OpenAI-format `response` (on success) or an `error` string
+/// (on failure).  A failure for one model does **not** cancel the others.
+///
+/// Streaming is not supported — set `stream: true` on the individual
+/// `/v1/chat/completions` endpoint if you need SSE for a single model.
+///
+/// Budget and rate-limit checks are applied once for the request as a whole.
+/// Each model call is logged independently to the audit trail.
+#[utoipa::path(
+    post,
+    path = "/v1/chat/completions/multi",
+    tag = "Gateway",
+    request_body(
+        content = serde_json::Value,
+        description = r#"Multi-model chat request. Replace `model` with `models: [...]` array. All other standard ChatCompletion fields are supported. Example: `{"models":["gpt-4o","claude-opus-4-5"],"messages":[{"role":"user","content":"Hello"}]}`"#,
+    ),
+    responses(
+        (status = 200, description = "Array of per-model results (success or error)", body = serde_json::Value),
+        (status = 400, description = "models array is empty or request is malformed"),
+        (status = 401, description = "Invalid API key"),
+        (status = 402, description = "Budget exceeded for this key"),
+        (status = 429, description = "Rate limit exceeded — Retry-After header present"),
+    ),
+    security(("api_key" = [])),
+)]
+pub async fn multi_chat_completions(
+    State(state): State<Arc<AppState>>,
+    GatewayAuth(api_key): GatewayAuth,
+    headers: HeaderMap,
+    ValidatedJson(request): ValidatedJson<MultiCompletionRequest>,
+) -> impl IntoResponse {
+    if request.models.is_empty() {
+        return AppError::BadRequest(
+            "'models' must be a non-empty array of model identifiers".to_string(),
+        )
+        .into_response();
+    }
+
+    // Budget gate (once for the whole multi-request).
+    if let Err(e) = check_budget(&api_key, &state.config.budget_downgrade) {
+        return e.into_response();
+    }
+
+    // Rate-limit gate (RPM, once for the whole multi-request).
+    if let Some(rpm) = api_key.rate_limit_rpm {
+        let rate_err = if let Some(ref cluster_rl) = state.cluster_rate_limiter {
+            cluster_rl.check_and_record(api_key.id, rpm).await.err()
+        } else {
+            state.rate_limiter.check_and_record(api_key.id, rpm).err()
+        };
+        if let Some(retry_after) = rate_err {
+            return AppError::RateLimitExceeded(Some(retry_after)).into_response();
+        }
+    }
+
+    let rc = state.runtime_config.load();
+    let bypass_cache = !rc.cache_enabled;
+    let max_retries = rc.max_retries;
+    drop(rc);
+
+    // Extract tags from metadata body field + X-Janus-Tags header.
+    let tags = {
+        let mut map = serde_json::Map::new();
+        if let Some(meta) = &request.metadata {
+            if let Some(obj) = meta.as_object() {
+                for (k, v) in obj {
+                    map.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        if let Some(hv) = headers.get("x-janus-tags").and_then(|v| v.to_str().ok()) {
+            for pair in hv.split(',') {
+                if let Some((k, v)) = pair.trim().split_once('=') {
+                    map.insert(
+                        k.trim().to_string(),
+                        serde_json::Value::String(v.trim().to_string()),
+                    );
+                }
+            }
+        }
+        serde_json::Value::Object(map)
+    };
+
+    // Concurrency limiter: at most 5 tasks run simultaneously per provider family
+    // to avoid hitting rate limits when many models from the same provider are queried.
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
+
+    // Spawn one task per model and run them all in parallel.
+    let handles: Vec<_> = request
+        .models
+        .iter()
+        .map(|model| {
+            let chat_req = crate::providers::ChatCompletionRequest {
+                model: model.clone(),
+                messages: request.messages.clone(),
+                max_tokens: request.max_tokens,
+                temperature: request.temperature,
+                top_p: request.top_p,
+                n: request.n,
+                stream: None,
+                stop: request.stop.clone(),
+                presence_penalty: request.presence_penalty,
+                frequency_penalty: request.frequency_penalty,
+                seed: request.seed,
+                user: request.user.clone(),
+                logit_bias: request.logit_bias.clone(),
+                tools: request.tools.clone(),
+                tool_choice: request.tool_choice.clone(),
+                parallel_tool_calls: request.parallel_tool_calls,
+                response_format: request.response_format.clone(),
+                metadata: request.metadata.clone(),
+            };
+
+            let pool = state.pool.clone();
+            let registry = state.providers.clone();
+            let cache = state.cache.clone();
+            let plugins = state.plugins.clone();
+            let dedup = state.dedup.clone();
+            let audit = state.audit.clone();
+            let api_key = api_key.clone();
+            let tags = tags.clone();
+            let bypass_semantic = bypass_cache
+                || !state.semantic_policy.allows(
+                    model,
+                    "/v1/chat/completions/multi",
+                    &api_key.name,
+                );
+            let strategy =
+                crate::gateway::strategies::RoutingStrategy::from_db_str(&api_key.routing_strategy);
+            let fallback_models: Vec<String> = state
+                .config
+                .routing
+                .fallbacks
+                .get(model)
+                .cloned()
+                .unwrap_or_default();
+            let model = model.clone();
+            let permit = semaphore.clone();
+
+            tokio::spawn(async move {
+                let _guard = permit.acquire_owned().await.ok();
+                let start = Instant::now();
+                let result = pipeline::run(
+                    &pool,
+                    &registry,
+                    &chat_req,
+                    &api_key,
+                    max_retries,
+                    &cache,
+                    bypass_cache,
+                    bypass_semantic,
+                    &strategy,
+                    &fallback_models,
+                    None,
+                    &plugins,
+                    &dedup,
+                    0,
+                    false,
+                    None,
+                    &tags,
+                    "/v1/chat/completions/multi",
+                    &audit,
+                )
+                .await;
+                let latency_ms = start.elapsed().as_millis() as i64;
+                (model, result, latency_ms)
+            })
+        })
+        .collect();
+
+    let join_results = futures_util::future::join_all(handles).await;
+
+    let results: Vec<MultiModelResult> = join_results
+        .into_iter()
+        .map(|r| match r {
+            Ok((model, Ok((resp, _cache_hit)), latency_ms)) => MultiModelResult {
+                model,
+                response: Some(resp),
+                error: None,
+                latency_ms,
+            },
+            Ok((model, Err(e), latency_ms)) => MultiModelResult {
+                model,
+                response: None,
+                error: Some(e.to_string()),
+                latency_ms,
+            },
+            Err(join_err) => MultiModelResult {
+                model: String::new(),
+                response: None,
+                error: Some(format!("internal task error: {join_err}")),
+                latency_ms: 0,
+            },
+        })
+        .collect();
+
+    Json(MultiCompletionResponse { results }).into_response()
 }
 
 /// Attach smart-routing observability headers when the router was invoked.

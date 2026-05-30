@@ -26,9 +26,41 @@ pub fn select_all_providers(registry: &ProviderRegistry) -> Vec<Arc<dyn Provider
         .collect()
 }
 
+/// Look up which provider owns a given model_id in the model_pricing catalogue.
+/// Returns `None` when the model is unknown (caller falls back to strategy order).
+async fn lookup_model_provider(pool: &DbPool, model: &str) -> Option<String> {
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    let result: Option<String> = sqlx::query_scalar(
+        "SELECT provider FROM model_pricing WHERE model_id = $1 AND is_active = TRUE LIMIT 1",
+    )
+    .bind(model)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    #[cfg(feature = "sqlite")]
+    let result: Option<String> = sqlx::query_scalar(
+        "SELECT provider FROM model_pricing WHERE model_id = ?1 AND is_active = 1 LIMIT 1",
+    )
+    .bind(model)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    result
+}
+
 /// Return enabled providers ordered according to `strategy`.
-/// For `CostOptimized` and `LatencyOptimized` this issues a DB query, so the
-/// function is async.  `Priority` and `RoundRobin` are synchronous no-ops.
+///
+/// **Model-aware routing**: before applying the strategy ordering we look up
+/// the model in `model_pricing` to find its owning provider and move that
+/// provider to the front of the list.  This ensures e.g. `claude-*` requests
+/// go to Anthropic first and `gemini-*` requests go to Google Gemini first,
+/// rather than always starting with the globally highest-priority provider.
+///
+/// Unknown models (not in `model_pricing`) fall back to pure strategy order.
 pub async fn select_providers_for_strategy(
     pool: &DbPool,
     registry: &ProviderRegistry,
@@ -46,10 +78,34 @@ pub async fn select_providers_for_strategy(
         return enabled;
     }
 
+    // Model-aware routing: when the model is catalogued, use ONLY its owning
+    // provider.  This prevents requests for e.g. `claude-*` from falling
+    // through to DeepSeek when Anthropic rejects with an "unknown model" error.
+    // For unknown models we keep the full priority-ordered list as before.
+    let ordered = if let Some(owner) = lookup_model_provider(pool, model).await {
+        let preferred: Vec<_> = enabled
+            .into_iter()
+            .filter(|p| p.name() == owner.as_str())
+            .collect();
+        if preferred.is_empty() {
+            // Owning provider not registered/enabled — fall back to full list.
+            registry
+                .providers()
+                .iter()
+                .filter(|p| p.is_enabled())
+                .cloned()
+                .collect()
+        } else {
+            preferred
+        }
+    } else {
+        enabled
+    };
+
     match strategy {
-        RoutingStrategy::Priority => enabled,
-        RoutingStrategy::CostOptimized => sort_by_cost(pool, enabled, model).await,
-        RoutingStrategy::LatencyOptimized => sort_by_latency(pool, enabled).await,
-        RoutingStrategy::RoundRobin => sort_round_robin(enabled, &registry.round_robin_counter),
+        RoutingStrategy::Priority => ordered,
+        RoutingStrategy::CostOptimized => sort_by_cost(pool, ordered, model).await,
+        RoutingStrategy::LatencyOptimized => sort_by_latency(pool, ordered).await,
+        RoutingStrategy::RoundRobin => sort_round_robin(ordered, &registry.round_robin_counter),
     }
 }

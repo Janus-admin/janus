@@ -12,6 +12,7 @@ use serde_json::json;
 use tower_http::{
     cors::{Any, CorsLayer},
     limit::RequestBodyLimitLayer,
+    normalize_path::NormalizePathLayer,
     trace::TraceLayer,
 };
 
@@ -40,6 +41,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(handlers::gateway::images_generations),
         )
         .route("/v1/audio/speech", post(handlers::gateway::audio_speech))
+        // ── Multi-model parallel completions ──────────────────────────────────
+        .route(
+            "/v1/chat/completions/multi",
+            post(handlers::gateway::multi_chat_completions),
+        )
         // ── Inbound protocol shims ────────────────────────────────────────────
         // Accept native Anthropic Messages API format → translate → pipeline.
         .route(
@@ -96,6 +102,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/admin/playground",
             post(handlers::admin::replay::playground),
+        )
+        .route(
+            "/admin/playground/multi",
+            post(handlers::admin::replay::playground_multi),
         )
         // ── Admin — Analytics ────────────────────────────────────────────────
         .route(
@@ -305,6 +315,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/users/:id", put(handlers::users::update_user))
         .route("/api/v1/users/:id", delete(handlers::users::delete_user))
         .fallback(crate::dashboard::serve)
+        .layer(NormalizePathLayer::trim_trailing_slash())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

@@ -95,8 +95,10 @@ Your app
 
 | Capability | Details |
 |---|---|
-| **Providers** | OpenAI, Anthropic, AWS Bedrock, Gemini, Groq, DeepSeek, any OpenAI-compatible endpoint |
-| **Gateway endpoints** | `/v1/chat/completions`, `/v1/embeddings`, `/v1/models`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/audio/transcriptions` |
+| **Providers** | OpenAI (GPT-5.x/4.x/o-series), Anthropic (Claude 4.x), Google Gemini (3.x/2.5), Groq (Llama 4/3), DeepSeek (V4), AWS Bedrock, any OpenAI-compatible endpoint |
+| **Gateway endpoints** | `/v1/chat/completions`, `/v1/chat/completions/multi`, `/v1/embeddings`, `/v1/models`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/audio/transcriptions` |
+| **Multi-model compare** | `POST /v1/chat/completions/multi` — send one prompt to N models in parallel, get all responses in one JSON object; per-model error isolation; admin playground Compare tab |
+| **Model-aware routing** | Router looks up `model_pricing` to find each model's owning provider — `claude-*` → Anthropic, `gemini-*` → Gemini, etc. No more wrong-provider fallthrough |
 | **Smart routing** | 4-layer pipeline: capability filter → tag/rule match → complexity scoring → config default |
 | **Exact cache** | SHA-256, DashMap hot layer + Postgres persistent — **< 2 ms**, zero API cost on hit |
 | **Semantic cache** | ONNX cosine similarity, all-MiniLM-L6-v2 — **< 10 ms**, configurable threshold; optional Qdrant backend |
@@ -510,13 +512,61 @@ curl ... -H "X-Janus-Cache: false"
 
 # Stream
 curl ... -d '{"model": "gpt-4o", "stream": true, "messages": [...]}'
+
+# Multi-model parallel completion — same prompt to N models simultaneously
+curl -X POST http://localhost:8080/v1/chat/completions/multi \
+  -H "Authorization: Bearer jn-sk-..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "models": ["gpt-4.1", "claude-opus-4-7", "gemini-3.5-flash", "deepseek-v4-pro"],
+    "messages": [{"role": "user", "content": "Explain recursion in one sentence."}]
+  }'
+# Response:
+# {
+#   "results": [
+#     { "model": "gpt-4.1",         "response": {...}, "latency_ms": 980  },
+#     { "model": "claude-opus-4-7", "response": {...}, "latency_ms": 1340 },
+#     { "model": "gemini-3.5-flash","response": {...}, "latency_ms": 720  },
+#     { "model": "deepseek-v4-pro", "error": "...",   "latency_ms": 0    }
+#   ]
+# }
 ```
+
+### Multi-Model Parallel Completions
+
+`POST /v1/chat/completions/multi` sends the same prompt to every model in the `models` array **simultaneously** and returns all responses in one JSON object.
+
+| Feature | Behaviour |
+|---|---|
+| **Partial failure** | One failed model returns `"error": "..."` — others are unaffected |
+| **Concurrency cap** | Max 5 tasks run at once to avoid provider rate-limit storms |
+| **Streaming** | Not supported — use `/v1/chat/completions` with `stream: true` per model |
+| **Cost & audit** | Each model call logged and billed independently |
+| **Caching** | Per-model cache — identical prompts on the same model hit cache |
+| **Standard fields** | `temperature`, `max_tokens`, `tools`, `top_p`, etc. forwarded to every model |
+
+**Admin playground** has a built-in **Compare** tab: select a gateway key → models auto-load from `allowed_models` → send prompt → see all results side-by-side with latency and cost.
+
+### Model-Aware Routing
+
+Janus automatically routes each model to its owning provider using the `model_pricing` catalogue:
+
+| Model prefix | Provider |
+|---|---|
+| `gpt-*`, `o1`, `o3`, `o4-*` | OpenAI |
+| `claude-*` | Anthropic |
+| `gemini-*` | Google Gemini |
+| `llama-*`, `groq/*`, `qwen/*` | Groq |
+| `deepseek-*` | DeepSeek |
+| Unknown model | Priority-ordered fallback across all providers |
 
 ### Admin API (selected endpoints)
 
 ```
 POST   /admin/keys                       Create API key (shown once, never again)
 GET    /admin/keys                       List keys (safe view — prefixes only)
+POST   /admin/playground                 Test a single model (admin JWT, no limits)
+POST   /admin/playground/multi           Test N models in parallel (admin JWT)
 GET    /admin/analytics/overview         Daily costs, request counts, top models
 GET    /admin/analytics/cost-by-tag      Cost breakdown by tag key
 GET    /admin/cache/stats                Hit ratio, tokens saved, cost saved

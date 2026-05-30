@@ -70,7 +70,7 @@ impl Modify for SecurityAddon {
         (name = "System", description = "Readiness, liveness, and metrics."),
         (name = "Workspaces", description = "Tenants and member RBAC."),
         (name = "Identity Providers", description = "OIDC single sign-on configuration."),
-        (name = "Gateway", description = "OpenAI-compatible proxy: chat, embeddings, images, audio, models."),
+        (name = "Gateway", description = "OpenAI-compatible proxy: chat, embeddings, images, audio, models, and multi-model parallel completions."),
     ),
     paths(
         // ── Keys ─────────────────────────────────────────────────────────────
@@ -86,6 +86,7 @@ impl Modify for SecurityAddon {
         crate::handlers::admin::requests::get_request,
         crate::handlers::admin::replay::replay_request,
         crate::handlers::admin::replay::playground,
+        crate::handlers::admin::replay::playground_multi,
         // ── Analytics ────────────────────────────────────────────────────────
         crate::handlers::admin::analytics::overview,
         crate::handlers::admin::analytics::costs,
@@ -139,6 +140,7 @@ impl Modify for SecurityAddon {
         crate::handlers::gateway::images_generations,
         crate::handlers::gateway::audio_transcriptions,
         crate::handlers::gateway::audio_speech,
+        crate::handlers::gateway::multi_chat_completions,
     ),
     components(schemas(
         crate::models::api_key::ApiKeyView,
